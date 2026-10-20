@@ -25,6 +25,7 @@
 #include "strata/kernels/glm_fast.hpp"
 #include "strata/kernels/sampler.hpp"
 
+#include <climits>
 #include <cublas_v2.h>
 #include <cuda_runtime.h>
 
@@ -2563,8 +2564,18 @@ struct Model::Impl {
     }
 
     // y[r][c] = x16[r] . W[:, c] (+ beta y) for r < rows: W reconstructed to FP16 in whole 128-column blocks, cuBLAS
+    // Experimental: keep the dense BLAS shapes of aligned 2K chunks while expert sets use larger chunks.
+    // A compressed-key projection has one row per `divisor` tokens.
+    static int gemm_tile_rows(int divisor = 1) {
+        (void) divisor;
+#if defined(STRATA_USE_HIP)
+        const char* enabled = std::getenv("DS4_GEMM_TILE_2K");
+        if (enabled != nullptr && std::atoi(enabled) != 0) return std::max(1, 2048 / divisor);
+#endif
+        return INT_MAX;
+    }
     bool gemm(Dev& d, Chunk& c, const x3::Mat& m, const uint16_t* x16, int ldx, int rows, float* y, int ldy, float beta,
-              std::string& err) {
+              std::string& err, int row_divisor = 1) {
         if (rows <= 0) return true;
         const int cols = std::max(128, (int) std::min<size_t>((size_t) m.n, c.w16_elems / (size_t) m.k) / 128 * 128);
         for (int c0 = 0; c0 < m.n; c0 += cols) {
@@ -2572,12 +2583,17 @@ struct Model::Impl {
             if (m.fmt != 0) gg::rows(nc == m.n ? m : gg::view(m, c0, nc), c.w16, false, d.st);   // (a GGUF's)
             else x3::reconstruct_rows(nc == m.n ? m : x3::view(m, c0, nc), c.w16, false, d.st);
             const float one = 1.0f;
-            const cublasStatus_t st = cublasGemmEx(c.blas, CUBLAS_OP_T, CUBLAS_OP_N, nc, rows, m.k, &one, c.w16, CUDA_R_16F,
-                                                   m.k, x16, CUDA_R_16F, ldx, &beta, y + c0, CUDA_R_32F, ldy,
-                                                   CUBLAS_COMPUTE_32F, CUBLAS_GEMM_DEFAULT_TENSOR_OP);
-            if (st != CUBLAS_STATUS_SUCCESS) {
-                err = "cublasGemmEx: status " + std::to_string((int) st);
-                return false;
+            const int tile = std::min(rows, gemm_tile_rows(row_divisor));
+            for (int r0 = 0; r0 < rows; r0 += tile) {
+                const int nr = std::min(tile, rows - r0);
+                const cublasStatus_t st = cublasGemmEx(c.blas, CUBLAS_OP_T, CUBLAS_OP_N, nc, nr, m.k, &one, c.w16, CUDA_R_16F,
+                                                       m.k, x16 + (size_t) r0 * ldx, CUDA_R_16F, ldx, &beta,
+                                                       y + (size_t) r0 * ldy + c0, CUDA_R_32F, ldy,
+                                                       CUBLAS_COMPUTE_32F, CUBLAS_GEMM_DEFAULT_TENSOR_OP);
+                if (st != CUBLAS_STATUS_SUCCESS) {
+                    err = "cublasGemmEx: status " + std::to_string((int) st);
+                    return false;
+                }
             }
         }
         return true;
@@ -2586,12 +2602,18 @@ struct Model::Impl {
     bool gemm_f16w(Chunk& c, const uint16_t* W, int n, int k, const uint16_t* x16, int ldx, int rows, float alpha,
                    float* y, int ldy, std::string& err) {
         const float zero = 0.0f;
-        const cublasStatus_t st = cublasGemmEx(c.blas, CUBLAS_OP_T, CUBLAS_OP_N, n, rows, k, &alpha, W, CUDA_R_16F, k,
-                                               x16, CUDA_R_16F, ldx, &zero, y, CUDA_R_32F, ldy, CUBLAS_COMPUTE_32F,
-                                               CUBLAS_GEMM_DEFAULT_TENSOR_OP);
-        if (st != CUBLAS_STATUS_SUCCESS) {
-            err = "cublasGemmEx (F16 weights): status " + std::to_string((int) st);
-            return false;
+        if (rows <= 0) return true;
+        const int tile = std::min(rows, gemm_tile_rows());
+        for (int r0 = 0; r0 < rows; r0 += tile) {
+            const int nr = std::min(tile, rows - r0);
+            const cublasStatus_t st = cublasGemmEx(c.blas, CUBLAS_OP_T, CUBLAS_OP_N, n, nr, k, &alpha, W, CUDA_R_16F, k,
+                                                   x16 + (size_t) r0 * ldx, CUDA_R_16F, ldx, &zero,
+                                                   y + (size_t) r0 * ldy, CUDA_R_32F, ldy, CUBLAS_COMPUTE_32F,
+                                                   CUBLAS_GEMM_DEFAULT_TENSOR_OP);
+            if (st != CUBLAS_STATUS_SUCCESS) {
+                err = "cublasGemmEx (F16 weights): status " + std::to_string((int) st);
+                return false;
+            }
         }
         return true;
     }
@@ -2599,10 +2621,14 @@ struct Model::Impl {
     bool hc_mix_chunk(Dev& d, Chunk& c, const float* h, const float* fn, int T, float* mixes, std::string& err) {
         const int hcd = g.hc * g.dim, n_mix = (2 + g.hc) * g.hc;
         const float one = 1.0f, zero = 0.0f;
-        if (cublasSgemm(c.blas, CUBLAS_OP_T, CUBLAS_OP_N, n_mix, T, hcd, &one, fn, hcd, h, hcd, &zero, mixes, 32) !=
-            CUBLAS_STATUS_SUCCESS) {
-            err = "cublasSgemm (mHC mixes)";
-            return false;
+        const int tile = std::min(T, gemm_tile_rows());
+        for (int r0 = 0; r0 < T; r0 += tile) {
+            const int nr = std::min(tile, T - r0);
+            if (cublasSgemm(c.blas, CUBLAS_OP_T, CUBLAS_OP_N, n_mix, nr, hcd, &one, fn, hcd,
+                           h + (size_t) r0 * hcd, hcd, &zero, mixes + (size_t) r0 * 32, 32) != CUBLAS_STATUS_SUCCESS) {
+                err = "cublasSgemm (mHC mixes)";
+                return false;
+            }
         }
         hc_mix_scale(h, hcd, n_mix, T, g.eps, mixes, d.st);
         return true;
@@ -5743,7 +5769,7 @@ struct Model::Impl {
                 Src& ks = srcs[(size_t) l.ik_src];
                 if (l.owns_k && ng > 0) {
                     x3::rows_f16(latent, HD, nullptr, ng, HD, c.lat16, s);
-                    if (!gemm(d, c, l.i_wk, c.lat16, HD, ng, c.ikr, g.ix_hd, 0.0f, err)) return false;
+                    if (!gemm(d, c, l.i_wk, c.lat16, HD, ng, c.ikr, g.ix_hd, 0.0f, err, R)) return false;
                     Finish fi;
                     fi.w = l.ik_norm;
                     fi.eps = g.eps;
