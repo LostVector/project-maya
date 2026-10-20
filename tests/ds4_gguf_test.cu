@@ -1301,6 +1301,52 @@ void kv_same(const char* what, const void* a, const void* b, size_t bytes) {
     std::printf("%-44s %s  %zu bytes %s\n", what, ok ? "ok  " : "FAIL", bytes, ok ? "identical" : "DIFFER");
 }
 
+void attention_schedule_env(int mode) {
+#ifdef _WIN32
+    _putenv_s("DS4_ATTN_DOT2", mode==1 ? "1" : "0");
+#else
+    ::setenv("DS4_ATTN_DOT2", mode==1 ? "1" : "0", 1);
+#endif
+}
+void test_attention_schedule(cudaStream_t s) {
+    constexpr int HD=512, TM=512, NHM=64, NC=1024, WIN=128, SEL=512;
+    std::vector<float> q(size_t(TM)*NHM*HD),sink(NHM);
+    for(auto&v:q)v=frand(0.2f);for(auto&v:sink)v=frand(1.0f);
+    std::vector<float> xw(size_t(WIN+TM)*HD),xk(size_t(NC)*HD);
+    for(auto&v:xw)v=frand(1.0f);for(auto&v:xk)v=frand(1.0f);
+    std::vector<int> sel(size_t(TM)*SEL);for(auto&v:sel)v=int(rng()%NC);
+    float *dq=dev(q),*dsink=dev(sink),*dxw=dev(xw),*dxk=dev(xk),*o0=nullptr,*o1=nullptr;
+    int* dsel=dev(sel);uint16_t *ext=nullptr,*c16=nullptr;uint8_t *winpack=nullptr,*c4=nullptr;
+    CU(cudaMalloc(&ext,size_t(WIN+TM)*HD*2));CU(cudaMalloc(&winpack,size_t(WIN+TM)*dk::kv_row_bytes(dk::kKvFp8,HD)));
+    CU(cudaMalloc(&c16,size_t(NC)*HD*2));CU(cudaMalloc(&c4,size_t(NC)*dk::kv_row_bytes(dk::kKvFp4,HD)));
+    CU(cudaMalloc(&o0,q.size()*4));CU(cudaMalloc(&o1,q.size()*4));
+    kv_finish(dxw,WIN+TM,HD,dk::kKvFp8,ext,winpack,s);kv_finish(dxk,NC,HD,dk::kKvFp4,c16,c4,s);
+    cudaEvent_t a,b;CU(cudaEventCreate(&a));CU(cudaEventCreate(&b));
+    for(int nh:{32,64})for(int p0:{0,1034})for(int ratio:{4,128}) {
+        const int T=nh==32?512:256;const size_t n=size_t(T)*nh*HD;
+        dk::AttnRows ar;ar.gen=1;ar.p0=p0;ar.t0=0;ar.win=WIN;ar.R=ratio;ar.kcap=SEL;
+        auto launch=[&](int mode){dk::sparse_attn(dq,ext,c4,dsel,SEL,ar,dsink,nh,HD,T,1.0f/std::sqrt(float(HD)),o1,s,dk::kKvFp4,mode==2?4:8,nullptr);};
+        attention_schedule_env(0);
+        dk::sparse_attn(dq,ext,c4,dsel,SEL,ar,dsink,nh,HD,T,1.0f/std::sqrt(float(HD)),o0,s,dk::kKvFp4,8,nullptr);
+        CU(cudaStreamSynchronize(s));const auto want=host(o0,n);
+        for(float v:want)if(!std::isfinite(v)){++g_fail;return;}
+        int arm=0;
+        for(int mode:{0,1,2,2,1,0,1,0,2,2,0,1}) {
+            attention_schedule_env(mode);launch(mode);CU(cudaStreamSynchronize(s));
+            CU(cudaEventRecord(a,s));for(int k=0;k<4;++k)launch(mode);CU(cudaEventRecord(b,s));CU(cudaEventSynchronize(b));float ms;CU(cudaEventElapsedTime(&ms,a,b));const float est=std::max(0.001f,ms/4);
+            const int warm=std::max(2,std::min(10000,int(std::ceil(200.0f/est)))),reps=std::max(2,std::min(10000,int(std::ceil(100.0f/est))));
+            for(int k=0;k<warm;++k)launch(mode);CU(cudaEventRecord(a,s));for(int k=0;k<reps;++k)launch(mode);CU(cudaEventRecord(b,s));CU(cudaEventSynchronize(b));CU(cudaEventElapsedTime(&ms,a,b));
+            const auto got=host(o1,n);bool finite=true;for(float v:got)finite=finite&&std::isfinite(v);
+            const bool exact=finite&&std::memcmp(want.data(),got.data(),n*4)==0;
+            std::printf("ATTN_SCHEDULE nh=%d T=%d p0=%d ratio=%d mode=%d arm=%d reps=%d mean_ms=%.6f exact=%d finite=%d\n",nh,T,p0,ratio,mode,arm++,reps,ms/reps,int(exact),int(finite));std::fflush(stdout);
+            if(!exact){++g_fail;return;}
+        }
+    }
+    CU(cudaEventDestroy(a));CU(cudaEventDestroy(b));
+    for(void*p:{(void*)dq,(void*)dsink,(void*)dxw,(void*)dxk,(void*)o0,(void*)o1,(void*)dsel,(void*)ext,(void*)c16,(void*)winpack,(void*)c4})CU(cudaFree(p));
+    attention_schedule_env(0);
+}
+
 void test_kv_pack(cudaStream_t s) {
     const int HD = 512, IX = 128, NC = 65536 / 4 + 1, WIN = 128;
     // the compressed KV (FP4, an E4M3 scale per 16) and the index keys (FP4, a power-of-two scale per 32)
@@ -1589,6 +1635,11 @@ int main(int argc, char** argv) {
     if (argc >= 2 && std::strcmp(argv[1], "--bench-cpu") == 0) {   // [threads]
         bench_cpu(argc >= 3 ? std::atoi(argv[2]) : 1);
         return 0;
+    }
+    if (argc >= 2 && std::strcmp(argv[1], "--attn-schedule") == 0) {
+        test_attention_schedule(s);
+        std::printf("ATTN_DONE failures=%d\n",g_fail);
+        return g_fail ? 1 : 0;
     }
     if (argc >= 2 && std::strcmp(argv[1], "--kv") == 0) {   // the caches' packing alone
         test_kv_pack(s);
