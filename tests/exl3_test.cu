@@ -483,16 +483,19 @@ void test_gemm_rows(int k, int n, int K, int cb, int rows) {
 }
 
 // the prompt path's expert set: 3 experts (rows 37, 0, 70) through set_gate_up and set_down against the reference
-void test_set(int K, int cb) {
+void test_set(int K, int cb, int tail = 0) {
 #if !defined(STRATA_USE_HIP)
+    #if !defined(STRATA_USE_HIP)
     if (!ex::mma_supported()) {
         std::printf("  set_*: no tensor-core kernels on this device (skipped)\n");
         return;
     }
 #endif
-    const int E = 512, F = 256, T = 64;
+#endif
+    const bool bench = std::getenv("EXL3_SET_BENCH") != nullptr;
+    const int E = bench ? 5120 : 512, F = bench ? 1152 : 256, T = 64;
     const float limit = 1.5f;
-    const int counts[3] = {37, 0, 70};
+    const int counts[3] = {tail ? tail : 37, 0, tail ? tail + 1 : 70};
     // the set's blobs back to back at a fixed stride, each [gate | up | down], a part [trellis | suh | svh]
     HostMat parts[3][3];
     ex::ExpertLayout lay;
@@ -528,6 +531,7 @@ void test_set(int K, int cb) {
     const int rows = (int) row_tok.size();
     uint8_t* d_blob = dev_copy(blobs);
     float* d_x = dev_copy(x);
+    for (auto& b : bounds) b += 13;
     int* d_bounds = dev_copy(bounds);
     int* d_rows = dev_copy(row_tok);
     uint16_t* d_h = nullptr;
@@ -540,14 +544,51 @@ void test_set(int K, int cb) {
     sa.lay = lay;
     sa.n_exp = 3;
     sa.bounds = d_bounds;
-    sa.row0 = 0;
-    sa.max_rows = 70;
+    sa.row0 = 13;
+    sa.max_rows = std::max(counts[0], counts[2]);
     sa.n_embd = E;
     sa.n_ff = F;
     sa.limit = limit;
+#if defined(STRATA_USE_HIP)
+    setenv("DS4_EXL3_FMA16", "0", 1);
     ex::set_gate_up(sa, d_x, E, d_rows, d_h, F, 0);
     ex::set_down(sa, d_h, F, d_out, E, 0);
     CK(cudaDeviceSynchronize());
+    const auto h8 = host_copy(d_h, (size_t) rows * F);
+    const auto y8 = host_copy(d_out, (size_t) rows * E);
+    setenv("DS4_EXL3_FMA16", "1", 1);
+#endif
+    ex::set_gate_up(sa, d_x, E, d_rows, d_h, F, 0);
+    ex::set_down(sa, d_h, F, d_out, E, 0);
+    CK(cudaDeviceSynchronize());
+#if defined(STRATA_USE_HIP)
+    const auto h16 = host_copy(d_h, (size_t) rows * F);
+    const auto y16 = host_copy(d_out, (size_t) rows * E);
+    const bool exact = h8 == h16 && std::memcmp(y8.data(), y16.data(), y8.size() * sizeof(float)) == 0;
+    if (!exact) ++g_fail;
+    std::printf("SET_PARITY K=%d cb=%d rows=%d exact=%d\n", K, cb, rows, int(exact));
+    if (bench) {
+        for (int tile : {8, 16, 16, 8, 16, 8, 8, 16}) {
+            setenv("DS4_EXL3_FMA16", tile == 16 ? "1" : "0", 1);
+            for (int i = 0; i < 2000; ++i) {
+                ex::set_gate_up(sa, d_x, E, d_rows, d_h, F, 0);
+                ex::set_down(sa, d_h, F, d_out, E, 0);
+            }
+            cudaEvent_t begin, end; CK(cudaEventCreate(&begin)); CK(cudaEventCreate(&end));
+            CK(cudaEventRecord(begin));
+            for (int i = 0; i < 200; ++i) {
+                ex::set_gate_up(sa, d_x, E, d_rows, d_h, F, 0);
+                ex::set_down(sa, d_h, F, d_out, E, 0);
+            }
+            CK(cudaEventRecord(end)); CK(cudaEventSynchronize(end));
+            float ms = 0; CK(cudaEventElapsedTime(&ms, begin, end));
+            CK(cudaEventDestroy(begin)); CK(cudaEventDestroy(end));
+            std::printf("SET_BENCH K=%d cb=%d tile=%d mean_ms=%.6f\n", K, cb, tile, ms / 200);
+            std::fflush(stdout);
+        }
+        return;
+    }
+#endif
     std::vector<float> ref((size_t) rows * E);
     for (int e = 0, r = 0; e < 3; ++e) {
         std::vector<float> wg((size_t) E * F), wu((size_t) E * F), wd((size_t) F * E);
@@ -567,7 +608,7 @@ void test_set(int K, int cb) {
                          ref.data() + (size_t) r * E);
         }
     }
-    close(("set K" + std::to_string(K) + " cb" + std::to_string(cb) + " (3 experts, 107 rows)").c_str(),
+    close(("set K" + std::to_string(K) + " cb" + std::to_string(cb) + " (3 experts, " + std::to_string(rows) + " rows)").c_str(),
           host_copy(d_out, ref.size()), ref, 3e-3);
 }
 
@@ -1404,6 +1445,17 @@ int main(int argc, char** argv) {
         if (!expect_dir.empty()) test_expect(expect_dir);
         std::printf("exl3_test: %s (%d failures, %d launch errors)\n", g_fail ? "FAIL" : "ok", g_fail,
                     ex::launch_errors());
+        return g_fail || ex::launch_errors() ? 1 : 0;
+    }
+    if (std::getenv("EXL3_SET_ONLY")) {
+        for (int K = 1; K <= 8; ++K)
+            for (int cb = 0; cb <= 2; ++cb) test_set(K, cb);
+        for (int tail : {1, 8, 9, 15, 16, 17, 31, 32, 33}) test_set(3, 2, tail);
+        std::printf("SET_TEST failures=%d launches=%d\n", g_fail, ex::launch_errors());
+        return g_fail || ex::launch_errors() ? 1 : 0;
+    }
+    if (std::getenv("EXL3_SET_BENCH")) {
+        for (int K : {2, 3, 4}) test_set(K, 2);
         return g_fail || ex::launch_errors() ? 1 : 0;
     }
     test_decode_table();
