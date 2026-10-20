@@ -77,6 +77,20 @@ int main(int argc,char**argv) {
     if(!m.load(o,err)){std::fprintf(stderr,"%s\n",err.c_str());return 1;}
     {std::ofstream f(root+"/allocation.txt");f<<m.describe();}
     const auto code=ids(root+"/code-ids.json"),db=ids(root+"/database-ids.json");if(code.size()!=2069||db.size()!=2048)return 2;
+    if (std::getenv("DS4_PEER_AR_FAULT_ONLY")) {
+        if (!m.benchmark_peer_ar_mode(true) || !m.benchmark_peer_ar_inject_error()) return 1;
+        m.reset();
+        if (m.feed(db.data(), int(db.size()), 1, err) || err.find("reload required") == std::string::npos) return 1;
+        const auto calls = m.benchmark_peer_ar_calls();
+        if (!calls) return 1;
+        m.reset(); err.clear();
+        if (m.step(db[0], true, err) || err.find("reload required") == std::string::npos) return 1;
+        err.clear();
+        if (m.feed(db.data(), int(db.size()), 1, err) || err.find("reload required") == std::string::npos) return 1;
+        if (m.benchmark_peer_ar_calls() != calls || m.benchmark_peer_ar_mode(false)) return 1;
+        std::fprintf(stderr, "PEER_MODEL_FAULT request_rejected=1 reset_still_poisoned=1 decode_rejected=1 later_prefill_rejected=1 subsequent_calls=0\n");
+        return 0;
+    }
     auto swap_kib=[&](){std::ifstream f("/proc/self/status");std::string line;while(std::getline(f,line))if(line.rfind("VmSwap:",0)==0){std::istringstream in(line.substr(7));long long value=-1;in>>value;return value;}return -1LL;};
     auto evict=[&](){
         std::ifstream f(root+"/engram-files.txt");std::string name;int count=0;

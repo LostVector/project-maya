@@ -8117,6 +8117,21 @@ void Model::reset() { p_->reset(); }
 #if defined(STRATA_DS4_SCHEDULE_TEST)
 uint64_t Model::benchmark_copy_wait_calls() const { return g_host_copy_wait_calls.load(std::memory_order_relaxed); }
 uint64_t Model::benchmark_peer_ar_calls() const { return g_peer_ar_calls.load(std::memory_order_relaxed); }
+bool Model::benchmark_peer_ar_inject_error() {
+#if defined(STRATA_USE_HIP)
+    bool found = false;
+    for (auto& G : p_->groups) if (G.peer_arb_on) for (int m = 0; m < 2; ++m) {
+        auto& d = p_->devs[(size_t) G.mem[m]];
+        const unsigned error = 1;
+        if (cudaSetDevice(d.id) != cudaSuccess || cudaStreamSynchronize(d.st) != cudaSuccess ||
+            hipMemcpy(G.peer_arb[m].error, &error, sizeof(error), hipMemcpyHostToDevice) != hipSuccess) return false;
+        found = true;
+    }
+    return found;
+#else
+    return false;
+#endif
+}
 bool Model::benchmark_peer_ar_mode(bool enabled) {
 #if defined(STRATA_USE_HIP)
     if (p_->peer_ar_failed) return false;
