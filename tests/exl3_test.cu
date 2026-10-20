@@ -493,12 +493,10 @@ void test_gemm_rows(int k, int n, int K, int cb, int rows) {
 // the prompt path's expert set: 3 experts (rows 37, 0, 70) through set_gate_up and set_down against the reference
 void test_set(int K, int cb, int tail = 0) {
 #if !defined(STRATA_USE_HIP)
-    #if !defined(STRATA_USE_HIP)
     if (!ex::mma_supported()) {
         std::printf("  set_*: no tensor-core kernels on this device (skipped)\n");
         return;
     }
-#endif
 #endif
     const bool bench = std::getenv("EXL3_SET_BENCH") != nullptr;
     const int E = bench ? 5120 : 512, F = bench ? 1152 : 256, T = bench ? 2048 : 64;

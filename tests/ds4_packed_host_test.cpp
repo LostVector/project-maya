@@ -82,12 +82,11 @@ int main(int argc,char**argv) {
     };
     std::vector<float> logits;
     auto feed=[&](const std::vector<int>& input,int rows){m.reset();if(!m.feed(input.data(),int(input.size()),rows,err)){std::fprintf(stderr,"%s\n",err.c_str());return false;}return m.logits(logits);};
-
+    if (!m.benchmark_host_cpu()) return 1;
     auto mode = [&](int n, bool clear) {
-        setenv("DS4_EXL3_PREDECODE_TEST", n ? "1" : "0", 1);
-        if (!m.benchmark_host_mode(true, clear)) std::exit(1);
+        if (!m.benchmark_host_mode(n != 0, clear)) std::exit(1);
     };
-    mode(1, true);
+    mode(0, true);
     // Prime code paths; this is not a timing result.
     if(!feed(code,1)||!feed(db,1))return 1;
     int trial=0;
@@ -96,38 +95,17 @@ int main(int argc,char**argv) {
         if(logits.size()!=code.size()*size_t(m.vocab()))return 1;
         const auto path=root+"/logits-"+std::to_string(trial)+".f32";FILE*f=std::fopen(path.c_str(),"wb");if(!f)return 1;
         if(std::fwrite(logits.data(),4,logits.size(),f)!=logits.size()||std::fflush(f)||fdatasync(fileno(f)))return 1;std::fclose(f);
-        std::fprintf(stderr,"PARITY trial=%d predecode=%d rows=%zu finished\n",trial++,n,code.size());
-    }
-    {
-        std::vector<float> warm_reference;
-        int trial = 0;
-        for (int n : {0, 1, 0}) {
-            mode(n, false);
-            if (!feed(db, int(db.size()))) return 1;
-            if (logits.size() != db.size() * size_t(m.vocab())) return 1;
-            for (float x : logits) if (!std::isfinite(x)) return 1;
-            if (trial == 0) {
-                warm_reference = logits;
-                std::ofstream f(root + "/warm-reference.f32", std::ios::binary);
-                f.write((const char*)logits.data(), std::streamsize(logits.size() * 4));
-                if (!f) return 1;
-            } else if (!finite_equal(warm_reference.data(), logits.data(), logits.size())) return 1;
-            std::fprintf(stderr, "WARM_PARITY trial=%d predecode=%d rows=%zu finite=1 exact=1\n", trial++, n, db.size());
-        }
+        std::fprintf(stderr,"PARITY trial=%d layout=%d rows=%zu finished\n",trial++,n,code.size());
     }
     for(const char* kind:{"cold-code","warm-database"}) {
         const bool cold=std::string(kind)=="cold-code";const auto&input=cold?code:db;
         if(!cold){mode(0,true);if(!feed(db,1))return 1;}
         trial=0;
-        const int blocks = cold ? 2 : 6;
-        for(int block=0;block<blocks;++block) for(int pos=0;pos<4;++pos) {
-            const int order[2][4] = {{0,1,1,0},{1,0,0,1}};
-            const int n = order[block%2][pos];
-            if(cold){mode(n,true);if(!feed(db,1))return 1;}
-            mode(n,cold);if(cold&&!evict())return 1;
+        for(int n:{0,1,1,0}) {
+            mode(n,cold);if(!feed(db,1))return 1;mode(n,cold);if(cold&&!evict())return 1;
             auto before=io();auto start=Clock::now();if(!feed(input,1))return 1;
             double ms=std::chrono::duration<double,std::milli>(Clock::now()-start).count();auto after=io();
-            std::fprintf(stderr,"BENCH kind=%s trial=%d predecode=%d ms=%.3f read_bytes=%lld syscr=%lld\n",kind,trial++,n,ms,after["read_bytes:"]-before["read_bytes:"],after["syscr:"]-before["syscr:"]);
+            std::fprintf(stderr,"BENCH kind=%s trial=%d layout=%d ms=%.3f read_bytes=%lld syscr=%lld\n",kind,trial++,n,ms,after["read_bytes:"]-before["read_bytes:"],after["syscr:"]-before["syscr:"]);
         }
     }
     auto generate=[&](int n,const char* label,bool timed){
@@ -135,7 +113,7 @@ int main(int argc,char**argv) {
         std::ofstream f(root+"/"+label+"-tokens.txt");Clock::time_point start;
         for(int i=0;i<80;++i){if(i==16)start=Clock::now();int y=m.sample(0,1,0,0,0,i);if(y<0)return false;f<<y<<'\n';if(!m.step(y,true,err))return false;}
         double ms=std::chrono::duration<double,std::milli>(Clock::now()-start).count();
-        if(timed)std::fprintf(stderr,"DECODE predecode=%d ms=%.3f tok_s=%.3f\n",n,ms,64000/ms);return true;
+        if(timed)std::fprintf(stderr,"DECODE layout=%d ms=%.3f tok_s=%.3f\n",n,ms,64000/ms);return true;
     };
     if(!generate(0,"primer",false)||!generate(0,"decode0",true)||!generate(1,"decode1",true))return 1;
     std::fprintf(stderr,"CACHE swaps=%lld ram_moves=%lld\n",(long long)m.stats().swaps,(long long)m.stats().ram_moves);

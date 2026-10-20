@@ -505,7 +505,7 @@ struct Chunk {
     uint16_t *x16 = nullptr, *qr16 = nullptr, *o16 = nullptr, *oa16 = nullptr, *lat16 = nullptr, *sh16 = nullptr,
              *h16 = nullptr, *eg_x16 = nullptr, *ext = nullptr, *w16 = nullptr, *emb = nullptr;
     size_t w16_elems = 0;
-#if defined(STRATA_USE_HIP) && defined(STRATA_DS4_HOST_LAYOUT_TEST)
+#if defined(STRATA_USE_HIP) && defined(STRATA_DS4_PREDECODE_TEST)
     uint32_t* predecoded = nullptr;
     uint64_t predecode_calls = 0, predecode_rows = 0;
 #endif
@@ -3190,7 +3190,7 @@ struct Model::Impl {
                     gg::set_gate_up(sa, c.x, D, c.row_tok + a, c.h16, FF, d.st);
                     gg::set_down(sa, c.h16, FF, c.y, D, d.st);
                 } else {
-#if defined(STRATA_USE_HIP) && defined(STRATA_DS4_HOST_LAYOUT_TEST)
+#if defined(STRATA_USE_HIP) && defined(STRATA_DS4_PREDECODE_TEST)
                     // Experimental only: preserve production selection and cache allocation.
                     const char* pd = std::getenv("DS4_EXL3_PREDECODE_TEST");
                     const bool decoded = pd && std::atoi(pd) == 1 && FF == 1152 &&
@@ -8003,7 +8003,7 @@ bool Model::benchmark_host_mode(bool packed, bool clear) {
         p.eg_cache = EgRowCache();
         p.eg_cache.init(cap, (size_t) p.pk.eg_hd + p.pk.eg_hd / 32);
     }
-#if defined(STRATA_USE_HIP)
+#if defined(STRATA_USE_HIP) && defined(STRATA_DS4_PREDECODE_TEST)
     for (size_t i = 0; i < p.chunks.size(); ++i) if (p.chunks[i]) {
         auto& c = *p.chunks[i];
         std::fprintf(stderr, "PREDECODE_USAGE gpu=%d calls=%llu rows=%llu scratch=%zu\n", p.devs[i].id,
