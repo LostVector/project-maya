@@ -31,6 +31,14 @@ namespace cpu = strata::kernels::cpu;
 using strata::kernels::f16_from_f32;
 using strata::kernels::f32_from_f16;
 
+static void test_env(const char* key, const char* value, int overwrite) {
+#if defined(_WIN32)
+    if (overwrite || std::getenv(key) == nullptr) (void) _putenv_s(key, value);
+#else
+    (void) ::setenv(key, value, overwrite);
+#endif
+}
+
 namespace {
 
 int g_fail = 0;
@@ -485,17 +493,16 @@ void test_gemm_rows(int k, int n, int K, int cb, int rows) {
 // the prompt path's expert set: 3 experts (rows 37, 0, 70) through set_gate_up and set_down against the reference
 void test_set(int K, int cb, int tail = 0) {
 #if !defined(STRATA_USE_HIP)
-    #if !defined(STRATA_USE_HIP)
     if (!ex::mma_supported()) {
         std::printf("  set_*: no tensor-core kernels on this device (skipped)\n");
         return;
     }
 #endif
-#endif
     const bool bench = std::getenv("EXL3_SET_BENCH") != nullptr;
-    const int E = bench ? 5120 : 512, F = bench ? 1152 : 256, T = 64;
+    const int E = bench ? 5120 : 512, F = bench ? 1152 : 256, T = bench ? 2048 : 64;
     const float limit = 1.5f;
-    const int counts[3] = {tail ? tail : 37, 0, tail ? tail + 1 : 70};
+    const bool prebench = std::getenv("EXL3_PREDECODE_BENCH") != nullptr;
+    const int counts[3] = {tail ? tail : 37, 0, tail ? (prebench ? std::min(tail / 8, 2048 - tail) : tail + 1) : 70};
     // the set's blobs back to back at a fixed stride, each [gate | up | down], a part [trellis | suh | svh]
     HostMat parts[3][3];
     ex::ExpertLayout lay;
@@ -549,17 +556,27 @@ void test_set(int K, int cb, int tail = 0) {
     sa.n_embd = E;
     sa.n_ff = F;
     sa.limit = limit;
+    uint32_t* decoded = nullptr;
 #if defined(STRATA_USE_HIP)
-    setenv("DS4_EXL3_FMA16", "0", 1);
+    CK(cudaMalloc(&decoded, ex::decoded_set_bytes(sa)));
+#endif
+    auto cleanup = [&] { cudaFree(decoded); cudaFree(d_blob); cudaFree(d_x); cudaFree(d_bounds); cudaFree(d_rows); cudaFree(d_h); cudaFree(d_out); };
+#if defined(STRATA_USE_HIP)
+    test_env("DS4_EXL3_FMA16", "0", 1);
     ex::set_gate_up(sa, d_x, E, d_rows, d_h, F, 0);
     ex::set_down(sa, d_h, F, d_out, E, 0);
     CK(cudaDeviceSynchronize());
     const auto h8 = host_copy(d_h, (size_t) rows * F);
     const auto y8 = host_copy(d_out, (size_t) rows * E);
-    setenv("DS4_EXL3_FMA16", "1", 1);
+    test_env("DS4_EXL3_FMA16", "1", 1);
 #endif
+#if defined(STRATA_USE_HIP)
+    if (!ex::decode_set(sa, decoded, 0) || !ex::set_gate_up_decoded(sa, decoded, d_x, E, d_rows, d_h, F, 0) ||
+        !ex::set_down_decoded(sa, decoded, d_h, F, d_out, E, 0)) ++g_fail;
+#else
     ex::set_gate_up(sa, d_x, E, d_rows, d_h, F, 0);
     ex::set_down(sa, d_h, F, d_out, E, 0);
+#endif
     CK(cudaDeviceSynchronize());
 #if defined(STRATA_USE_HIP)
     const auto h16 = host_copy(d_h, (size_t) rows * F);
@@ -568,25 +585,34 @@ void test_set(int K, int cb, int tail = 0) {
     if (!exact) ++g_fail;
     std::printf("SET_PARITY K=%d cb=%d rows=%d exact=%d\n", K, cb, rows, int(exact));
     if (bench) {
-        for (int tile : {8, 16, 16, 8, 16, 8, 8, 16}) {
-            setenv("DS4_EXL3_FMA16", tile == 16 ? "1" : "0", 1);
-            for (int i = 0; i < 2000; ++i) {
-                ex::set_gate_up(sa, d_x, E, d_rows, d_h, F, 0);
-                ex::set_down(sa, d_h, F, d_out, E, 0);
-            }
+        test_env("DS4_EXL3_FMA16", "1", 1);
+        for (int mode : {0,1,2,2,1,0,1,0,2,2,0,1}) {
+            auto run = [&] {
+                if (mode == 1 && !ex::decode_set(sa, decoded, 0)) ++g_fail;
+                if (mode == 0) {
+                    ex::set_gate_up(sa, d_x, E, d_rows, d_h, F, 0);
+                    ex::set_down(sa, d_h, F, d_out, E, 0);
+                } else {
+                    if (!ex::set_gate_up_decoded(sa, decoded, d_x, E, d_rows, d_h, F, 0) ||
+                        !ex::set_down_decoded(sa, decoded, d_h, F, d_out, E, 0)) ++g_fail;
+                }
+            };
+            if (mode == 2 && !ex::decode_set(sa, decoded, 0)) ++g_fail;
             cudaEvent_t begin, end; CK(cudaEventCreate(&begin)); CK(cudaEventCreate(&end));
-            CK(cudaEventRecord(begin));
-            for (int i = 0; i < 200; ++i) {
-                ex::set_gate_up(sa, d_x, E, d_rows, d_h, F, 0);
-                ex::set_down(sa, d_h, F, d_out, E, 0);
-            }
-            CK(cudaEventRecord(end)); CK(cudaEventSynchronize(end));
-            float ms = 0; CK(cudaEventElapsedTime(&ms, begin, end));
-            CK(cudaEventDestroy(begin)); CK(cudaEventDestroy(end));
-            std::printf("SET_BENCH K=%d cb=%d tile=%d mean_ms=%.6f\n", K, cb, tile, ms / 200);
-            std::fflush(stdout);
+            CK(cudaEventRecord(begin)); for (int i=0;i<10;++i) run(); CK(cudaEventRecord(end)); CK(cudaEventSynchronize(end));
+            float calibration=0; CK(cudaEventElapsedTime(&calibration,begin,end));
+            const double estimate=std::max(0.001,double(calibration)/10);
+            const int warm=std::min(20000,std::max(1,int(std::ceil(250/estimate))));
+            const int reps=std::min(20000,std::max(10,int(std::ceil(100/estimate))));
+            for(int i=0;i<warm;++i)run();
+            CK(cudaEventRecord(begin));for(int i=0;i<reps;++i)run();CK(cudaEventRecord(end));CK(cudaEventSynchronize(end));
+            float ms=0;CK(cudaEventElapsedTime(&ms,begin,end));
+            const auto hc=host_copy(d_h,(size_t)rows*F);const auto yc=host_copy(d_out,(size_t)rows*E);
+            if(hc!=h8||std::memcmp(yc.data(),y8.data(),y8.size()*sizeof(float)))++g_fail;
+            std::printf("PREDECODE_BENCH K=%d cb=%d hot=%d rows=%d mode=%d warm=%d reps=%d total_ms=%.4f mean_ms=%.6f bytes=%zu\n",K,cb,tail,rows,mode,warm,reps,ms,ms/reps,ex::decoded_set_bytes(sa));std::fflush(stdout);
+            CK(cudaEventDestroy(begin));CK(cudaEventDestroy(end));
         }
-        return;
+        cleanup();return;
     }
 #endif
     std::vector<float> ref((size_t) rows * E);
@@ -610,6 +636,7 @@ void test_set(int K, int cb, int tail = 0) {
     }
     close(("set K" + std::to_string(K) + " cb" + std::to_string(cb) + " (3 experts, " + std::to_string(rows) + " rows)").c_str(),
           host_copy(d_out, ref.size()), ref, 3e-3);
+    cleanup();
 }
 
 // mv with several activations (a verify window's tokens) against one mv job per activation: the same bits
@@ -1457,6 +1484,17 @@ int main(int argc, char** argv) {
     if (std::getenv("EXL3_SET_BENCH")) {
         for (int K : {2, 3, 4}) test_set(K, 2);
         return g_fail || ex::launch_errors() ? 1 : 0;
+    }
+    if (std::getenv("EXL3_PREDECODE_BENCH")) {
+#if !defined(STRATA_USE_HIP)
+        std::puts("PREDECODE_BENCH requires HIP");return 2;
+#else
+        test_env("EXL3_SET_BENCH","1",1);
+        for (int tail : {8, 32, 128, 256, 805, 1865})
+            for (int K : {3,4}) test_set(K,2,tail);
+        std::printf("PREDECODE_DONE failures=%d launches=%d\n",g_fail,ex::launch_errors());
+        return g_fail || ex::launch_errors() ? 1 : 0;
+#endif
     }
     test_decode_table();
     for (int K = 1; K <= 8; ++K)

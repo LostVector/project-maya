@@ -1,0 +1,100 @@
+{
+  "strict_parity": true,
+  "independent_accepted_cold_and_warm_exact": true,
+  "prefill": {
+    "cold-code": {
+      "reference_ms": [
+        12038.022,
+        11957.014,
+        11950.724,
+        12044.582
+      ],
+      "candidate_ms": [
+        12038.526,
+        12042.306,
+        11943.396,
+        11932.732
+      ],
+      "block_gain_pct": [
+        -0.3575572880990972,
+        0.4966721407928696
+      ],
+      "mean_block_gain_pct": 0.06955742634688619,
+      "median_gain_pct": 0.05465297072278365,
+      "reference_tok_s": 172.45233555807127,
+      "candidate_tok_s": 172.54663742130427
+    },
+    "warm-database": {
+      "reference_ms": [
+        7313.739,
+        7324.642,
+        7340.217,
+        7322.287,
+        7333.469,
+        7334.582,
+        7339.98,
+        7340.226,
+        7334.004,
+        7326.627,
+        7331.398,
+        7339.212
+      ],
+      "candidate_ms": [
+        7218.257,
+        7222.29,
+        7226.037,
+        7215.137,
+        7220.056,
+        7227.772,
+        7223.147,
+        7218.103,
+        7228.714,
+        7246.232,
+        7229.578,
+        7231.66
+      ],
+      "block_gain_pct": [
+        1.351474592716235,
+        1.5094966043999152,
+        1.5013787448652856,
+        1.6277428259521585,
+        1.2665553072033617,
+        1.4271526541841095
+      ],
+      "mean_block_gain_pct": 1.4473001215535108,
+      "median_gain_pct": 1.4882522708581012,
+      "reference_tok_s": 279.25737446389024,
+      "candidate_tok_s": 283.47621568110696,
+      "mean_block_gain_95pct_ci": [
+        1.3132270811983986,
+        1.581373161908623
+      ]
+    }
+  },
+  "decode": [
+    {
+      "mode": 0,
+      "ms": 5035.883,
+      "tok_s": 12.709
+    },
+    {
+      "mode": 1,
+      "ms": 5058.281,
+      "tok_s": 12.653
+    }
+  ],
+  "checkpoint_gate_pass": true,
+  "scope": "Fixed two-prompt workload and frozen expert placement; no claim of general prompt-distribution gain or default production deployment.",
+  "hardware": {
+    "cpu": "Ryzen9950X",
+    "gpu": [
+      "RadeonAI PRO R9700 32GB",
+      "RadeonAI PRO R9700 32GB",
+      "RadeonRX9070XT16GB"
+    ],
+    "arch": "gfx1201"
+  },
+  "model": "LibertAIDAI/DeepSeek-V4.1-Flash-1017-EXL3-3.5bpw",
+  "protocol": "Alternating ABBA/BAAB: six warm blocks, two cold blocks; same-process frozen cache placement and primed scratch",
+  "limitations": "Global swap counters changed across model loading, testing and restoration; no per-trial swap attribution was captured. CI describes repeatability on this fixed workload, not general prompt distributions."
+}
