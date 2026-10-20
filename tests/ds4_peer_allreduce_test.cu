@@ -9,7 +9,7 @@
 #include <cstring>
 #include <thread>
 using namespace strata::ds4;
-#define CK(x) do {auto e=(x);if(e!=hipSuccess){std::fprintf(stderr,"line%d %s: %s\n",__LINE__,#x,hipGetErrorString(e));std::exit(2);}}while(0)
+#define CK(x) do {auto peer_status_=(x);if(peer_status_!=hipSuccess){std::fprintf(stderr,"line%d %s: %s\n",__LINE__,#x,hipGetErrorString(peer_status_));std::exit(2);}}while(0)
 #define REQUIRE(x) do {if(!(x)){std::fprintf(stderr,"line%d failed: %s\n",__LINE__,#x);std::exit(3);}}while(0)
 constexpr int kCapacity=2048*5120;
 constexpr unsigned kGuard=0xdeadbeefu;
