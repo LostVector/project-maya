@@ -594,6 +594,9 @@ struct Layer {
     std::vector<Layer> mates;
     x3::ExpertLayout hlay;
     size_t hblob = 0;
+#if defined(STRATA_DS4_HOST_LAYOUT_TEST)
+    bool packed_storage = false;
+#endif
     bool packed_host = false;  // NH1: consecutive GPU-ready member blobs in each resident host slot
     int ff0 = 0, ffn = 0;     // this member's FFN columns [ff0, ff0 + ffn) (split128 of n_ff; the whole one alone)
     // this member's heads [ah0, ah0 + ahn) and wo_a groups [og0, og0 + ogn) - all of them alone; in a group of more
@@ -3587,6 +3590,9 @@ struct Model::Impl {
                         (avail > kRamMargin && slots <= (avail - kRamMargin) / bytes))) {
                         l.hl.bytes = bytes;
                         l.packed_host = true;
+#if defined(STRATA_DS4_HOST_LAYOUT_TEST)
+                        l.packed_storage = true;
+#endif
                     }
                 }
             }
@@ -4094,7 +4100,7 @@ struct Model::Impl {
         size_t hb_ = 0;
         for (const Layer& l : L) {
             nh += l.n_exp - l.n_vram;
-            hb_ += (size_t) (l.n_exp - l.n_vram) * l.blob;
+            hb_ += (size_t) (l.n_exp - l.n_vram) * (l.packed_host ? l.hl.bytes : l.blob);
         }
         char line[200];
         if (copy_mode)
@@ -4660,6 +4666,7 @@ struct Model::Impl {
         run_nodes(ne * DB, f);
     }
 
+    // Preserve the original global split-K chunks and reduction order; only the stored matrix views change.
     void cpu_experts_packed(const Layer& l, const float* x, const std::vector<Ent>& ents, size_t ldx = 0,
                      const int* ord = nullptr) {
         if (ldx == 0) ldx = (size_t) g.dim;
@@ -7942,6 +7949,81 @@ int64_t Model::max_context() const { return p_->o.max_context; }
 int Model::vocab() const { return p_->g.vocab; }
 const std::vector<int32_t>& Model::tokens() const { return p_->toks; }
 void Model::reset() { p_->reset(); }
+#if defined(STRATA_DS4_HOST_LAYOUT_TEST)
+bool Model::benchmark_host_mode(bool packed, bool clear) {
+    auto& p = *p_;
+    for (auto& d : p.devs) {
+        if (cudaSetDevice(d.id) != cudaSuccess || cudaDeviceSynchronize() != cudaSuccess) return false;
+    }
+    size_t slots = 0;
+    for (auto& l : p.L) {
+        if (!l.packed_storage || l.packed_host == packed) continue;
+        const bool before = l.packed_host;
+        std::vector<uint8_t> blob(l.blob), check(l.blob);
+        for (int e = 0; e < l.n_exp; ++e) {
+            if (!l.hh[(size_t) e][0]) continue;
+            p.parts_to_blob(l, l.hh[(size_t) e], blob.data());
+            l.packed_host = packed;
+            p.blob_to_part(l, blob.data(), 0, l.hh[(size_t) e][0]);
+            p.parts_to_blob(l, l.hh[(size_t) e], check.data());
+            l.packed_host = before;
+            if (blob != check) {
+                std::fprintf(stderr, "HOST_ROUNDTRIP failed layer=%d expert=%d\n", l.il, e);
+                return false;
+            }
+            ++slots;
+        }
+        l.packed_host = packed;
+    }
+    if (clear) {
+        std::lock_guard<std::mutex> lock(p.eg_cache_mu);
+        const size_t cap = p.eg_cache.capacity();
+        p.eg_cache = EgRowCache();
+        p.eg_cache.init(cap, (size_t) p.pk.eg_hd + p.pk.eg_hd / 32);
+    }
+    std::fprintf(stderr, "HOST_MODE packed=%d roundtrip_slots=%zu\n", int(packed), slots);
+    return true;
+}
+bool Model::benchmark_host_cpu() {
+    auto& p = *p_;
+    std::vector<float> x((size_t) 8 * p.g.dim);
+    for (size_t i = 0; i < x.size(); ++i) x[i] = std::sin(float(i % 1024) * 0.01f) * 0.25f;
+    int cases = 0;
+    for (auto& l : p.L) {
+        if (!l.packed_host) continue;
+        int e = 0;
+        while (e < l.n_exp && !l.hh[(size_t) e][0]) ++e;
+        if (e == l.n_exp) continue;
+        std::vector<uint8_t> blob(l.blob), normal(l.hl.bytes);
+        p.parts_to_blob(l, l.hh[(size_t) e], blob.data());
+        l.packed_host = false;
+        p.blob_to_part(l, blob.data(), 0, normal.data());
+        l.packed_host = true;
+        auto* saved = l.hh[(size_t) e][0];
+        for (int n : {1, 3, 8}) {
+            Impl::Ent ent; ent.e = e; ent.n = n; ent.slot0 = 0;
+            for (int i = 0; i < n; ++i) ent.tok[i] = i;
+            std::vector<Impl::Ent> ents{ent};
+            l.hh[(size_t) e][0] = normal.data(); l.packed_host = false;
+            p.cpu_experts(l, x.data(), ents);
+            const std::vector<float> ref(p.c_yd.data(), p.c_yd.data() + (size_t) n * p.g.dim);
+            l.hh[(size_t) e][0] = saved; l.packed_host = true;
+            p.cpu_experts(l, x.data(), ents);
+            bool finite = true;
+            for (size_t i = 0; i < ref.size(); ++i)
+                finite = finite && std::isfinite(ref[i]) && std::isfinite(p.c_yd[i]);
+            if (!finite || std::memcmp(ref.data(), p.c_yd.data(), ref.size() * sizeof(float))) {
+                std::fprintf(stderr, "HOST_CPU failed layer=%d expert=%d n=%d\n", l.il, e, n);
+                return false;
+            }
+            ++cases;
+        }
+    }
+    std::fprintf(stderr, "HOST_CPU cases=%d bit_exact=1 finite=1 tier=%d\n", cases, kc::exl3_cpu_tier());
+    return cases > 0;
+}
+#endif
+
 void Model::checkpoint(int slot) { p_->checkpoint(slot); }
 bool Model::restore(int64_t limit) { return p_->restore(limit); }
 int64_t Model::restorable(int64_t limit) const { return p_->restorable(limit); }

@@ -122,6 +122,10 @@ public:
     const std::vector<int32_t>& tokens() const;   // what the state has consumed, in order
 
     void reset();
+#if defined(STRATA_DS4_HOST_LAYOUT_TEST)
+    bool benchmark_host_mode(bool packed, bool clear);
+    bool benchmark_host_cpu();
+#endif
     /// Keep the state at the current position in checkpoint slot 0 or 1 (the end of a prompt, the position before it);
     /// restore(limit) goes back to the latest one at or before limit (-1: none).
     void checkpoint(int slot = 0);

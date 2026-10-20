@@ -433,6 +433,16 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
     target_include_directories(maya-ds4 PRIVATE ${_strata_gpu_include_directories} third_party/ggml)
     target_link_libraries(maya-ds4 PRIVATE strata_kernels strata_kernels_cpu ${_strata_gpu_runtime_target}
                           ${_strata_gpu_blas_target})
+    if(STRATA_BUILD_TESTS AND UNIX)
+      # POSIX cold-I/O controls; explicit model integration test, intentionally not a default build or CTest job.
+      get_target_property(_ds4_host_test_sources maya-ds4 SOURCES)
+      list(REMOVE_ITEM _ds4_host_test_sources src/ds4/ds4_main.cpp)
+      add_executable(ds4_packed_host_test EXCLUDE_FROM_ALL tests/ds4_packed_host_test.cpp ${_ds4_host_test_sources})
+      target_compile_definitions(ds4_packed_host_test PRIVATE STRATA_DS4_HOST_LAYOUT_TEST=1)
+      target_include_directories(ds4_packed_host_test PRIVATE ${_strata_gpu_include_directories} third_party/ggml)
+      target_link_libraries(ds4_packed_host_test PRIVATE strata_kernels strata_kernels_cpu ${_strata_gpu_runtime_target}
+                            ${_strata_gpu_blas_target})
+    endif()
     add_executable(ds4_cpu_bench tests/ds4_cpu_bench.cpp)
     target_link_libraries(ds4_cpu_bench PRIVATE strata_kernels_cpu)
     # the CPU lane's MXFP4 rows: every tier this CPU runs (and ggml-cpu's dot) at the experts' real size (no GPU)
