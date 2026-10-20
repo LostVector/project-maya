@@ -1,0 +1,417 @@
+{
+  "summary": {
+    "cold-code": {
+      "blocks": [
+        {
+          "block": 0,
+          "baseline_mean_ms": 12145.722,
+          "candidate_mean_ms": 12258.5715,
+          "gain_pct": -0.9291296145260031
+        },
+        {
+          "block": 1,
+          "baseline_mean_ms": 12226.985499999999,
+          "candidate_mean_ms": 12008.469000000001,
+          "gain_pct": 1.7871657736078794
+        }
+      ],
+      "mean_block_gain_pct": 0.4290180795409382,
+      "ci95_pct": [
+        -16.827884582999907,
+        17.685920742081784
+      ],
+      "df": 1,
+      "all_swap_zero": true,
+      "baseline_median_ms": 12150.232,
+      "candidate_median_ms": 12008.469000000001
+    },
+    "warm-database": {
+      "blocks": [
+        {
+          "block": 0,
+          "baseline_mean_ms": 7482.629,
+          "candidate_mean_ms": 7424.9185,
+          "gain_pct": 0.7712596735719557
+        },
+        {
+          "block": 1,
+          "baseline_mean_ms": 7513.8665,
+          "candidate_mean_ms": 7429.264499999999,
+          "gain_pct": 1.1259449445901182
+        },
+        {
+          "block": 2,
+          "baseline_mean_ms": 7522.5005,
+          "candidate_mean_ms": 7457.933,
+          "gain_pct": 0.8583249678747129
+        },
+        {
+          "block": 3,
+          "baseline_mean_ms": 7523.0244999999995,
+          "candidate_mean_ms": 7459.0285,
+          "gain_pct": 0.8506685044027074
+        },
+        {
+          "block": 4,
+          "baseline_mean_ms": 7520.9415,
+          "candidate_mean_ms": 7459.3855,
+          "gain_pct": 0.8184613588604561
+        },
+        {
+          "block": 5,
+          "baseline_mean_ms": 7522.8825,
+          "candidate_mean_ms": 7458.738,
+          "gain_pct": 0.8526585387981234
+        }
+      ],
+      "mean_block_gain_pct": 0.8795529980163456,
+      "ci95_pct": [
+        0.7483299952694729,
+        1.0107760007632183
+      ],
+      "df": 5,
+      "all_swap_zero": true,
+      "baseline_median_ms": 7518.923,
+      "candidate_median_ms": 7458.0825
+    }
+  },
+  "raw_trials": [
+    {
+      "kind": "cold-code",
+      "trial": 0,
+      "mode": 0,
+      "ms": 12121.891,
+      "read_bytes": 634896384,
+      "syscr": 304114,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "cold-code",
+      "trial": 1,
+      "mode": 1,
+      "ms": 12550.244,
+      "read_bytes": 634896384,
+      "syscr": 304114,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "cold-code",
+      "trial": 2,
+      "mode": 1,
+      "ms": 11966.899,
+      "read_bytes": 634896384,
+      "syscr": 304114,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "cold-code",
+      "trial": 3,
+      "mode": 0,
+      "ms": 12169.553,
+      "read_bytes": 634896384,
+      "syscr": 304114,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "cold-code",
+      "trial": 4,
+      "mode": 1,
+      "ms": 12023.327,
+      "read_bytes": 634900480,
+      "syscr": 304114,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "cold-code",
+      "trial": 5,
+      "mode": 0,
+      "ms": 12130.911,
+      "read_bytes": 634896384,
+      "syscr": 304114,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "cold-code",
+      "trial": 6,
+      "mode": 0,
+      "ms": 12323.06,
+      "read_bytes": 634896384,
+      "syscr": 304114,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "cold-code",
+      "trial": 7,
+      "mode": 1,
+      "ms": 11993.611,
+      "read_bytes": 634896384,
+      "syscr": 304114,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 0,
+      "mode": 0,
+      "ms": 7484.678,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 1,
+      "mode": 1,
+      "ms": 7421.11,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 2,
+      "mode": 1,
+      "ms": 7428.727,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 3,
+      "mode": 0,
+      "ms": 7480.58,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 4,
+      "mode": 1,
+      "ms": 7429.043,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 5,
+      "mode": 0,
+      "ms": 7510.412,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 6,
+      "mode": 0,
+      "ms": 7517.321,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 7,
+      "mode": 1,
+      "ms": 7429.486,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 8,
+      "mode": 0,
+      "ms": 7520.525,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 9,
+      "mode": 1,
+      "ms": 7458.079,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 10,
+      "mode": 1,
+      "ms": 7457.787,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 11,
+      "mode": 0,
+      "ms": 7524.476,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 12,
+      "mode": 1,
+      "ms": 7459.526,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 13,
+      "mode": 0,
+      "ms": 7530.607,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 14,
+      "mode": 0,
+      "ms": 7515.442,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 15,
+      "mode": 1,
+      "ms": 7458.531,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 16,
+      "mode": 0,
+      "ms": 7517.26,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 17,
+      "mode": 1,
+      "ms": 7459.015,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 18,
+      "mode": 1,
+      "ms": 7459.756,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 19,
+      "mode": 0,
+      "ms": 7524.623,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 20,
+      "mode": 1,
+      "ms": 7458.086,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 21,
+      "mode": 0,
+      "ms": 7521.242,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 22,
+      "mode": 0,
+      "ms": 7524.523,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 23,
+      "mode": 1,
+      "ms": 7459.39,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    }
+  ],
+  "decode": [
+    {
+      "mode": 0,
+      "ms": 5213.007,
+      "tok_s": 12.277
+    },
+    {
+      "mode": 1,
+      "ms": 5203.583,
+      "tok_s": 12.299
+    }
+  ],
+  "all_cold_warm_logits_finite_bit_exact_independent_accepted": true,
+  "all80_greedy_tokens_exact_independent_accepted": true,
+  "host_wait_path_checked": true,
+  "cache_moves_zero": true,
+  "scope": "Measured on the fixed local accepted stack: PRs1,6,7,9,10; FMA16/packed-host/predecode on, skip-unpicked on, TP2 split36/4,16 Engram readers, RAM experts, fixed cache profile. PR itself is stacked on10 and does not duplicate1. CI is within this workload; cold/decode gains not established."
+}
