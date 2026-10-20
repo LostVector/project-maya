@@ -122,6 +122,9 @@ public:
     const std::vector<int32_t>& tokens() const;   // what the state has consumed, in order
 
     void reset();
+#if defined(STRATA_DS4_SCHEDULE_TEST)
+    uint64_t benchmark_copy_wait_calls() const;
+#endif
 #if defined(STRATA_DS4_HOST_LAYOUT_TEST)
     bool benchmark_host_mode(bool packed, bool clear);
     bool benchmark_host_cpu();

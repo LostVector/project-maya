@@ -69,6 +69,10 @@ namespace gg = strata::ds4::gguf;
 
 namespace {
 
+#if defined(STRATA_DS4_SCHEDULE_TEST)
+std::atomic<uint64_t> g_host_copy_wait_calls{0};
+#endif
+
 double now_ms() {
     return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count();
 }
@@ -2786,6 +2790,10 @@ struct Model::Impl {
     }
     bool copy_ahead(Dev& d, Chunk& c, Streamer& S, int di, std::string& err) {
         const int P = Chunk::kParts;
+#if defined(STRATA_USE_HIP)
+        const char* host_wait_opt = std::getenv("DS4_HIP_HOST_COPY_WAIT");
+        const bool host_copy_wait = host_wait_opt != nullptr && std::atoi(host_wait_opt) != 0;
+#endif
         while (S.cp < S.b.size() && S.cp < S.kp + P) {
             const Batch& bt = S.b[S.cp];
             const int half = (int) (S.cp % P);
@@ -2793,7 +2801,19 @@ struct Model::Impl {
             int mi = 0;
             for (int m = 0; m < l0.nm; ++m)
                 if (member(l0, m).dev == di) mi = m;
-            if (S.cp >= (size_t) P) CK(cudaStreamWaitEvent(c.cs, c.freed[half], 0));
+            if (S.cp >= (size_t) P) {
+#if defined(STRATA_USE_HIP)
+                if (host_copy_wait) {
+                    // The consumer and freed event are already submitted. Wait on this worker
+                    // before queuing DMA, rather than leaving a copy queue waiting on compute.
+                    CK(cudaEventSynchronize(c.freed[half]));
+#if defined(STRATA_DS4_SCHEDULE_TEST)
+                    g_host_copy_wait_calls.fetch_add(1, std::memory_order_relaxed);
+#endif
+                } else
+#endif
+                    CK(cudaStreamWaitEvent(c.cs, c.freed[half], 0));
+            }
             uint8_t* sb = nullptr;   // in place: the batch's regions in the part's staging slots
             if (c.stage != nullptr) {
                 if (S.cp >= (size_t) P) CK(cudaEventSynchronize(c.filled[half]));   // (its last batch's copies out)
@@ -7978,6 +7998,9 @@ int64_t Model::max_context() const { return p_->o.max_context; }
 int Model::vocab() const { return p_->g.vocab; }
 const std::vector<int32_t>& Model::tokens() const { return p_->toks; }
 void Model::reset() { p_->reset(); }
+#if defined(STRATA_DS4_SCHEDULE_TEST)
+uint64_t Model::benchmark_copy_wait_calls() const { return g_host_copy_wait_calls.load(std::memory_order_relaxed); }
+#endif
 #if defined(STRATA_DS4_HOST_LAYOUT_TEST)
 bool Model::benchmark_host_mode(bool packed, bool clear) {
     auto& p = *p_;
