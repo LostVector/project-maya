@@ -42,3 +42,22 @@ For each case, compare `<case>-0.f32` (reference), `-1.f32` (candidate) and `-2.
 This is a draft research checkpoint. It has not been deployed. Measure this revised scheduling path, compare complete 2K versus larger-buffer configurations, and check short prompts, ordinary endpoint/greedy continuation and decode before enabling it in the server. Same-allocation parity does not prove parity across different cache placements or buffer budgets. Validation here covers the RAM EXL3 non-flow path on the listed hardware; other models/backends are unvalidated.
 
 Durable local receipts: `/home/rkuo/research/llm-weight-compression/_meta/maya-expert-math-windows-20261020`. The failed initial attempt is in sibling `maya-math-windows-20261020`. Protocols, token IDs, profiles, full logits, binaries and source hashes are retained there.
+
+## Serving-configuration benchmark: candidate rejected
+
+Fresh measurements of this revision use warmed, fixed-placement runs with endpoint files flushed before prefill timing. The full 2K configuration submits the 8K prompt in one feed, retaining its internal chunk pipeline. The 8K candidate coalesces reference windows. Model inputs and initial profile are shared across sequential loads; this is not an interleaved cross-load timing trial.
+
+| Prompt | Full 2K configuration | Full 8K candidate |
+| --- | ---: | ---: |
+| 8192 tokens | 26.48 s mean, four runs | 28.81 s mean, two runs |
+| 1024 tokens | 5.311 s mean, four runs | 5.482 s mean, two runs |
+
+The 8K candidate was ~8.8% slower on the long prompt and ~3.2% slower on the short prompt. Single-pass decode screening after 8K context was ~17.7 tokens/s in both configurations. These decode samples are not a controlled steady-state throughput claim.
+
+Within the 8K allocation, ordinary endpoint logits remained bit-identical and all 80 greedy tokens agreed. Across 2K/8K allocations, all three tested endpoints failed the strict logit gate (max abs 2.84–4.67, relative L2 0.125–0.156), despite matching top-1 and greedy continuations. The candidate loses ~4GB of expert VRAM across the three GPUs: cached expert counts changed from 3469/3469/695 to 3294/3294/620.
+
+The serial-reference comparison in the 8K allocation was 32.01 s versus 28.81 s candidate, but separate reference feeds prevent the original cross-group chunk pipeline. **That comparison does not isolate transfer reuse and does not establish a serving speedup.** The earlier timing in the first checkpoint should likewise not be interpreted as a production gain. The complete configuration results above take precedence.
+
+Do not enable the 8K candidate. The baseline remains deployed. Further work must preserve the actual reference cache budget and expert subdivision capacity, retain pipeline overlap and pass cross-configuration parity, or pursue an optimization that leaves those properties intact.
+
+`bench/micro/ds4_window_bench.cpp` is the measured timing harness. It accepts `PACK OUTPUT_DIRECTORY CAPACITY` (2048 or 8192). Prepare `8k-ids.json` and `ragged-offset-ids.json` using the input generator, plus independent identical initial profiles at `2048/frozen-profile.bin` and `8192/frozen-profile.bin`. It disables path picking to force chunks and freezes promotions; it saves endpoint/greedy files before warmed ABBA prefill timing. Link it against the engine objects using the earlier reproducer procedure. Durably archived commands/results: `/home/rkuo/research/llm-weight-compression/_meta/maya-window-bench-20261020`.
