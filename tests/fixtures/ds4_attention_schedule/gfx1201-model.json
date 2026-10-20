@@ -1,0 +1,91 @@
+{
+  "strict_parity": true,
+  "independent_accepted_cold_and_warm_exact": true,
+  "prefill": {
+    "cold-code": {
+      "reference_ms": [
+        14471.714,
+        16267.664,
+        15567.718,
+        12415.568
+      ],
+      "candidate_ms": [
+        13485.121,
+        12918.646,
+        12006.232,
+        11914.231
+      ],
+      "block_gain_pct": [
+        14.104420069918138,
+        14.518748798836564
+      ],
+      "mean_block_gain_pct": 14.311584434377352,
+      "median_gain_pct": 17.026134182563773,
+      "reference_tok_s": 137.7522717473486,
+      "candidate_tok_s": 166.018866772387
+    },
+    "warm-database": {
+      "reference_ms": [
+        10962.055,
+        7230.197,
+        12144.912,
+        8606.818,
+        7228.474,
+        7902.166,
+        14205.315,
+        9638.434,
+        9480.245,
+        7243.876,
+        11264.555,
+        7245.519
+      ],
+      "candidate_ms": [
+        15027.206,
+        13941.862,
+        8561.576,
+        7182.362,
+        7779.006,
+        7189.513,
+        7333.486,
+        13889.997,
+        17633.412,
+        9301.994,
+        7204.597,
+        7204.591
+      ],
+      "block_gain_pct": [
+        -59.23849339817851,
+        24.131925386461763,
+        1.071474835168897,
+        10.989320513313572,
+        -61.057229853814164,
+        22.154887117144966
+      ],
+      "mean_block_gain_pct": -10.324685899983914,
+      "median_gain_pct": 9.655967914746595,
+      "reference_tok_s": 226.4602052859549,
+      "candidate_tok_s": 250.66426642576135,
+      "mean_block_gain_95pct_ci": [
+        -51.7546496294366,
+        31.105277829468776
+      ]
+    }
+  },
+  "decode": [
+    {
+      "mode": 0,
+      "ms": 5191.045,
+      "tok_s": 12.329
+    },
+    {
+      "mode": 1,
+      "ms": 5032.851,
+      "tok_s": 12.716
+    }
+  ],
+  "checkpoint_gate_pass": false,
+  "model_unswapped": true,
+  "deploy": false,
+  "scope": "Fixed two-prompt workload and frozen expert placement; no claim of general prompt-distribution gain or default production deployment.",
+  "scope_note": "Research checkpoint; exact outputs, no established whole-model gain; option defaults off."
+}

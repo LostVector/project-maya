@@ -1012,51 +1012,51 @@ __global__ void __launch_bounds__(kThreads) sparse_attn_packed_kernel(const floa
             stage(t0, s0, n);
             __syncthreads();
             if constexpr (RowPair) {
-            // Interleave two independent chains; each row keeps its original FP32 operation order.
-            for (int r = wr; r < n; r += 2 * W) {
-                const bool second = r + W < n;
-                const uint16_t* v0 = tile + r * d + lane * 16;
-                const uint16_t* v1 = tile + (second ? r + W : r) * d + lane * 16;
-                const uint4 a0 = *(const uint4*)v0, b0 = *(const uint4*)(v0 + 8);
-                const uint4 a1 = *(const uint4*)v1, b1 = *(const uint4*)(v1 + 8);
-                const uint16_t *pa0=(const uint16_t*)&a0, *pb0=(const uint16_t*)&b0;
-                const uint16_t *pa1=(const uint16_t*)&a1, *pb1=(const uint16_t*)&b1;
-                float dot0 = 0.0f, dot1 = 0.0f;
+                // Interleave two independent chains; each row keeps its original FP32 operation order.
+                for (int r = wr; r < n; r += 2 * W) {
+                    const bool second = r + W < n;
+                    const uint16_t* v0 = tile + r * d + lane * 16;
+                    const uint16_t* v1 = tile + (second ? r + W : r) * d + lane * 16;
+                    const uint4 a0 = *(const uint4*) v0, b0 = *(const uint4*) (v0 + 8);
+                    const uint4 a1 = *(const uint4*) v1, b1 = *(const uint4*) (v1 + 8);
+                    const uint16_t *pa0 = (const uint16_t*) &a0, *pb0 = (const uint16_t*) &b0;
+                    const uint16_t *pa1 = (const uint16_t*) &a1, *pb1 = (const uint16_t*) &b1;
+                    float dot0 = 0.0f, dot1 = 0.0f;
 #pragma unroll
-                for (int x=0; x<8; ++x) {
-                    dot0 += qr[x] * bf16f(pa0[x]);
-                    dot1 += qr[x] * bf16f(pa1[x]);
-                }
+                    for (int x = 0; x < 8; ++x) {
+                        dot0 += qr[x] * bf16f(pa0[x]);
+                        dot1 += qr[x] * bf16f(pa1[x]);
+                    }
 #pragma unroll
-                for (int x=0; x<8; ++x) {
-                    dot0 += qr[8+x] * bf16f(pb0[x]);
-                    dot1 += qr[8+x] * bf16f(pb1[x]);
+                    for (int x = 0; x < 8; ++x) {
+                        dot0 += qr[8 + x] * bf16f(pb0[x]);
+                        dot1 += qr[8 + x] * bf16f(pb1[x]);
+                    }
+                    dot0 = warp_sum(dot0);
+                    if (second) dot1 = warp_sum(dot1);
+                    if (lane == 0) {
+                        sc[gw][s0 + r] = dot0 * scale;
+                        if (second) sc[gw][s0 + r + W] = dot1 * scale;
+                    }
                 }
-                dot0 = warp_sum(dot0);
-                if (second) dot1 = warp_sum(dot1);
-                if (lane == 0) {
-                    sc[gw][s0 + r] = dot0 * scale;
-                    if (second) sc[gw][s0 + r + W] = dot1 * scale;
-                }
-            }
             } else {
 #if !defined(STRATA_USE_HIP)   // (HIP leaves a loop with shuffles and a remainder rolled anyway)
 #pragma unroll 2
 #endif
-            for (int r = wr; r < n; r += W) {   // (two rows' chains at once)
-                const uint16_t* vr = tile + r * d + lane * 16;
-                const uint4 a = *(const uint4*) vr;
-                const uint4 b = *(const uint4*) (vr + 8);
-                const uint16_t* pa = (const uint16_t*) &a;
-                const uint16_t* pb = (const uint16_t*) &b;
-                float s = 0.0f;
+                for (int r = wr; r < n; r += W) {   // (two rows' chains at once)
+                    const uint16_t* vr = tile + r * d + lane * 16;
+                    const uint4 a = *(const uint4*) vr;
+                    const uint4 b = *(const uint4*) (vr + 8);
+                    const uint16_t* pa = (const uint16_t*) &a;
+                    const uint16_t* pb = (const uint16_t*) &b;
+                    float s = 0.0f;
 #pragma unroll
-                for (int x = 0; x < 8; ++x) s += qr[x] * bf16f(pa[x]);
+                    for (int x = 0; x < 8; ++x) s += qr[x] * bf16f(pa[x]);
 #pragma unroll
-                for (int x = 0; x < 8; ++x) s += qr[8 + x] * bf16f(pb[x]);
-                s = warp_sum(s);
-                if (lane == 0) sc[gw][s0 + r] = s * scale;
-            }
+                    for (int x = 0; x < 8; ++x) s += qr[8 + x] * bf16f(pb[x]);
+                    s = warp_sum(s);
+                    if (lane == 0) sc[gw][s0 + r] = s * scale;
+                }
             }
             __syncthreads();
         }
