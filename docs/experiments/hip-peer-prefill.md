@@ -20,4 +20,4 @@ Warm prefill: 24 trials in six balanced blocks; mean block latency reduction **9
 
 Cold prefill: eight trials/two balanced blocks; mean reduction 7.6577%, interval [-25.2828%, 40.5982%], inconclusive. Decode pair 12.292 / 12.273 tokens/s; no decode gain claim.
 
-The separate test-only model fault-injection gate and clean public build were pending when this checkpoint was opened. Serving activation is not part of this result. The measured executable was built at local ffcaf63; subsequent test-only fault injection does not change the production code path.
+The clean public production/test builds passed. The separate model fault-injection gate also passed: the poisoned request was rejected, reset retained the poison, subsequent decode/prefill attempts were rejected, and no additional peer collectives were launched. Serving activation remains a separate smoke-test gate. The measured executable was built at local ffcaf63; subsequent test-only fault injection does not change the production code path.
