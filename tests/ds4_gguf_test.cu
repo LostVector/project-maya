@@ -1303,9 +1303,9 @@ void kv_same(const char* what, const void* a, const void* b, size_t bytes) {
 
 void attention_schedule_env(int mode) {
 #ifdef _WIN32
-    _putenv_s("DS4_ATTN_DOT2", mode==1 ? "1" : "0");
+    _putenv_s("DS4_ATTN_DOT2", mode==3 ? "2" : (mode==1 ? "1" : "0"));
 #else
-    ::setenv("DS4_ATTN_DOT2", mode==1 ? "1" : "0", 1);
+    ::setenv("DS4_ATTN_DOT2", mode==3 ? "2" : (mode==1 ? "1" : "0"), 1);
 #endif
 }
 void test_attention_schedule(cudaStream_t s) {
@@ -1331,7 +1331,7 @@ void test_attention_schedule(cudaStream_t s) {
         CU(cudaStreamSynchronize(s));const auto want=host(o0,n);
         for(float v:want)if(!std::isfinite(v)){++g_fail;return;}
         int arm=0;
-        for(int mode:{0,1,2,2,1,0,1,0,2,2,0,1}) {
+        for(int mode:{0,1,3,3,1,0,1,0,3,3,0,1}) {
             attention_schedule_env(mode);launch(mode);CU(cudaStreamSynchronize(s));
             CU(cudaEventRecord(a,s));for(int k=0;k<4;++k)launch(mode);CU(cudaEventRecord(b,s));CU(cudaEventSynchronize(b));float ms;CU(cudaEventElapsedTime(&ms,a,b));const float est=std::max(0.001f,ms/4);
             const int warm=std::max(2,std::min(10000,int(std::ceil(200.0f/est)))),reps=std::max(2,std::min(10000,int(std::ceil(100.0f/est))));
