@@ -8,7 +8,7 @@ CPU fallback reads column views of gate/up and consecutive input views of down. 
 
 ## Validation on 2026-10-20
 
-Model: LibertAIDAI/DeepSeek-V4.1-Flash-1017-EXL3-3.5bpw. Hardware: two R9700 32GB cards plus an RX9070XT 16GB, Ryzen9950X, ROCm7.14.1/gfx1201. FMA16 enabled, split36/4, TP2, 2K chunks, context262144, reserve2048MiB and explicit expert RAM.
+Model: LibertAIDAI/DeepSeek-V4.1-Flash-1017-EXL3-3.5bpw. Hardware: two R9700 32GB cards plus an RX9070XT 16GB, Ryzen9950X, ROCm7.14.1/gfx1201. Measured integration also includes the opt-in transfer pruning from fork PR#1. FMA16 enabled, split36/4, TP2, 2K chunks, context262144, reserve2048MiB and explicit expert RAM.
 
 * GPU EXL3 machine code matches the accepted FMA16 build byte-for-byte.
 * Actual CPU expert outputs match bit-for-bit in108 cases: every TP2 layer, with1/3/8 activations, AVX512 tier. Outputs are finite.
@@ -27,7 +27,7 @@ One loaded model is converted between layouts outside timing, with identical enl
 
 ## Reproduction
 
-Build `ds4_packed_host_test` explicitly on Linux/POSIX; it is excluded from normal builds and CTest. See `tests/fixtures/ds4_packed_host/README.md` for required model, resources, copied fixture and Engram paths. The test-only conversion hooks are absent from production builds.
+Apply fork PR#1 as well as this stack to reproduce the optimized integration timings (`DS4_SKIP_UNPICKED=1`); this PR remains scoped to host packing. Build `ds4_packed_host_test` explicitly on Linux/POSIX; it is excluded from normal builds and CTest. See `tests/fixtures/ds4_packed_host/README.md` for required model, resources, copied fixture and Engram paths. The test-only conversion hooks are absent from production builds.
 
 The verifier's `--selftest` checks changed bits, signed zero and nonfinite values. `--check-existing DIR` verifies full saved logit shapes, finiteness, exact control/candidate/repeat equality and all80 greedy tokens. The public target was built and these verifier modes passed the archived full-model outputs. The numerical/timing run used the same hooks and harness before the guarded CMake target was packaged.
 

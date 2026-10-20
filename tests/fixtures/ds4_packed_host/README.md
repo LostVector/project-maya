@@ -8,6 +8,6 @@ On Linux/POSIX, build `ds4_packed_host_test` explicitly. It is excluded from nor
 ds4_packed_host_test /path/to/model/maya-ds4 /path/to/copied-fixture
 ```
 
-The test fixes FMA16, TP2, split36/4, 2K chunks, context262144, explicit expert RAM and2048MiB reserve. It checks actual CPU expert outputs, round-trips every host expert during each layout change, writes full logits for control/candidate/repeat, runs balanced cold/warm screens, compares80 greedy tokens and requires zero expert moves. The final verifier rejects nonfinite logits, any changed bit, incomplete output shapes or unequal greedy output.
+The measured integration also includes fork PR#1 for opt-in transfer pruning. Apply it when reproducing absolute timings; without it the numerical checks still run but the amount of expert streaming differs. The test fixes FMA16, TP2, split36/4, 2K chunks, context262144, explicit expert RAM and2048MiB reserve. It checks actual CPU expert outputs, round-trips every host expert during each layout change, writes full logits for control/candidate/repeat, runs balanced cold/warm screens, compares80 greedy tokens and requires zero expert moves. The final verifier rejects nonfinite logits, any changed bit, incomplete output shapes or unequal greedy output.
 
 `--selftest` tests the verifier without a model. `--check-existing /path/to/output` independently checks saved logits and token files. Performance acceptance and original-engine comparison require the external controls documented in docs/EXL3_PACKED_HOST.md.
