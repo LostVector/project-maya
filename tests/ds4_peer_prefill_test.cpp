@@ -1,0 +1,171 @@
+#include "../src/ds4/ds4_model.hpp"
+#include <array>
+#include <cmath>
+#include <cstring>
+#include <limits>
+#include <algorithm>
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <vector>
+#include <map>
+#include <fcntl.h>
+#include <unistd.h>
+using Clock=std::chrono::steady_clock;
+static std::vector<int> ids(const std::string& path) {
+    std::ifstream f(path);std::string s((std::istreambuf_iterator<char>(f)),{});
+    for(auto&c:s)if(c=='['||c==']'||c==',')c=' ';
+    std::istringstream in(s);std::vector<int> v;int x;while(in>>x)v.push_back(x);return v;
+}
+static std::map<std::string,long long> io() {
+    std::ifstream f("/proc/self/io");std::string k;long long v;std::map<std::string,long long> out;while(f>>k>>v)out[k]=v;return out;
+}
+
+static bool finite_equal(const float* a, const float* b, size_t n) {
+    if (std::memcmp(a, b, n * sizeof(float))) return false;
+    for (size_t i = 0; i < n; ++i) if (!std::isfinite(a[i])) return false;
+    return true;
+}
+static int check_existing(const std::string& root) {
+    std::ifstream a(root+"/logits-0.f32",std::ios::binary), b(root+"/logits-1.f32",std::ios::binary), c(root+"/logits-2.f32",std::ios::binary);
+    if(!a||!b||!c)return 1;
+    std::array<float,16384> x,y,z;uint64_t bytes=0;
+    for(;;){
+        a.read((char*)x.data(),sizeof(x));b.read((char*)y.data(),sizeof(y));c.read((char*)z.data(),sizeof(z));
+        const auto n=a.gcount();if(n!=b.gcount()||n!=c.gcount()||n%4)return 1;
+        if(!n)break;
+        if(!finite_equal(x.data(),y.data(),size_t(n)/4)||!finite_equal(x.data(),z.data(),size_t(n)/4))return 1;
+        bytes+=uint64_t(n);
+    }
+    if(bytes!=uint64_t(2069)*129280*4)return 1;
+    std::string reference;
+    for(const char* name:{"primer","decode0","decode1"}){
+        std::ifstream f(root+"/"+name+"-tokens.txt");if(!f)return 1;
+        std::string text((std::istreambuf_iterator<char>(f)),{});
+        if(std::count(text.begin(),text.end(),'\n')!=80)return 1;
+        if(reference.empty())reference=text;else if(reference!=text)return 1;
+    }
+    std::printf("HOST_VERIFY finite=1 logits_bit_exact=1 repeat_bit_exact=1 greedy80_exact=1\n");return 0;
+}
+static int verifier_selftest(){
+    float a[2]={0,1},b[2]={0,1};if(!finite_equal(a,b,2))return 1;
+    b[1]=1.0000001f;if(finite_equal(a,b,2))return 1;
+    b[1]=1;b[0]=-0.0f;if(finite_equal(a,b,2))return 1;
+    a[0]=b[0]=std::numeric_limits<float>::quiet_NaN();if(finite_equal(a,b,2))return 1;
+    a[0]=b[0]=std::numeric_limits<float>::infinity();if(finite_equal(a,b,2))return 1;
+    std::puts("HOST_VERIFY_SELFTEST passed");return 0;
+}
+
+int main(int argc,char**argv) {
+    if(argc==2 && std::string(argv[1])=="--selftest")return verifier_selftest();
+    if(argc==3 && std::string(argv[1])=="--check-existing")return check_existing(argv[2]);
+    setenv("DS4_HIP_HOST_COPY_WAIT","1",1);
+    setenv("DS4_HIP_PEER_AR","1",1);
+    setenv("DS4_EXL3_PREDECODE","1",1);
+    setenv("DS4_EXL3_PACKED_HOST","1",1);
+    setenv("DS4_EXL3_FMA16","1",1);
+    setenv("DS4_SPLIT","36,4",1);
+    setenv("DS4_SKIP_UNPICKED","1",1);
+    if(argc!=3)return 2;const std::string root=argv[2];
+    setenv("DS4_CACHE_BONUS","1e30",1);setenv("DS4_ENGRAM_THREADS","16",1);setenv("DS4_PATH_PICK","0",1);
+    strata::ds4::Options o;o.pack=argv[1];o.gpus={0,1,2};o.max_context=262144;o.reserve_mib=2048;o.tp=2;o.threads=true;
+    o.mmap_experts=0;o.dspark=false;o.vision=false;o.prefill_chunk=2048;o.profile=root+"/frozen-profile.bin";
+    strata::ds4::Model m;std::string err;
+    if(!m.load(o,err)){std::fprintf(stderr,"%s\n",err.c_str());return 1;}
+    {std::ofstream f(root+"/allocation.txt");f<<m.describe();}
+    const auto code=ids(root+"/code-ids.json"),db=ids(root+"/database-ids.json");if(code.size()!=2069||db.size()!=2048)return 2;
+    if (std::getenv("DS4_PEER_AR_FAULT_ONLY")) {
+        if (!m.benchmark_peer_ar_mode(true) || !m.benchmark_peer_ar_inject_error()) return 1;
+        m.reset();
+        if (m.feed(db.data(), int(db.size()), 1, err) || err.find("reload required") == std::string::npos) return 1;
+        const auto calls = m.benchmark_peer_ar_calls();
+        if (!calls) return 1;
+        m.reset(); err.clear();
+        if (m.step(db[0], true, err) || err.find("reload required") == std::string::npos) return 1;
+        err.clear();
+        if (m.feed(db.data(), int(db.size()), 1, err) || err.find("reload required") == std::string::npos) return 1;
+        if (m.benchmark_peer_ar_calls() != calls || m.benchmark_peer_ar_mode(false)) return 1;
+        std::fprintf(stderr, "PEER_MODEL_FAULT request_rejected=1 reset_still_poisoned=1 decode_rejected=1 later_prefill_rejected=1 subsequent_calls=0\n");
+        return 0;
+    }
+    auto swap_kib=[&](){std::ifstream f("/proc/self/status");std::string line;while(std::getline(f,line))if(line.rfind("VmSwap:",0)==0){std::istringstream in(line.substr(7));long long value=-1;in>>value;return value;}return -1LL;};
+    auto evict=[&](){
+        std::ifstream f(root+"/engram-files.txt");std::string name;int count=0;
+        while(std::getline(f,name)){int fd=open(name.c_str(),O_RDONLY);if(fd<0)return false;
+            int rc=posix_fadvise(fd,0,0,POSIX_FADV_DONTNEED);close(fd);if(rc)return false;++count;}
+        return count==2;
+    };
+    std::vector<float> logits;
+    int current_mode=0;
+    auto feed=[&](const std::vector<int>& input,int rows){
+        const auto before=m.benchmark_peer_ar_calls();
+        m.reset();if(!m.feed(input.data(),int(input.size()),rows,err)){std::fprintf(stderr,"%s\n",err.c_str());return false;}
+        const auto calls=m.benchmark_peer_ar_calls()-before;
+        if((current_mode==0 && calls!=0)||(current_mode!=0 && calls==0)){
+            std::fprintf(stderr,"PEER_AR_PATH mode=%d calls=%llu unexpected\n",current_mode,(unsigned long long)calls);return false;}
+        std::fprintf(stderr,"PEER_AR_PATH mode=%d calls=%llu\n",current_mode,(unsigned long long)calls);
+        return m.logits(logits);
+    };
+
+    auto mode = [&](int n, bool clear) {
+        if (!m.benchmark_peer_ar_mode(n != 0)) std::exit(1);
+        current_mode=n;
+        if (!m.benchmark_host_mode(true, clear)) std::exit(1);
+    };
+    mode(1, true);
+    // Prime code paths; this is not a timing result.
+    if(!feed(code,1)||!feed(db,1))return 1;
+    int trial=0;
+    for(int n:{0,1,0}) {
+        mode(n,true);if(!evict()||!feed(code,int(code.size())))return 1;
+        if(logits.size()!=code.size()*size_t(m.vocab()))return 1;
+        const auto path=root+"/logits-"+std::to_string(trial)+".f32";FILE*f=std::fopen(path.c_str(),"wb");if(!f)return 1;
+        if(std::fwrite(logits.data(),4,logits.size(),f)!=logits.size()||std::fflush(f)||fdatasync(fileno(f)))return 1;std::fclose(f);
+        std::fprintf(stderr,"PARITY trial=%d peer_ar=%d rows=%zu finished\n",trial++,n,code.size());
+    }
+    {
+        std::vector<float> warm_reference;
+        int trial = 0;
+        for (int n : {0, 1, 0}) {
+            mode(n, false);
+            if (!feed(db, int(db.size()))) return 1;
+            if (logits.size() != db.size() * size_t(m.vocab())) return 1;
+            for (float x : logits) if (!std::isfinite(x)) return 1;
+            if (trial == 0) {
+                warm_reference = logits;
+                std::ofstream f(root + "/warm-reference.f32", std::ios::binary);
+                f.write((const char*)logits.data(), std::streamsize(logits.size() * 4));
+                if (!f) return 1;
+            } else if (!finite_equal(warm_reference.data(), logits.data(), logits.size())) return 1;
+            std::fprintf(stderr, "WARM_PARITY trial=%d peer_ar=%d rows=%zu finite=1 exact=1\n", trial++, n, db.size());
+        }
+    }
+    for(const char* kind:{"cold-code","warm-database"}) {
+        const bool cold=std::string(kind)=="cold-code";const auto&input=cold?code:db;
+        if(!cold){mode(0,true);if(!feed(db,1))return 1;}
+        trial=0;
+        const int blocks = std::getenv("DS4_PEER_AR_VALIDATE_ONLY") ? 0 : (cold ? 2 : 6);
+        for(int block=0;block<blocks;++block) for(int pos=0;pos<4;++pos) {
+            const int order[2][4] = {{0,1,1,0},{1,0,0,1}};
+            const int n = order[block%2][pos];
+            if(cold){mode(n,true);if(!feed(db,1))return 1;}
+            mode(n,cold);if(cold&&!evict())return 1;
+            const auto swap_before=swap_kib();auto before=io();auto start=Clock::now();if(!feed(input,1))return 1;
+            double ms=std::chrono::duration<double,std::milli>(Clock::now()-start).count();auto after=io();
+            std::fprintf(stderr,"BENCH kind=%s trial=%d peer_ar=%d ms=%.3f read_bytes=%lld syscr=%lld swap_before=%lld swap_after=%lld\n",kind,trial++,n,ms,after["read_bytes:"]-before["read_bytes:"],after["syscr:"]-before["syscr:"],swap_before,swap_kib());
+        }
+    }
+    auto generate=[&](int n,const char* label,bool timed){
+        mode(n,false);if(!feed(db,1))return false;
+        std::ofstream f(root+"/"+label+"-tokens.txt");Clock::time_point start;
+        for(int i=0;i<80;++i){if(i==16)start=Clock::now();int y=m.sample(0,1,0,0,0,i);if(y<0)return false;f<<y<<'\n';if(!m.step(y,true,err))return false;}
+        double ms=std::chrono::duration<double,std::milli>(Clock::now()-start).count();
+        if(timed)std::fprintf(stderr,"DECODE peer_ar=%d ms=%.3f tok_s=%.3f\n",n,ms,64000/ms);return true;
+    };
+    if(!generate(0,"primer",false)||!generate(0,"decode0",true)||!generate(1,"decode1",true))return 1;
+    std::fprintf(stderr,"CACHE swaps=%lld ram_moves=%lld\n",(long long)m.stats().swaps,(long long)m.stats().ram_moves);
+    return m.stats().swaps||m.stats().ram_moves?1:check_existing(root);
+}

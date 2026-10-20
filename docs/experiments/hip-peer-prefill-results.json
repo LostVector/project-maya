@@ -1,0 +1,416 @@
+{
+  "summary": {
+    "cold-code": {
+      "blocks": [
+        {
+          "block": 0,
+          "baseline_mean_ms": 13518.180499999999,
+          "candidate_mean_ms": 12132.5425,
+          "gain_pct": 10.250181228161582
+        },
+        {
+          "block": 1,
+          "baseline_mean_ms": 11947.8095,
+          "candidate_mean_ms": 11342.625499999998,
+          "gain_pct": 5.065229739392829
+        }
+      ],
+      "mean_block_gain_pct": 7.657705483777205,
+      "ci95_pct": [
+        -25.282822097484676,
+        40.59823306503909
+      ],
+      "df": 1,
+      "all_swap_zero": true,
+      "baseline_median_ms": 11966.630000000001,
+      "candidate_median_ms": 11393.136999999999
+    },
+    "warm-database": {
+      "blocks": [
+        {
+          "block": 0,
+          "baseline_mean_ms": 7421.925,
+          "candidate_mean_ms": 6758.861999999999,
+          "gain_pct": 8.933841287806077
+        },
+        {
+          "block": 1,
+          "baseline_mean_ms": 7424.9295,
+          "candidate_mean_ms": 6759.851500000001,
+          "gain_pct": 8.957364511003096
+        },
+        {
+          "block": 2,
+          "baseline_mean_ms": 7457.785,
+          "candidate_mean_ms": 6758.3355,
+          "gain_pct": 9.378783378710963
+        },
+        {
+          "block": 3,
+          "baseline_mean_ms": 7457.468,
+          "candidate_mean_ms": 6757.1475,
+          "gain_pct": 9.390861616838308
+        },
+        {
+          "block": 4,
+          "baseline_mean_ms": 7457.4395,
+          "candidate_mean_ms": 6758.643,
+          "gain_pct": 9.370461537099972
+        },
+        {
+          "block": 5,
+          "baseline_mean_ms": 7456.517,
+          "candidate_mean_ms": 6757.999,
+          "gain_pct": 9.367885837315193
+        }
+      ],
+      "mean_block_gain_pct": 9.233199694795601,
+      "ci95_pct": [
+        8.999133871901915,
+        9.467265517689288
+      ],
+      "df": 5,
+      "all_swap_zero": true,
+      "baseline_median_ms": 7456.7925,
+      "candidate_median_ms": 6758.643
+    }
+  },
+  "raw_trials": [
+    {
+      "kind": "cold-code",
+      "trial": 0,
+      "mode": 0,
+      "ms": 15068.451,
+      "read_bytes": 634888192,
+      "syscr": 304114,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "cold-code",
+      "trial": 1,
+      "mode": 1,
+      "ms": 12868.503,
+      "read_bytes": 634896384,
+      "syscr": 304114,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "cold-code",
+      "trial": 2,
+      "mode": 1,
+      "ms": 11396.582,
+      "read_bytes": 634900480,
+      "syscr": 304114,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "cold-code",
+      "trial": 3,
+      "mode": 0,
+      "ms": 11967.91,
+      "read_bytes": 634896384,
+      "syscr": 304114,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "cold-code",
+      "trial": 4,
+      "mode": 1,
+      "ms": 11389.692,
+      "read_bytes": 634896384,
+      "syscr": 304114,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "cold-code",
+      "trial": 5,
+      "mode": 0,
+      "ms": 11965.35,
+      "read_bytes": 634900480,
+      "syscr": 304114,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "cold-code",
+      "trial": 6,
+      "mode": 0,
+      "ms": 11930.269,
+      "read_bytes": 634900480,
+      "syscr": 304114,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "cold-code",
+      "trial": 7,
+      "mode": 1,
+      "ms": 11295.559,
+      "read_bytes": 634900480,
+      "syscr": 304114,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 0,
+      "mode": 0,
+      "ms": 7421.582,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 1,
+      "mode": 1,
+      "ms": 6758.016,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 2,
+      "mode": 1,
+      "ms": 6759.708,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 3,
+      "mode": 0,
+      "ms": 7422.268,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 4,
+      "mode": 1,
+      "ms": 6759.35,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 5,
+      "mode": 0,
+      "ms": 7425.294,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 6,
+      "mode": 0,
+      "ms": 7424.565,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 7,
+      "mode": 1,
+      "ms": 6760.353,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 8,
+      "mode": 0,
+      "ms": 7458.689,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 9,
+      "mode": 1,
+      "ms": 6759.438,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 10,
+      "mode": 1,
+      "ms": 6757.233,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 11,
+      "mode": 0,
+      "ms": 7456.881,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 12,
+      "mode": 1,
+      "ms": 6757.28,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 13,
+      "mode": 0,
+      "ms": 7457.124,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 14,
+      "mode": 0,
+      "ms": 7457.812,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 15,
+      "mode": 1,
+      "ms": 6757.015,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 16,
+      "mode": 0,
+      "ms": 7457.635,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 17,
+      "mode": 1,
+      "ms": 6758.657,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 18,
+      "mode": 1,
+      "ms": 6758.629,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 19,
+      "mode": 0,
+      "ms": 7457.244,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 20,
+      "mode": 1,
+      "ms": 6759.04,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 21,
+      "mode": 0,
+      "ms": 7456.33,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 22,
+      "mode": 0,
+      "ms": 7456.704,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 23,
+      "mode": 1,
+      "ms": 6756.958,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    }
+  ],
+  "decode": [
+    {
+      "mode": 0,
+      "ms": 5206.439,
+      "tok_s": 12.292
+    },
+    {
+      "mode": 1,
+      "ms": 5214.766,
+      "tok_s": 12.273
+    }
+  ],
+  "all_cold_warm_logits_finite_bit_exact_independent_accepted": true,
+  "all80_greedy_tokens_exact_independent_accepted": true,
+  "peer_ar_path_checked": true,
+  "cache_moves_zero": true
+}

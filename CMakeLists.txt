@@ -448,6 +448,11 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
         target_include_directories(ds4_predecode_test PRIVATE ${_strata_gpu_include_directories} third_party/ggml)
         target_link_libraries(ds4_predecode_test PRIVATE strata_kernels strata_kernels_cpu ${_strata_gpu_runtime_target}
                               ${_strata_gpu_blas_target})
+        add_executable(ds4_peer_prefill_test EXCLUDE_FROM_ALL tests/ds4_peer_prefill_test.cpp ${_ds4_host_test_sources})
+        target_compile_definitions(ds4_peer_prefill_test PRIVATE STRATA_DS4_HOST_LAYOUT_TEST=1 STRATA_DS4_SCHEDULE_TEST=1)
+        target_include_directories(ds4_peer_prefill_test PRIVATE ${_strata_gpu_include_directories} third_party/ggml)
+        target_link_libraries(ds4_peer_prefill_test PRIVATE strata_kernels strata_kernels_cpu ${_strata_gpu_runtime_target}
+                              ${_strata_gpu_blas_target})
         add_executable(ds4_hip_copy_wait_test EXCLUDE_FROM_ALL tests/ds4_hip_copy_wait_test.cpp ${_ds4_host_test_sources})
         target_compile_definitions(ds4_hip_copy_wait_test PRIVATE STRATA_DS4_HOST_LAYOUT_TEST=1 STRATA_DS4_SCHEDULE_TEST=1)
         target_include_directories(ds4_hip_copy_wait_test PRIVATE ${_strata_gpu_include_directories} third_party/ggml)
