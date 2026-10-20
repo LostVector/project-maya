@@ -1,0 +1,1506 @@
+[
+  {
+    "case": 0,
+    "gpu": 0,
+    "layer": 14,
+    "T": 2048,
+    "streamed": false,
+    "D": 5120,
+    "F": 1152,
+    "stride": 6673152,
+    "fmt": 0,
+    "K": [
+      3,
+      3,
+      3
+    ],
+    "counts": [
+      0,
+      20,
+      26,
+      0
+    ],
+    "record_id": 1608,
+    "sample_quantile": 0.2,
+    "split": "train"
+  },
+  {
+    "case": 0,
+    "gpu": 0,
+    "layer": 13,
+    "T": 2048,
+    "streamed": false,
+    "D": 5120,
+    "F": 1152,
+    "stride": 6673152,
+    "fmt": 0,
+    "K": [
+      3,
+      3,
+      3
+    ],
+    "counts": [
+      121,
+      17,
+      16,
+      13
+    ],
+    "record_id": 1460,
+    "sample_quantile": 0.5,
+    "split": "heldout"
+  },
+  {
+    "case": 0,
+    "gpu": 0,
+    "layer": 15,
+    "T": 2048,
+    "streamed": false,
+    "D": 5120,
+    "F": 1152,
+    "stride": 6673152,
+    "fmt": 0,
+    "K": [
+      3,
+      3,
+      3
+    ],
+    "counts": [
+      272,
+      88,
+      1,
+      170
+    ],
+    "record_id": 1639,
+    "sample_quantile": 0.8,
+    "split": "heldout"
+  },
+  {
+    "case": 0,
+    "gpu": 0,
+    "layer": 21,
+    "T": 2048,
+    "streamed": false,
+    "D": 5120,
+    "F": 1152,
+    "stride": 6673152,
+    "fmt": 0,
+    "K": [
+      3,
+      3,
+      3
+    ],
+    "counts": [
+      1321,
+      389,
+      315
+    ],
+    "record_id": 2281,
+    "sample_quantile": 1.0,
+    "split": "heldout"
+  },
+  {
+    "case": 0,
+    "gpu": 0,
+    "layer": 20,
+    "T": 2048,
+    "streamed": false,
+    "D": 5120,
+    "F": 1152,
+    "stride": 6673152,
+    "fmt": 0,
+    "K": [
+      3,
+      3,
+      3
+    ],
+    "counts": [
+      1865
+    ],
+    "record_id": 2172,
+    "sample_quantile": "max_single",
+    "split": "train"
+  },
+  {
+    "case": 0,
+    "gpu": 0,
+    "layer": 9,
+    "T": 2048,
+    "streamed": false,
+    "D": 5120,
+    "F": 1152,
+    "stride": 8884992,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      47,
+      1,
+      0,
+      43
+    ],
+    "record_id": 1025,
+    "sample_quantile": 0.2,
+    "split": "heldout"
+  },
+  {
+    "case": 0,
+    "gpu": 0,
+    "layer": 34,
+    "T": 2048,
+    "streamed": false,
+    "D": 5120,
+    "F": 1152,
+    "stride": 8884992,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      79,
+      8,
+      3,
+      122
+    ],
+    "record_id": 3756,
+    "sample_quantile": 0.5,
+    "split": "train"
+  },
+  {
+    "case": 0,
+    "gpu": 0,
+    "layer": 1,
+    "T": 2048,
+    "streamed": false,
+    "D": 5120,
+    "F": 1152,
+    "stride": 8884992,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      143,
+      130,
+      113,
+      129
+    ],
+    "record_id": 111,
+    "sample_quantile": 0.8,
+    "split": "heldout"
+  },
+  {
+    "case": 0,
+    "gpu": 0,
+    "layer": 9,
+    "T": 2048,
+    "streamed": false,
+    "D": 5120,
+    "F": 1152,
+    "stride": 8884992,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      1833,
+      204
+    ],
+    "record_id": 972,
+    "sample_quantile": 1.0,
+    "split": "heldout"
+  },
+  {
+    "case": 0,
+    "gpu": 0,
+    "layer": 20,
+    "T": 2048,
+    "streamed": true,
+    "D": 5120,
+    "F": 1152,
+    "stride": 8884992,
+    "fmt": 0,
+    "K": [
+      3,
+      3,
+      3
+    ],
+    "counts": [
+      0,
+      3,
+      1,
+      0,
+      25,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "record_id": 2196,
+    "sample_quantile": 0.2,
+    "split": "train"
+  },
+  {
+    "case": 0,
+    "gpu": 0,
+    "layer": 16,
+    "T": 2048,
+    "streamed": true,
+    "D": 5120,
+    "F": 1152,
+    "stride": 8884992,
+    "fmt": 0,
+    "K": [
+      3,
+      3,
+      3
+    ],
+    "counts": [
+      0,
+      0,
+      0,
+      6,
+      1,
+      0,
+      0,
+      0,
+      23,
+      40,
+      0
+    ],
+    "record_id": 1791,
+    "sample_quantile": 0.5,
+    "split": "train"
+  },
+  {
+    "case": 0,
+    "gpu": 0,
+    "layer": 24,
+    "T": 2048,
+    "streamed": true,
+    "D": 5120,
+    "F": 1152,
+    "stride": 8884992,
+    "fmt": 0,
+    "K": [
+      3,
+      3,
+      3
+    ],
+    "counts": [
+      0,
+      2,
+      5,
+      4,
+      126,
+      2,
+      0,
+      0,
+      11,
+      1,
+      0
+    ],
+    "record_id": 2608,
+    "sample_quantile": 0.8,
+    "split": "train"
+  },
+  {
+    "case": 0,
+    "gpu": 0,
+    "layer": 13,
+    "T": 2048,
+    "streamed": true,
+    "D": 5120,
+    "F": 1152,
+    "stride": 8884992,
+    "fmt": 0,
+    "K": [
+      3,
+      3,
+      3
+    ],
+    "counts": [
+      0,
+      14,
+      0,
+      9,
+      2,
+      1266,
+      0,
+      25,
+      2,
+      0,
+      0
+    ],
+    "record_id": 1437,
+    "sample_quantile": 1.0,
+    "split": "heldout"
+  },
+  {
+    "case": 0,
+    "gpu": 0,
+    "layer": 32,
+    "T": 2048,
+    "streamed": true,
+    "D": 5120,
+    "F": 1152,
+    "stride": 8884992,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      1,
+      1,
+      0,
+      0,
+      4,
+      14,
+      0,
+      3,
+      1,
+      2,
+      0
+    ],
+    "record_id": 3483,
+    "sample_quantile": 0.2,
+    "split": "train"
+  },
+  {
+    "case": 0,
+    "gpu": 0,
+    "layer": 8,
+    "T": 2048,
+    "streamed": true,
+    "D": 5120,
+    "F": 1152,
+    "stride": 8884992,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      0,
+      43,
+      0,
+      0,
+      0,
+      22,
+      0,
+      1,
+      0,
+      2,
+      1
+    ],
+    "record_id": 920,
+    "sample_quantile": 0.5,
+    "split": "train"
+  },
+  {
+    "case": 0,
+    "gpu": 0,
+    "layer": 4,
+    "T": 2048,
+    "streamed": true,
+    "D": 5120,
+    "F": 1152,
+    "stride": 8884992,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      2,
+      1,
+      0,
+      11,
+      0,
+      0,
+      0,
+      0,
+      106,
+      16,
+      0
+    ],
+    "record_id": 441,
+    "sample_quantile": 0.8,
+    "split": "train"
+  },
+  {
+    "case": 0,
+    "gpu": 0,
+    "layer": 4,
+    "T": 2048,
+    "streamed": true,
+    "D": 5120,
+    "F": 1152,
+    "stride": 8884992,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      0,
+      2,
+      1,
+      437,
+      0,
+      1,
+      0,
+      0,
+      7,
+      0,
+      0
+    ],
+    "record_id": 463,
+    "sample_quantile": 1.0,
+    "split": "train"
+  },
+  {
+    "case": 0,
+    "gpu": 2,
+    "layer": 37,
+    "T": 2048,
+    "streamed": false,
+    "D": 5120,
+    "F": 2304,
+    "stride": 17739264,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      19,
+      6,
+      18,
+      2
+    ],
+    "record_id": 4053,
+    "sample_quantile": 0.2,
+    "split": "heldout"
+  },
+  {
+    "case": 0,
+    "gpu": 2,
+    "layer": 37,
+    "T": 2048,
+    "streamed": false,
+    "D": 5120,
+    "F": 2304,
+    "stride": 17739264,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      34,
+      31,
+      83,
+      0
+    ],
+    "record_id": 4021,
+    "sample_quantile": 0.5,
+    "split": "heldout"
+  },
+  {
+    "case": 0,
+    "gpu": 2,
+    "layer": 39,
+    "T": 2048,
+    "streamed": false,
+    "D": 5120,
+    "F": 2304,
+    "stride": 17739264,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      84,
+      86,
+      75,
+      22,
+      88
+    ],
+    "record_id": 4199,
+    "sample_quantile": 0.8,
+    "split": "heldout"
+  },
+  {
+    "case": 0,
+    "gpu": 2,
+    "layer": 37,
+    "T": 2048,
+    "streamed": false,
+    "D": 5120,
+    "F": 2304,
+    "stride": 17739264,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      882,
+      309,
+      358,
+      342
+    ],
+    "record_id": 3997,
+    "sample_quantile": 1.0,
+    "split": "heldout"
+  },
+  {
+    "case": 0,
+    "gpu": 2,
+    "layer": 38,
+    "T": 2048,
+    "streamed": false,
+    "D": 5120,
+    "F": 2304,
+    "stride": 17739264,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      1373,
+      196,
+      284
+    ],
+    "record_id": 4074,
+    "sample_quantile": "max_single",
+    "split": "train"
+  },
+  {
+    "case": 0,
+    "gpu": 2,
+    "layer": 39,
+    "T": 2048,
+    "streamed": true,
+    "D": 5120,
+    "F": 2304,
+    "stride": 17739264,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      0,
+      3,
+      0,
+      0,
+      0
+    ],
+    "record_id": 4188,
+    "sample_quantile": 0.2,
+    "split": "heldout"
+  },
+  {
+    "case": 0,
+    "gpu": 2,
+    "layer": 36,
+    "T": 2048,
+    "streamed": true,
+    "D": 5120,
+    "F": 2304,
+    "stride": 17739264,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      4,
+      0,
+      0,
+      2,
+      9
+    ],
+    "record_id": 3966,
+    "sample_quantile": 0.5,
+    "split": "train"
+  },
+  {
+    "case": 0,
+    "gpu": 2,
+    "layer": 39,
+    "T": 2048,
+    "streamed": true,
+    "D": 5120,
+    "F": 2304,
+    "stride": 17739264,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      1,
+      0,
+      30,
+      0,
+      0
+    ],
+    "record_id": 4165,
+    "sample_quantile": 0.8,
+    "split": "heldout"
+  },
+  {
+    "case": 0,
+    "gpu": 2,
+    "layer": 39,
+    "T": 2048,
+    "streamed": true,
+    "D": 5120,
+    "F": 2304,
+    "stride": 17739264,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      104,
+      0,
+      0,
+      26,
+      0
+    ],
+    "record_id": 4192,
+    "sample_quantile": 1.0,
+    "split": "heldout"
+  },
+  {
+    "case": 0,
+    "gpu": 2,
+    "layer": 38,
+    "T": 2048,
+    "streamed": true,
+    "D": 5120,
+    "F": 2304,
+    "stride": 17739264,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      4,
+      0,
+      107,
+      12,
+      0
+    ],
+    "record_id": 4118,
+    "sample_quantile": "max_single",
+    "split": "train"
+  },
+  {
+    "case": 1,
+    "gpu": 0,
+    "layer": 26,
+    "T": 1035,
+    "streamed": false,
+    "D": 5120,
+    "F": 1152,
+    "stride": 6673152,
+    "fmt": 0,
+    "K": [
+      3,
+      3,
+      3
+    ],
+    "counts": [
+      0,
+      9,
+      0,
+      2
+    ],
+    "record_id": 7058,
+    "sample_quantile": 0.2,
+    "split": "train"
+  },
+  {
+    "case": 1,
+    "gpu": 0,
+    "layer": 22,
+    "T": 1035,
+    "streamed": false,
+    "D": 5120,
+    "F": 1152,
+    "stride": 6673152,
+    "fmt": 0,
+    "K": [
+      3,
+      3,
+      3
+    ],
+    "counts": [
+      4,
+      0,
+      7,
+      24
+    ],
+    "record_id": 6603,
+    "sample_quantile": 0.5,
+    "split": "train"
+  },
+  {
+    "case": 1,
+    "gpu": 0,
+    "layer": 26,
+    "T": 1034,
+    "streamed": false,
+    "D": 5120,
+    "F": 1152,
+    "stride": 6673152,
+    "fmt": 0,
+    "K": [
+      3,
+      3,
+      3
+    ],
+    "counts": [
+      138,
+      6,
+      0,
+      0
+    ],
+    "record_id": 11228,
+    "sample_quantile": 0.8,
+    "split": "train"
+  },
+  {
+    "case": 1,
+    "gpu": 0,
+    "layer": 29,
+    "T": 1035,
+    "streamed": false,
+    "D": 5120,
+    "F": 1152,
+    "stride": 6673152,
+    "fmt": 0,
+    "K": [
+      3,
+      3,
+      3
+    ],
+    "counts": [
+      284,
+      0,
+      868,
+      56
+    ],
+    "record_id": 7355,
+    "sample_quantile": 1.0,
+    "split": "heldout"
+  },
+  {
+    "case": 1,
+    "gpu": 0,
+    "layer": 1,
+    "T": 1035,
+    "streamed": false,
+    "D": 5120,
+    "F": 1152,
+    "stride": 8884992,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      5,
+      11,
+      2
+    ],
+    "record_id": 4354,
+    "sample_quantile": 0.2,
+    "split": "heldout"
+  },
+  {
+    "case": 1,
+    "gpu": 0,
+    "layer": 31,
+    "T": 1034,
+    "streamed": false,
+    "D": 5120,
+    "F": 1152,
+    "stride": 8884992,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      6,
+      10,
+      28,
+      5
+    ],
+    "record_id": 11768,
+    "sample_quantile": 0.5,
+    "split": "heldout"
+  },
+  {
+    "case": 1,
+    "gpu": 0,
+    "layer": 5,
+    "T": 1035,
+    "streamed": false,
+    "D": 5120,
+    "F": 1152,
+    "stride": 8884992,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      0,
+      0,
+      148
+    ],
+    "record_id": 4797,
+    "sample_quantile": 0.8,
+    "split": "heldout"
+  },
+  {
+    "case": 1,
+    "gpu": 0,
+    "layer": 6,
+    "T": 1035,
+    "streamed": false,
+    "D": 5120,
+    "F": 1152,
+    "stride": 8884992,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      2,
+      189,
+      161,
+      672
+    ],
+    "record_id": 4920,
+    "sample_quantile": 1.0,
+    "split": "train"
+  },
+  {
+    "case": 1,
+    "gpu": 0,
+    "layer": 7,
+    "T": 1035,
+    "streamed": false,
+    "D": 5120,
+    "F": 1152,
+    "stride": 8884992,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      869,
+      6,
+      3,
+      4
+    ],
+    "record_id": 5007,
+    "sample_quantile": "max_single",
+    "split": "heldout"
+  },
+  {
+    "case": 1,
+    "gpu": 0,
+    "layer": 27,
+    "T": 1035,
+    "streamed": true,
+    "D": 5120,
+    "F": 1152,
+    "stride": 8884992,
+    "fmt": 0,
+    "K": [
+      3,
+      3,
+      3
+    ],
+    "counts": [
+      11,
+      0,
+      11,
+      11,
+      4,
+      2,
+      11,
+      1,
+      0,
+      0,
+      0
+    ],
+    "record_id": 7188,
+    "sample_quantile": 0.2,
+    "split": "heldout"
+  },
+  {
+    "case": 1,
+    "gpu": 0,
+    "layer": 12,
+    "T": 1035,
+    "streamed": true,
+    "D": 5120,
+    "F": 1152,
+    "stride": 8884992,
+    "fmt": 0,
+    "K": [
+      3,
+      3,
+      3
+    ],
+    "counts": [
+      24,
+      28,
+      8,
+      2,
+      0,
+      0,
+      0,
+      40,
+      3,
+      0,
+      3
+    ],
+    "record_id": 5610,
+    "sample_quantile": 0.5,
+    "split": "train"
+  },
+  {
+    "case": 1,
+    "gpu": 0,
+    "layer": 26,
+    "T": 1035,
+    "streamed": true,
+    "D": 5120,
+    "F": 1152,
+    "stride": 8884992,
+    "fmt": 0,
+    "K": [
+      3,
+      3,
+      3
+    ],
+    "counts": [
+      1,
+      136,
+      1,
+      10,
+      5,
+      0,
+      25,
+      1,
+      1,
+      23,
+      4
+    ],
+    "record_id": 7092,
+    "sample_quantile": 0.8,
+    "split": "train"
+  },
+  {
+    "case": 1,
+    "gpu": 0,
+    "layer": 28,
+    "T": 1035,
+    "streamed": true,
+    "D": 5120,
+    "F": 1152,
+    "stride": 8884992,
+    "fmt": 0,
+    "K": [
+      3,
+      3,
+      3
+    ],
+    "counts": [
+      96,
+      7,
+      34,
+      17,
+      36,
+      0,
+      2,
+      368,
+      22,
+      39,
+      21
+    ],
+    "record_id": 7243,
+    "sample_quantile": 1.0,
+    "split": "train"
+  },
+  {
+    "case": 1,
+    "gpu": 0,
+    "layer": 18,
+    "T": 1034,
+    "streamed": true,
+    "D": 5120,
+    "F": 1152,
+    "stride": 8884992,
+    "fmt": 0,
+    "K": [
+      3,
+      3,
+      3
+    ],
+    "counts": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      141,
+      0,
+      8,
+      0,
+      480
+    ],
+    "record_id": 10354,
+    "sample_quantile": "max_single",
+    "split": "train"
+  },
+  {
+    "case": 1,
+    "gpu": 0,
+    "layer": 32,
+    "T": 1035,
+    "streamed": true,
+    "D": 5120,
+    "F": 1152,
+    "stride": 8884992,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      0,
+      9,
+      0,
+      0,
+      6,
+      14,
+      0,
+      0,
+      20,
+      4,
+      2
+    ],
+    "record_id": 7689,
+    "sample_quantile": 0.2,
+    "split": "train"
+  },
+  {
+    "case": 1,
+    "gpu": 0,
+    "layer": 32,
+    "T": 1034,
+    "streamed": true,
+    "D": 5120,
+    "F": 1152,
+    "stride": 8884992,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      47,
+      0,
+      3,
+      6,
+      0,
+      2,
+      6,
+      41,
+      0,
+      3,
+      1
+    ],
+    "record_id": 11867,
+    "sample_quantile": 0.5,
+    "split": "train"
+  },
+  {
+    "case": 1,
+    "gpu": 0,
+    "layer": 7,
+    "T": 1035,
+    "streamed": true,
+    "D": 5120,
+    "F": 1152,
+    "stride": 8884992,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      164,
+      0,
+      0,
+      2,
+      0,
+      0,
+      3,
+      0,
+      20,
+      1,
+      0
+    ],
+    "record_id": 5024,
+    "sample_quantile": 0.8,
+    "split": "heldout"
+  },
+  {
+    "case": 1,
+    "gpu": 0,
+    "layer": 1,
+    "T": 1034,
+    "streamed": true,
+    "D": 5120,
+    "F": 1152,
+    "stride": 8884992,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      1,
+      27,
+      8,
+      10,
+      48,
+      0,
+      281,
+      127,
+      19,
+      48,
+      1
+    ],
+    "record_id": 8375,
+    "sample_quantile": 1.0,
+    "split": "heldout"
+  },
+  {
+    "case": 1,
+    "gpu": 0,
+    "layer": 9,
+    "T": 1034,
+    "streamed": true,
+    "D": 5120,
+    "F": 1152,
+    "stride": 8884992,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      1,
+      40,
+      5,
+      0,
+      0,
+      11,
+      368,
+      0,
+      0,
+      1,
+      71
+    ],
+    "record_id": 9300,
+    "sample_quantile": "max_single",
+    "split": "heldout"
+  },
+  {
+    "case": 1,
+    "gpu": 2,
+    "layer": 36,
+    "T": 1034,
+    "streamed": false,
+    "D": 5120,
+    "F": 2304,
+    "stride": 17739264,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      3,
+      4,
+      22,
+      2
+    ],
+    "record_id": 12318,
+    "sample_quantile": 0.2,
+    "split": "train"
+  },
+  {
+    "case": 1,
+    "gpu": 2,
+    "layer": 36,
+    "T": 1034,
+    "streamed": false,
+    "D": 5120,
+    "F": 2304,
+    "stride": 17739264,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      52,
+      0,
+      7,
+      7,
+      0
+    ],
+    "record_id": 12348,
+    "sample_quantile": 0.5,
+    "split": "train"
+  },
+  {
+    "case": 1,
+    "gpu": 2,
+    "layer": 37,
+    "T": 1035,
+    "streamed": false,
+    "D": 5120,
+    "F": 2304,
+    "stride": 17739264,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      107,
+      17,
+      21,
+      0
+    ],
+    "record_id": 8770,
+    "sample_quantile": 0.8,
+    "split": "heldout"
+  },
+  {
+    "case": 1,
+    "gpu": 2,
+    "layer": 37,
+    "T": 1034,
+    "streamed": false,
+    "D": 5120,
+    "F": 2304,
+    "stride": 17739264,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      29,
+      59,
+      406,
+      31,
+      197
+    ],
+    "record_id": 12392,
+    "sample_quantile": 1.0,
+    "split": "heldout"
+  },
+  {
+    "case": 1,
+    "gpu": 2,
+    "layer": 38,
+    "T": 1034,
+    "streamed": false,
+    "D": 5120,
+    "F": 2304,
+    "stride": 17739264,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      33,
+      5,
+      1,
+      645
+    ],
+    "record_id": 12448,
+    "sample_quantile": "max_single",
+    "split": "train"
+  },
+  {
+    "case": 1,
+    "gpu": 2,
+    "layer": 37,
+    "T": 1034,
+    "streamed": true,
+    "D": 5120,
+    "F": 2304,
+    "stride": 17739264,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      4,
+      0,
+      0,
+      10,
+      0
+    ],
+    "record_id": 12399,
+    "sample_quantile": 0.2,
+    "split": "heldout"
+  },
+  {
+    "case": 1,
+    "gpu": 2,
+    "layer": 36,
+    "T": 1035,
+    "streamed": true,
+    "D": 5120,
+    "F": 2304,
+    "stride": 17739264,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      0,
+      21,
+      7,
+      0,
+      4
+    ],
+    "record_id": 8247,
+    "sample_quantile": 0.5,
+    "split": "train"
+  },
+  {
+    "case": 1,
+    "gpu": 2,
+    "layer": 39,
+    "T": 1035,
+    "streamed": true,
+    "D": 5120,
+    "F": 2304,
+    "stride": 17739264,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      24,
+      0,
+      11,
+      0,
+      34
+    ],
+    "record_id": 10004,
+    "sample_quantile": 0.8,
+    "split": "heldout"
+  },
+  {
+    "case": 1,
+    "gpu": 2,
+    "layer": 39,
+    "T": 1034,
+    "streamed": true,
+    "D": 5120,
+    "F": 2304,
+    "stride": 17739264,
+    "fmt": 0,
+    "K": [
+      4,
+      4,
+      4
+    ],
+    "counts": [
+      5,
+      151,
+      9,
+      15,
+      3
+    ],
+    "record_id": 12559,
+    "sample_quantile": 1.0,
+    "split": "heldout"
+  }
+]

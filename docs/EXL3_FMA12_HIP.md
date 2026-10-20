@@ -27,10 +27,20 @@ Model-shaped matrices E5120/F1152; two active experts with row counts n/n+1 and 
 
 One K3/96-row sixteen-token arm was3.005ms while the other arms were about1.1ms. It remains in the archived means; this table uses medians. No concurrent serving request was recorded. These are isolated kernel measurements with only two active experts, not a model's heterogeneous batches or whole-model performance.
 
+## Actual-model group capture
+
+A subsequent diagnostic capture preserved full logit parity against logged/unlogged controls, repeat and the accepted packed-host+FMA16 engine. All expected380 case/GPU/layer/chunk combinations were covered, with six routed rows per token. The20973 recorded groups reveal substantial heterogeneity:
+
+* On the TP pair, cached groups typically have four expert slots; streamed groups have eleven. These differ from the two-active-expert microbenchmark.
+* Database cached experts have median50 rows and p90 of284; streamed experts have median8 and p90 of48. For code these are8/84 and7/45.
+* The largest expert receives1865 database rows or869 code rows. Experts with more than128 rows account for64.4% and37.0% of TP-pair routed rows respectively. These are row shares, not measured time shares.
+
+`tests/fixtures/exl3_group_replay/groups.json` publishes55 representative groups (27 training,28 held out), with exact counts including zero slots and dimensions/quantization/source metadata. See its README for provenance, sampling and limitations. No model speedup is claimed from this diagnostic capture. The next gate is to replay these heterogeneous groups; amortizing repeated decompression for very hot experts is another untested candidate.
+
 ## Reproduction and next gate
 
 Build `exl3_test`. `EXL3_SET_ONLY=1` runs the33 correctness cases. `EXL3_SET_BENCH=1 EXL3_SET_BROAD=1` runs the shape sweep, with bitwise checks on every arm. The initial37/0/70-row screen is available with `EXL3_SET_BENCH=1` alone.
 
-Before model integration, capture the actual heterogeneous routed-row groups and batch sizes. The model already has their host-side bounds in `run_set`; do not add GPU readbacks just to select a tile. Benchmark representative mixed groups before choosing a policy. Then require the existing finite, strict full-model logit gate and controlled prefill/decode comparisons. Keep the accepted packed-host+FMA16 server as the baseline.
+Actual heterogeneous groups are now captured in the replay fixture. Before model integration, benchmark those groups and batch sizes. The model already has their host-side bounds in `run_set`; do not add GPU readbacks just to select a tile. Benchmark representative mixed groups before choosing a policy. Then require the existing finite, strict full-model logit gate and controlled prefill/decode comparisons. Keep the accepted packed-host+FMA16 server as the baseline.
 
 All raw timings, source, binary, metadata and receipts are retained under `/home/rkuo/research/llm-weight-compression/_meta/maya-fma12-20261020` on the test host. Nothing from this checkpoint is deployed.
