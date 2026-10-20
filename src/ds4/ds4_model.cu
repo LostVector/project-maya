@@ -505,9 +505,11 @@ struct Chunk {
     uint16_t *x16 = nullptr, *qr16 = nullptr, *o16 = nullptr, *oa16 = nullptr, *lat16 = nullptr, *sh16 = nullptr,
              *h16 = nullptr, *eg_x16 = nullptr, *ext = nullptr, *w16 = nullptr, *emb = nullptr;
     size_t w16_elems = 0;
-#if defined(STRATA_USE_HIP) && defined(STRATA_DS4_PREDECODE_TEST)
+#if defined(STRATA_USE_HIP)
     uint32_t* predecoded = nullptr;
+#if defined(STRATA_DS4_PREDECODE_TEST)
     uint64_t predecode_calls = 0, predecode_rows = 0;
+#endif
 #endif
     int *ridx = nullptr, *topk = nullptr, *cand = nullptr, *bounds = nullptr, *row_tok = nullptr, *pos = nullptr;
     uint8_t* eg_rows = nullptr;
@@ -3190,15 +3192,20 @@ struct Model::Impl {
                     gg::set_gate_up(sa, c.x, D, c.row_tok + a, c.h16, FF, d.st);
                     gg::set_down(sa, c.h16, FF, c.y, D, d.st);
                 } else {
-#if defined(STRATA_USE_HIP) && defined(STRATA_DS4_PREDECODE_TEST)
-                    // Experimental only: preserve production selection and cache allocation.
-                    const char* pd = std::getenv("DS4_EXL3_PREDECODE_TEST");
+#if defined(STRATA_USE_HIP)
+                    // Opt-in workspace allocated after expert-cache placement.
+                    const char* pd = std::getenv("DS4_EXL3_PREDECODE");
                     const bool decoded = pd && std::atoi(pd) == 1 && FF == 1152 &&
                                          sa.n_exp <= 3 && nrows >= 768 && max_rows >= 512;
                     if (decoded) {
+#if defined(STRATA_DS4_PREDECODE_TEST)
                         ++c.predecode_calls; c.predecode_rows += nrows;
+#endif
                         const size_t cap = size_t(3) * D * FF * 6;
-                        if (!c.predecoded && !dalloc(d, c.predecoded, cap / 4, err)) return false;
+                        if (!c.predecoded) {
+                            if (!dalloc(d, c.predecoded, cap / 4, err)) return false;
+                            std::fprintf(stderr, "EXL3_PREDECODE gpu=%d scratch_bytes=%zu\n", d.id, cap);
+                        }
                         if (x3::decoded_set_bytes(sa) > cap || !x3::decode_set(sa, c.predecoded, d.st) ||
                             !x3::set_gate_up_decoded(sa, c.predecoded, c.x, D, c.row_tok + a, c.h16, FF, d.st) ||
                             !x3::set_down_decoded(sa, c.predecoded, c.h16, FF, c.y, D, d.st)) {

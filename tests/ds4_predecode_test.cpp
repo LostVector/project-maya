@@ -84,7 +84,7 @@ int main(int argc,char**argv) {
     auto feed=[&](const std::vector<int>& input,int rows){m.reset();if(!m.feed(input.data(),int(input.size()),rows,err)){std::fprintf(stderr,"%s\n",err.c_str());return false;}return m.logits(logits);};
 
     auto mode = [&](int n, bool clear) {
-        setenv("DS4_EXL3_PREDECODE_TEST", n ? "1" : "0", 1);
+        setenv("DS4_EXL3_PREDECODE", n ? "1" : "0", 1);
         if (!m.benchmark_host_mode(true, clear)) std::exit(1);
     };
     mode(1, true);
@@ -119,7 +119,7 @@ int main(int argc,char**argv) {
         const bool cold=std::string(kind)=="cold-code";const auto&input=cold?code:db;
         if(!cold){mode(0,true);if(!feed(db,1))return 1;}
         trial=0;
-        const int blocks = cold ? 2 : 6;
+        const int blocks = std::getenv("DS4_PREDECODE_VALIDATE_ONLY") ? 0 : (cold ? 2 : 6);
         for(int block=0;block<blocks;++block) for(int pos=0;pos<4;++pos) {
             const int order[2][4] = {{0,1,1,0},{1,0,0,1}};
             const int n = order[block%2][pos];

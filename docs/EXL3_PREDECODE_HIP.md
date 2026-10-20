@@ -2,7 +2,7 @@
 
 Large expert groups repeatedly decode the same trellis fragments in each 16-row CTA. The experimental `decode_set` API expands those exact FP16 fragment words once per expert set. `set_gate_up_decoded` and `set_down_decoded` reuse them with the existing Hadamard transforms, scales, ordered FP32 FMAs, and reductions. This is an arithmetic-preserving alternative to repeated trellis decoding; it does not introduce matrix instructions.
 
-Production dispatch is unchanged. The model experiment is available only in the explicit `ds4_predecode_test` target. Its selector uses FF=1152, at most three slots, at least 768 total rows, and at least 512 rows in the largest expert. Other groups use the accepted compressed FMA16 kernels. The model test leaves GPU2 on the compressed path.
+Set `DS4_EXL3_PREDECODE=1` to enable the same selector in serving. The default remains disabled. The dedicated `ds4_predecode_test` target toggles this production flag for comparisons. Its selector uses FF=1152, at most three slots, at least 768 total rows, and at least 512 rows in the largest expert. Other groups use the accepted compressed FMA16 kernels. This selector leaves GPU2 on the compressed path for the tested TP2/split36/4 setup.
 
 ## API and memory
 
@@ -34,7 +34,7 @@ The full-model test takes `PACK_DIR OUTPUT_DIR`. Copy `code-ids.json`, `database
 
 The test fixes TP2, split 36/4, context 262144, explicit expert RAM, packed host slots, FMA16, a 16-reader Engram pool, and frozen expert placement. Local performance validation also included the separate skip-unpicked checkpoint ([#1](https://github.com/LostVector/project-maya/pull/1)). That dependency is not added to this stacked PR. It checks full cold and warm logits against baseline/candidate/repeat, finite values, and 80 greedy tokens; then times 24 warm and eight cold trials in alternating ABBA/BAAB blocks. The scratch is primed before both timing modes.
 
-Two prompt fixtures and frozen cache placement do not establish a general speedup across prompts or normal cache-promotion activity. Keep this path optional pending broader validation and production integration.
+Two prompt fixtures and frozen cache placement do not establish a general speedup across prompts or normal cache-promotion activity. Keep this path optional pending broader validation. Set `DS4_PREDECODE_VALIDATE_ONLY=1` to run the full parity and generation checks while skipping the timing blocks.
 
 ## Fixed-workload confirmation
 
@@ -48,4 +48,4 @@ On two Radeon AI PRO R9700 32GB cards plus a Radeon RX9070XT16GB, with the 3.5bp
 | 64 decode tokens after 16 warmup tokens | 12.709 vs12.653 tokens/s in one comparison; no decode speedup claim |
 | Numerical checks | Full warm and cold logits finite and bit-exact across modes/repeat and independent accepted engines; 80 greedy tokens exact |
 
-[Raw per-trial times and summary](../tests/fixtures/ds4_predecode/gfx1201-confirmation.json) preserve all observations, including outliers. The confidence interval describes repeatability within this fixed workload. Global swap counters changed across loading, testing and restoration; there was no per-trial swap attribution. Normal cache-promotion activity and a broader prompt distribution remain untested. This is a small measured warm-prefill gain, not the 18–31% seen in large-shape synthetic kernels, and does not change production defaults.
+[Raw per-trial times and summary](../tests/fixtures/ds4_predecode/gfx1201-confirmation.json) preserve all observations, including outliers. The confidence interval describes repeatability within this fixed workload. Global swap counters changed across loading, testing and restoration; there was no per-trial swap attribution. Normal cache-promotion activity and a broader prompt distribution remain untested. This is a small measured warm-prefill gain, not the 18–31% seen in large-shape synthetic kernels, and does not change the production default. The serving integration uses the same selector, fragment APIs, and scratch size; it allocates workspace on the first eligible dispatch and reports its size to stderr. Allocation failure returns the normal model-allocation error; reserve enough VRAM for the workspace.
