@@ -98,12 +98,33 @@ int main(int argc,char**argv) {
         if(std::fwrite(logits.data(),4,logits.size(),f)!=logits.size()||std::fflush(f)||fdatasync(fileno(f)))return 1;std::fclose(f);
         std::fprintf(stderr,"PARITY trial=%d predecode=%d rows=%zu finished\n",trial++,n,code.size());
     }
+    {
+        std::vector<float> warm_reference;
+        int trial = 0;
+        for (int n : {0, 1, 0}) {
+            mode(n, false);
+            if (!feed(db, int(db.size()))) return 1;
+            if (logits.size() != db.size() * size_t(m.vocab())) return 1;
+            for (float x : logits) if (!std::isfinite(x)) return 1;
+            if (trial == 0) {
+                warm_reference = logits;
+                std::ofstream f(root + "/warm-reference.f32", std::ios::binary);
+                f.write((const char*)logits.data(), std::streamsize(logits.size() * 4));
+                if (!f) return 1;
+            } else if (!finite_equal(warm_reference.data(), logits.data(), logits.size())) return 1;
+            std::fprintf(stderr, "WARM_PARITY trial=%d predecode=%d rows=%zu finite=1 exact=1\n", trial++, n, db.size());
+        }
+    }
     for(const char* kind:{"cold-code","warm-database"}) {
         const bool cold=std::string(kind)=="cold-code";const auto&input=cold?code:db;
         if(!cold){mode(0,true);if(!feed(db,1))return 1;}
         trial=0;
-        for(int n:{0,1,1,0}) {
-            mode(n,cold);if(!feed(db,1))return 1;mode(n,cold);if(cold&&!evict())return 1;
+        const int blocks = cold ? 2 : 6;
+        for(int block=0;block<blocks;++block) for(int pos=0;pos<4;++pos) {
+            const int order[2][4] = {{0,1,1,0},{1,0,0,1}};
+            const int n = order[block%2][pos];
+            if(cold){mode(n,true);if(!feed(db,1))return 1;}
+            mode(n,cold);if(cold&&!evict())return 1;
             auto before=io();auto start=Clock::now();if(!feed(input,1))return 1;
             double ms=std::chrono::duration<double,std::milli>(Clock::now()-start).count();auto after=io();
             std::fprintf(stderr,"BENCH kind=%s trial=%d predecode=%d ms=%.3f read_bytes=%lld syscr=%lld\n",kind,trial++,n,ms,after["read_bytes:"]-before["read_bytes:"],after["syscr:"]-before["syscr:"]);
