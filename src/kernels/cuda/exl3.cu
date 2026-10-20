@@ -239,6 +239,18 @@ __device__ __forceinline__ void chunk_load(const Xin& x, const uint16_t* __restr
 #pragma unroll
     for (int i = 0; i < 4; ++i) s[i] = h2f(suh[base + i]);
 }
+#if defined(STRATA_USE_HIP)
+struct XinHalf { const uint16_t* h = nullptr; };
+__device__ __forceinline__ void chunk_load(const XinHalf& x, const uint16_t* suh, int k0, int lane,
+                                         float (&v)[4], float (&s)[4]) {
+#pragma unroll
+    for (int i = 0; i < 4; ++i) {
+        const int c = k0 + lane * 4 + i;
+        v[i] = h2f(x.h[c]);
+        s[i] = h2f(suh[c]);
+    }
+}
+#endif
 // ... and H(x * suh) of the chunk, FP16, into dst[0..127]
 __device__ __forceinline__ void chunk_store(float (&v)[4], const float (&s)[4], int lane, __half* dst) {
 #pragma unroll
@@ -351,8 +363,8 @@ struct BlockSmem {
     float out[kTok * kCols];
 };
 
-template <int K, int cb>
-__device__ void block_gemv(const uint32_t* __restrict__ tr, int ld, int tc0, int k0, int k1, const Xin& x,
+template <int K, int cb, class Input = Xin>
+__device__ void block_gemv(const uint32_t* __restrict__ tr, int ld, int tc0, int k0, int k1, const Input& x,
                            const uint16_t* __restrict__ suh, int nc, BlockSmem<K>& sm) {
     constexpr int W = Words<K>::W, R = Words<K>::R;
     const int lane = threadIdx.x & 31, warp = threadIdx.x >> 5, g = lane >> 2, t = lane & 3;
@@ -1136,6 +1148,98 @@ __global__ void __launch_bounds__(kThreads) gate_up_kernel(const GArgs a) {
 }  // namespace tc
 #endif
 
+#if defined(STRATA_USE_HIP)
+// Portable bring-up path: reuse the tested 8-activation GEMV decoder. Each
+// block owns one expert, up to eight routed rows, and 128 outputs. No host
+// bounds readback or expanded-weight cache is required.
+template <int K, int cb, bool gate_up>
+__global__ void __launch_bounds__(kThreads) hip_set_kernel(SetArgs a, const float* x, int ldx,
+                                                        const int* idx, uint16_t* h, int ldh,
+                                                        float* y, int ldy) {
+    __shared__ __align__(16) BlockSmem<K> sm;
+    __shared__ float gate[kTok * kCols];
+    const int e = blockIdx.z, g = blockIdx.y, warp = threadIdx.x >> 5;
+    const int start = a.bounds[e], end = a.bounds[e + 1];
+    const int row = start - a.row0 + (int) blockIdx.x * kTok;
+    const int nc = min(kTok, end - start - (int) blockIdx.x * kTok);
+    if (nc <= 0) return;
+    const uint8_t* blob = a.wbase + (size_t) e * a.stride;
+    if constexpr (gate_up) {
+        Xin in;
+        if (warp < nc) in.f = x + (size_t) idx[row + warp] * ldx;
+        block_gemv<K, cb>((const uint32_t*) (blob + a.lay.trellis[0]), a.n_ff / 16,
+                          g * 8, 0, a.n_embd, in, (const uint16_t*) (blob + a.lay.suh[0]), nc, sm);
+        if (warp < nc)
+            block_out(sm.out + warp * kCols, (const uint16_t*) (blob + a.lay.svh[0]) + g * kCols,
+                      gate + warp * kCols);
+        __syncthreads();
+        block_gemv<K, cb>((const uint32_t*) (blob + a.lay.trellis[1]), a.n_ff / 16,
+                          g * 8, 0, a.n_embd, in, (const uint16_t*) (blob + a.lay.suh[1]), nc, sm);
+        if (warp < nc) {
+            const int lane = threadIdx.x & 31;
+            float v[4];
+            for (int i = 0; i < 4; ++i) v[i] = sm.out[warp * kCols + lane * 4 + i];
+            had128(v, lane);
+            for (int i = 0; i < 4; ++i) {
+                const int c = lane * 4 + i;
+                const float up = v[i] * h2f(((const uint16_t*) (blob + a.lay.svh[1]))[g * kCols + c]);
+                h[(size_t) (row + warp) * ldh + g * kCols + c] =
+                    __half_as_ushort(__float2half_rn(swiglu(gate[warp * kCols + c], up, a.limit)));
+            }
+        }
+    } else {
+        XinHalf in;
+        if (warp < nc) in.h = h + (size_t) (row + warp) * ldh;
+        block_gemv<K, cb>((const uint32_t*) (blob + a.lay.trellis[2]), a.n_embd / 16,
+                          g * 8, 0, a.n_ff, in, (const uint16_t*) (blob + a.lay.suh[2]), nc, sm);
+        if (warp < nc)
+            block_out(sm.out + warp * kCols, (const uint16_t*) (blob + a.lay.svh[2]) + g * kCols,
+                      y + (size_t) (row + warp) * ldy + g * kCols);
+    }
+}
+
+template <int K, int cb>
+__global__ void __launch_bounds__(kThreads) hip_rows_kernel(Mat m, const uint16_t* x, int ldx, int rows,
+                                                         float* y, int ldy, float beta) {
+    __shared__ __align__(16) BlockSmem<K> sm;
+    const int row = blockIdx.x * kTok, g = blockIdx.y, warp = threadIdx.x >> 5;
+    const int nc = min(kTok, rows - row);
+    XinHalf in;
+    if (warp < nc) in.h = x + (size_t) (row + warp) * ldx;
+    block_gemv<K, cb>(m.trellis, m.ld > 0 ? m.ld : m.n / 16, g * 8, 0, m.k, in, m.suh, nc, sm);
+    if (warp < nc) {
+        const int lane = threadIdx.x & 31;
+        float v[4];
+        for (int i = 0; i < 4; ++i) v[i] = sm.out[warp * kCols + lane * 4 + i];
+        had128(v, lane);
+        for (int i = 0; i < 4; ++i) {
+            const int c = g * kCols + lane * 4 + i;
+            float* dst = y + (size_t) (row + warp) * ldy + c;
+            const float value = v[i] * h2f(m.svh[c]);
+            *dst = beta == 0.0f ? value : value + beta * *dst;
+        }
+    }
+}
+template <int K, int cb> struct RunHipGateUp {
+    static void run(const SetArgs& a, const float* x, int ldx, const int* idx, uint16_t* h, int ldh, cudaStream_t s) {
+        hip_set_kernel<K, cb, true><<<dim3((a.max_rows + kTok - 1) / kTok, a.n_ff / kCols, a.n_exp), kThreads, 0, s>>>
+            (a, x, ldx, idx, h, ldh, nullptr, 0);
+    }
+};
+template <int K, int cb> struct RunHipDown {
+    static void run(const SetArgs& a, const uint16_t* h, int ldh, float* y, int ldy, cudaStream_t s) {
+        hip_set_kernel<K, cb, false><<<dim3((a.max_rows + kTok - 1) / kTok, a.n_embd / kCols, a.n_exp), kThreads, 0, s>>>
+            (a, nullptr, 0, nullptr, const_cast<uint16_t*>(h), ldh, y, ldy);
+    }
+};
+template <int K, int cb> struct RunHipRows {
+    static void run(const Mat& m, const uint16_t* x, int ldx, int rows, float* y, int ldy, float beta, cudaStream_t s) {
+        hip_rows_kernel<K, cb><<<dim3((rows + kTok - 1) / kTok, m.n / kCols), kThreads, 0, s>>>
+            (m, x, ldx, rows, y, ldy, beta);
+    }
+};
+#endif
+
 // ---------------------------------------------------------------- dispatch
 // F(K, cb) for K 1..8 and the three codebooks
 template <template <int, int> class F, typename... A>
@@ -1631,7 +1735,13 @@ void set_gate_up(const SetArgs& sa, const float* x, int ldx, const int* row_idx,
     if (!dispatch<RunGateUp>(sa.lay.K[0], sa.lay.cb, a, grid, s)) std::fprintf(stderr, "exl3 set_gate_up: K\n");
     launch_check("set_gate_up");
 #else
-    (void) sa; (void) x; (void) ldx; (void) row_idx; (void) h16; (void) ldh; (void) s;
+    if (sa.n_exp <= 0 || sa.max_rows <= 0) return;
+    if (sa.lay.K[0] != sa.lay.K[1] || !dispatch<RunHipGateUp>(sa.lay.K[0], sa.lay.cb, sa, x, ldx, row_idx, h16, ldh, s)) {
+        std::fprintf(stderr, "exl3 HIP set_gate_up: unsupported layout\n");
+        g_launch_errors.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
+    launch_check("HIP set_gate_up");
 #endif
 }
 
@@ -1657,7 +1767,12 @@ void set_down(const SetArgs& sa, const uint16_t* h16, int ldh, float* y, int ldy
     if (!dispatch<RunGemm>(sa.lay.K[2], sa.lay.cb, a, grid, s)) std::fprintf(stderr, "exl3 set_down: K\n");
     launch_check("set_down");
 #else
-    (void) sa; (void) h16; (void) ldh; (void) y; (void) ldy; (void) s;
+    if (sa.n_exp <= 0 || sa.max_rows <= 0) return;
+    if (!dispatch<RunHipDown>(sa.lay.K[2], sa.lay.cb, sa, h16, ldh, y, ldy, s)) {
+        g_launch_errors.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
+    launch_check("HIP set_down");
 #endif
 }
 
@@ -1686,7 +1801,12 @@ void gemm_rows(const Mat& m, const uint16_t* x16, int ldx, int rows, float* y, i
     }
     launch_check("gemm_rows");
 #else
-    (void) m; (void) x16; (void) ldx; (void) rows; (void) y; (void) ldy; (void) beta; (void) s;
+    if (rows <= 0) return;
+    if (!supported(m) || !dispatch<RunHipRows>(m.K, m.cb, m, x16, ldx, rows, y, ldy, beta, s)) {
+        g_launch_errors.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
+    launch_check("HIP gemm_rows");
 #endif
 }
 

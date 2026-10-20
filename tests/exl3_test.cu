@@ -442,10 +442,12 @@ void test_rot_rows(int k, int n, int K, int cb) {
 
 // the prompt path's tensor-core GEMM over FP16 rows against the reference, beta = 0 and 1
 void test_gemm_rows(int k, int n, int K, int cb, int rows) {
+#if !defined(STRATA_USE_HIP)
     if (!ex::mma_supported()) {
         std::printf("  gemm_rows: no tensor-core kernels on this device (skipped)\n");
         return;
     }
+#endif
     HostMat h = make_mat(k, n, K, cb);
     ex::Mat m;
     m.trellis = dev_copy(h.tr);
@@ -482,10 +484,12 @@ void test_gemm_rows(int k, int n, int K, int cb, int rows) {
 
 // the prompt path's expert set: 3 experts (rows 37, 0, 70) through set_gate_up and set_down against the reference
 void test_set(int K, int cb) {
+#if !defined(STRATA_USE_HIP)
     if (!ex::mma_supported()) {
         std::printf("  set_*: no tensor-core kernels on this device (skipped)\n");
         return;
     }
+#endif
     const int E = 512, F = 256, T = 64;
     const float limit = 1.5f;
     const int counts[3] = {37, 0, 70};
