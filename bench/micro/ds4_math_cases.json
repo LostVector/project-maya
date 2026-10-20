@@ -1,0 +1,33 @@
+{
+  "texts": {
+    "database": "A database maintains a write-ahead log for crash recovery. Before writing a modified page to persistent storage, it must flush the corresponding log record. Checkpoints bound the work required after a crash. Transactions have commit records, and uncommitted work must not become visible to readers. The buffer pool caches database pages in memory. Each page records a sequence number so recovery can determine whether an operation has already been applied. Concurrent transactions require isolation as well as durability. ",
+    "code": "def merge_sorted(left, right):\n    output = []\n    i = j = 0\n    while i < len(left) and j < len(right):\n        if left[i] <= right[j]:\n            output.append(left[i]); i += 1\n        else:\n            output.append(right[j]); j += 1\n    return output + left[i:] + right[j:]\n# Stable sorting retains the input order of equal keys.\n",
+    "narrative": "At sunrise the observatory opened its shutters. Mira checked the clock, recorded the air temperature, and compared the new measurements with yesterday's notebook. The northern ridge was clear, but low clouds covered the valley. She waited for the wind to settle before moving the telescope. A small calibration lamp glowed beside the instrument, and the first exposure showed a faint line near the edge of the detector. "
+  },
+  "cases": [
+    {
+      "name": "8k",
+      "tokens": 8192,
+      "prefix": 0,
+      "text": "database"
+    },
+    {
+      "name": "ragged-offset",
+      "tokens": 2067,
+      "prefix": 17,
+      "text": "code"
+    },
+    {
+      "name": "odd-window",
+      "tokens": 4160,
+      "prefix": 1,
+      "text": "narrative"
+    },
+    {
+      "name": "multi-chunk",
+      "tokens": 10000,
+      "prefix": 0,
+      "text": "code"
+    }
+  ]
+}

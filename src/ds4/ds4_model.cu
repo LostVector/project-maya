@@ -10,6 +10,7 @@
 //   moe(x): 6 of 384 routed experts (sqrt-softplus scores, biased top-k) + the shared expert
 //   h = post * moe + comb^T h;  pre = f_pre
 // and after the last layer logits = head(rmsnorm(sum_s pre[s] h[s])).
+#include "ds4_math_windows.hpp"
 #include "ds4_model.hpp"
 #include "ds4_engram_io.hpp"
 
@@ -497,6 +498,9 @@ struct Dev {
 // the chunked prompt path's buffers on a device: a chunk of C tokens through a layer at once (the attention in slabs of
 // A queries, the indexer in slabs of AI), its GEMMs through FP16 reconstructions of the weights and cuBLAS
 struct Chunk {
+    MathWindows math;
+    int* math_bounds_pin = nullptr;
+    int math_slots = 0;
     int C = 0, A = 0, AI = 0;
     float *h = nullptr, *x = nullptr, *acc = nullptr, *qr = nullptr, *kvr = nullptr, *ckr = nullptr, *cgr = nullptr,
           *latent = nullptr, *ikr = nullptr, *q = nullptr, *o = nullptr, *oa = nullptr, *iq = nullptr, *iw = nullptr,
@@ -2529,6 +2533,9 @@ struct Model::Impl {
                       dalloc(d, c.h16, C * FF, err) && dalloc(d, c.y, C * D, err) && dalloc(d, c.w16, c.w16_elems, err) &&
                       halloc(c.bounds_pin, 2048, err);
             if (!ok) return false;
+#if defined(STRATA_USE_HIP)
+            if (!halloc(c.math_bounds_pin, (size_t) 2 * ((C + 2047) / 2048) * 2048, err)) return false;
+#endif
             if (has_first && !dalloc(d, c.emb, C * D, err)) return false;
             if (has_eg) {
                 const size_t ES = 256, per = (size_t) cols * (ehd + ehd / 32);
@@ -2564,15 +2571,14 @@ struct Model::Impl {
     }
 
     // y[r][c] = x16[r] . W[:, c] (+ beta y) for r < rows: W reconstructed to FP16 in whole 128-column blocks, cuBLAS
-    // Experimental: keep the dense BLAS shapes of aligned 2K chunks while expert sets use larger chunks.
-    // A compressed-key projection has one row per `divisor` tokens.
-    static int gemm_tile_rows(int divisor = 1) {
-        (void) divisor;
+    // Experimental: preserve balanced <=2K math windows while coalescing their expert transfers.
+    static bool math_windows_enabled() {
 #if defined(STRATA_USE_HIP)
         const char* enabled = std::getenv("DS4_GEMM_TILE_2K");
-        if (enabled != nullptr && std::atoi(enabled) != 0) return std::max(1, 2048 / divisor);
+        return enabled != nullptr && std::atoi(enabled) != 0;
+#else
+        return false;
 #endif
-        return INT_MAX;
     }
     bool gemm(Dev& d, Chunk& c, const x3::Mat& m, const uint16_t* x16, int ldx, int rows, float* y, int ldy, float beta,
               std::string& err, int row_divisor = 1) {
@@ -2583,9 +2589,8 @@ struct Model::Impl {
             if (m.fmt != 0) gg::rows(nc == m.n ? m : gg::view(m, c0, nc), c.w16, false, d.st);   // (a GGUF's)
             else x3::reconstruct_rows(nc == m.n ? m : x3::view(m, c0, nc), c.w16, false, d.st);
             const float one = 1.0f;
-            const int tile = std::min(rows, gemm_tile_rows(row_divisor));
-            for (int r0 = 0; r0 < rows; r0 += tile) {
-                const int nr = std::min(tile, rows - r0);
+            for (int r0 = 0, nr = 0; r0 < rows; r0 += nr) {
+                nr = c.math.end(r0, rows, row_divisor) - r0;
                 const cublasStatus_t st = cublasGemmEx(c.blas, CUBLAS_OP_T, CUBLAS_OP_N, nc, nr, m.k, &one, c.w16, CUDA_R_16F,
                                                        m.k, x16 + (size_t) r0 * ldx, CUDA_R_16F, ldx, &beta,
                                                        y + (size_t) r0 * ldy + c0, CUDA_R_32F, ldy,
@@ -2603,9 +2608,8 @@ struct Model::Impl {
                    float* y, int ldy, std::string& err) {
         const float zero = 0.0f;
         if (rows <= 0) return true;
-        const int tile = std::min(rows, gemm_tile_rows());
-        for (int r0 = 0; r0 < rows; r0 += tile) {
-            const int nr = std::min(tile, rows - r0);
+        for (int r0 = 0, nr = 0; r0 < rows; r0 += nr) {
+            nr = c.math.end(r0, rows) - r0;
             const cublasStatus_t st = cublasGemmEx(c.blas, CUBLAS_OP_T, CUBLAS_OP_N, n, nr, k, &alpha, W, CUDA_R_16F, k,
                                                    x16 + (size_t) r0 * ldx, CUDA_R_16F, ldx, &zero,
                                                    y + (size_t) r0 * ldy, CUDA_R_32F, ldy, CUBLAS_COMPUTE_32F,
@@ -2621,9 +2625,8 @@ struct Model::Impl {
     bool hc_mix_chunk(Dev& d, Chunk& c, const float* h, const float* fn, int T, float* mixes, std::string& err) {
         const int hcd = g.hc * g.dim, n_mix = (2 + g.hc) * g.hc;
         const float one = 1.0f, zero = 0.0f;
-        const int tile = std::min(T, gemm_tile_rows());
-        for (int r0 = 0; r0 < T; r0 += tile) {
-            const int nr = std::min(tile, T - r0);
+        for (int r0 = 0, nr = 0; r0 < T; r0 += nr) {
+            nr = c.math.end(r0, T) - r0;
             if (cublasSgemm(c.blas, CUBLAS_OP_T, CUBLAS_OP_N, n_mix, nr, hcd, &one, fn, hcd,
                            h + (size_t) r0 * hcd, hcd, &zero, mixes + (size_t) r0 * 32, 32) != CUBLAS_STATUS_SUCCESS) {
                 err = "cublasSgemm (mHC mixes)";
@@ -3173,6 +3176,22 @@ struct Model::Impl {
     // over the chunk's rows, in pieces of at most C rows, each added into acc in pick order
     bool run_set(Dev& d, Chunk& c, const Layer& l, const uint8_t* wbase, int wb0, size_t stride, const int* d_bounds,
                  const int* b, int i0, int i1, int T, std::string& err) {
+        // Weights stay resident across windows, but each window retains its reference combine groups.
+        if (c.math.rows > 0 && T > c.math.rows && !c.flow) {
+            for (int t0 = 0, wi = 0; t0 < T; t0 += c.math.rows, ++wi) {
+                const int nr = std::min(c.math.rows, T - t0);
+                const int* bc = c.math_bounds_pin + (size_t) wi * 2048;
+                CK(cudaMemcpyAsync(c.bounds, bc, (size_t) (c.math_slots + 1) * 4, cudaMemcpyHostToDevice, d.st));
+                if (!run_set_window(d, c, l, wbase, wb0, stride, c.bounds, bc, i0, i1, nr, err,
+                                    t0, t0 * l.k_exp)) return false;
+            }
+            return true;
+        }
+        return run_set_window(d, c, l, wbase, wb0, stride, d_bounds, b, i0, i1, T, err, 0, 0);
+    }
+    bool run_set_window(Dev& d, Chunk& c, const Layer& l, const uint8_t* wbase, int wb0, size_t stride,
+                        const int* d_bounds, const int* b, int i0, int i1, int T, std::string& err,
+                        int token0, int rowbase) {
         const int D = g.dim, FF = l.ffn;
         while (i0 < i1) {
             int j = i0 + 1;
@@ -3193,10 +3212,10 @@ struct Model::Impl {
                 sa.n_ff = FF;
                 sa.limit = g.lim;
                 if (sa.lay.fmt == gg::kFmtMXFP4) {
-                    gg::set_gate_up(sa, c.x, D, c.row_tok + a, c.h16, FF, d.st);
+                    gg::set_gate_up(sa, c.x + (size_t) token0 * D, D, c.row_tok + rowbase + a, c.h16, FF, d.st);
                     gg::set_down(sa, c.h16, FF, c.y, D, d.st);
                 } else {
-                    x3::set_gate_up(sa, c.x, D, c.row_tok + a, c.h16, FF, d.st);
+                    x3::set_gate_up(sa, c.x + (size_t) token0 * D, D, c.row_tok + rowbase + a, c.h16, FF, d.st);
                     x3::set_down(sa, c.h16, FF, c.y, D, d.st);
                 }
                 if (dump_y != nullptr && (dump_y_layer < 0 || l.il == dump_y_layer)) {
@@ -3215,7 +3234,8 @@ struct Model::Impl {
                     std::fwrite(yv.data(), 4, yv.size(), dump_y);
                     std::fflush(dump_y);
                 }
-                moe_combine(c.acc, c.y, c.pos, c.rw, T, l.k_exp, a, a + nrows, D, d.st);
+                moe_combine(c.acc + (size_t) token0 * D, c.y, c.pos + (size_t) token0 * kPicks,
+                            c.rw + (size_t) token0 * kPicks, T, l.k_exp, a, a + nrows, D, d.st);
             }
             i0 = j;
         }
@@ -5678,6 +5698,7 @@ struct Model::Impl {
         Layer& l = member(L0, mi);
         Dev& d = devs[(size_t) l.dev];
         Chunk& c = *chunks[(size_t) l.dev];
+        c.math.p0 = p0;
         cudaSetDevice(d.id);
         cudaStream_t s = d.st;
         prof_mark(d, 0);
@@ -5693,8 +5714,8 @@ struct Model::Impl {
             uint8_t* host = c.eg_host[slot] + (size_t) l.eg * c.C * per;
             CK(cudaMemcpyAsync(c.eg_rows, host, (size_t) T * per, cudaMemcpyHostToDevice, s));
             CK(cudaEventRecord(c.eg_ev[slot], s));
-            for (int s0 = 0; s0 < T; s0 += 256) {
-                const int ns = std::min(256, T - s0);
+            for (int s0 = 0, ns = 0; s0 < T; s0 += ns) {
+                ns = c.math.slab(s0, T, 256);
                 engram_dequant_tok(c.eg_rows + (size_t) s0 * per, per, cols, ns, ehd, c.eg_x, s, eg_q6k[(size_t) l.eg] != 0);
                 x3::rows_f16(c.eg_x, cols * ehd, nullptr, ns, cols * ehd, c.eg_x16, s);
                 if (!gemm(d, c, l.eg_wkv, c.eg_x16, cols * ehd, ns, c.eg_kv, (H + 1) * D, 0.0f, err)) return false;
@@ -5786,8 +5807,8 @@ struct Model::Impl {
                     if (!gemm_f16w(c, l.i_wproj, g.ix_heads, D, c.x16, D, T,
                                    1.0f / std::sqrt((float) g.ix_hd) / std::sqrt((float) g.ix_heads), c.iw, 64, err))
                         return false;
-                    for (int a0 = 0; a0 < T; a0 += c.AI) {
-                        const int na = std::min(c.AI, T - a0);
+                    for (int a0 = 0, na = 0; a0 < T; a0 += na) {
+                        na = c.math.slab(a0, T, c.AI);
                         const int64_t pa = p0 + a0;
                         if (!gemm(d, c, l.i_wq_b, c.qr16 + (size_t) a0 * g.q_lora, g.q_lora, na, c.iq,
                                   g.ix_heads * g.ix_hd, 0.0f, err))
@@ -5865,8 +5886,8 @@ struct Model::Impl {
         }
         // the attention in slabs: q, the sparse attention, wo_a, wo_b (this member's share) into acc
         if (NHL == 0) CK(cudaMemsetAsync(c.acc, 0, (size_t) T * D * sizeof(*c.acc), s));   // (no heads)
-        for (int a0 = 0; a0 < T && NHL > 0; a0 += c.A) {
-            const int na = std::min(c.A, T - a0);
+        for (int a0 = 0, na = 0; a0 < T && NHL > 0; a0 += na) {
+            na = c.math.slab(a0, T, c.A);
             if (!gemm(d, c, l.wq_b, c.qr16 + (size_t) a0 * g.q_lora, g.q_lora, na, c.q, HQ, 0.0f, err)) return false;
             Finish fr;
             fr.rd = g.rd;
@@ -5929,12 +5950,33 @@ struct Model::Impl {
         prof_mark(d, 2);
         CK(cudaStreamSynchronize(s));
         std::vector<int> b(c.bounds_pin, c.bounds_pin + n_vs + 1);
+        const bool window_sets = c.math.rows > 0 && T > c.math.rows && !c.flow;
+        c.math_slots = n_vs;
+        if (window_sets) {
+            for (int t0 = 0, wi = 0; t0 < T; t0 += c.math.rows, ++wi) {
+                const int nr = std::min(c.math.rows, T - t0);
+                moe_sort(c.ridx + (size_t) t0 * kPicks, nr, l.k_exp, l.vs_dev, n_vs, c.bounds,
+                         c.row_tok + (size_t) t0 * l.k_exp, c.pos + (size_t) t0 * kPicks, s);
+                CK(cudaMemcpyAsync(c.math_bounds_pin + (size_t) wi * 2048, c.bounds,
+                                   (size_t) (n_vs + 1) * 4, cudaMemcpyDeviceToHost, s));
+            }
+            CK(cudaStreamSynchronize(s));
+        }
         if (dump_r != nullptr && mi == 0) {
             const size_t nk = (size_t) T * l.k_exp, np = (size_t) T * kPicks;
             std::vector<int> ri(np), rt(nk);
             std::vector<float> gl((size_t) T * l.n_exp), gb((size_t) l.n_exp);
             CK(cudaMemcpy(ri.data(), c.ridx, np * 4, cudaMemcpyDeviceToHost));
-            CK(cudaMemcpy(rt.data(), c.row_tok, nk * 4, cudaMemcpyDeviceToHost));
+            if (window_sets) {
+                std::vector<int> cursor = b;
+                for (int t = 0; t < T; ++t)
+                    for (int i = 0; i < l.k_exp; ++i) {
+                        const int v = L0.vs_pin[ri[(size_t) t * kPicks + i]];
+                        rt[(size_t) cursor[(size_t) v]++] = t;
+                    }
+            } else {
+                CK(cudaMemcpy(rt.data(), c.row_tok, nk * 4, cudaMemcpyDeviceToHost));
+            }
             CK(cudaMemcpy2D(gl.data(), (size_t) l.n_exp * 4, c.glog, 1024 * 4, (size_t) l.n_exp * 4, (size_t) T,
                             cudaMemcpyDeviceToHost));
             CK(cudaMemcpy(gb.data(), l.gate_bias, gb.size() * 4, cudaMemcpyDeviceToHost));
@@ -6686,7 +6728,11 @@ struct Model::Impl {
                 err = "token " + std::to_string(tk[t]) + " out of range";
                 return false;
             }
-        const int nc = (n + chunk - 1) / chunk, per = (n + nc - 1) / nc;
+        const int nc = (n + chunk - 1) / chunk;
+        int per = (n + nc - 1) / nc;
+        const int math_rows = math_windows_enabled() ? reference_math_rows(n, chunk) : 0;
+        if (math_rows > 0) per = math_rows * std::max(1, chunk / math_rows);
+        for (auto& c : chunks) c->math.rows = math_rows;
         Run run;
         for (int a = 0; a < n; a += per) {
             run.p0.push_back(pos + a);

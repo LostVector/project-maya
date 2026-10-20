@@ -49,3 +49,5 @@ PYBUILD
 ```
 
 Run with the same `HIP_VISIBLE_DEVICES=0,1,2`, `DS4_SPLIT=36,4` and `DS4_SKIP_UNPICKED=1` environment used above. Compare `split.f32`, `whole.f32` and `split-repeat.f32` as float32 arrays; the checkpoint criterion was bit equality for all three, with all values finite. The 8K measurements are timing only and do not establish 8K logit parity.
+
+The follow-up in [DS4_MATH_WINDOWS.md](DS4_MATH_WINDOWS.md) preserves balanced math windows and expert combine groups, with additional full-model parity evidence. Its scheduling changes require new performance measurements.
