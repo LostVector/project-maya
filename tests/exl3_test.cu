@@ -550,12 +550,14 @@ void test_set(int K, int cb, int tail = 0) {
     sa.n_ff = F;
     sa.limit = limit;
 #if defined(STRATA_USE_HIP)
+    setenv("DS4_EXL3_FMA_TILE", "8", 1);
     setenv("DS4_EXL3_FMA16", "0", 1);
     ex::set_gate_up(sa, d_x, E, d_rows, d_h, F, 0);
     ex::set_down(sa, d_h, F, d_out, E, 0);
     CK(cudaDeviceSynchronize());
     const auto h8 = host_copy(d_h, (size_t) rows * F);
     const auto y8 = host_copy(d_out, (size_t) rows * E);
+    setenv("DS4_EXL3_FMA_TILE", "12", 1);
     setenv("DS4_EXL3_FMA16", "1", 1);
 #endif
     ex::set_gate_up(sa, d_x, E, d_rows, d_h, F, 0);
@@ -568,12 +570,16 @@ void test_set(int K, int cb, int tail = 0) {
     if (!exact) ++g_fail;
     std::printf("SET_PARITY K=%d cb=%d rows=%d exact=%d\n", K, cb, rows, int(exact));
     if (bench) {
-        for (int tile : {8, 16, 16, 8, 16, 8, 8, 16}) {
+        for (int tile : {8, 12, 16, 16, 12, 8, 12, 8, 16, 16, 8, 12}) {
+            setenv("DS4_EXL3_FMA_TILE", tile == 12 ? "12" : "8", 1);
             setenv("DS4_EXL3_FMA16", tile == 16 ? "1" : "0", 1);
             for (int i = 0; i < 2000; ++i) {
                 ex::set_gate_up(sa, d_x, E, d_rows, d_h, F, 0);
                 ex::set_down(sa, d_h, F, d_out, E, 0);
             }
+            const auto hc = host_copy(d_h, (size_t) rows * F);
+            const auto yc = host_copy(d_out, (size_t) rows * E);
+            if (hc != h8 || std::memcmp(yc.data(), y8.data(), y8.size() * sizeof(float))) ++g_fail;
             cudaEvent_t begin, end; CK(cudaEventCreate(&begin)); CK(cudaEventCreate(&end));
             CK(cudaEventRecord(begin));
             for (int i = 0; i < 200; ++i) {
@@ -583,7 +589,7 @@ void test_set(int K, int cb, int tail = 0) {
             CK(cudaEventRecord(end)); CK(cudaEventSynchronize(end));
             float ms = 0; CK(cudaEventElapsedTime(&ms, begin, end));
             CK(cudaEventDestroy(begin)); CK(cudaEventDestroy(end));
-            std::printf("SET_BENCH K=%d cb=%d tile=%d mean_ms=%.6f\n", K, cb, tile, ms / 200);
+            std::printf("SET_BENCH K=%d cb=%d rows=%d tail=%d tile=%d mean_ms=%.6f\n", K, cb, rows, tail, tile, ms / 200);
             std::fflush(stdout);
         }
         return;
@@ -1455,6 +1461,11 @@ int main(int argc, char** argv) {
         return g_fail || ex::launch_errors() ? 1 : 0;
     }
     if (std::getenv("EXL3_SET_BENCH")) {
+        if (std::getenv("EXL3_SET_BROAD")) {
+            for (int tail : {8, 12, 16, 24, 32, 48, 64, 96})
+                for (int K : {3, 4}) test_set(K, 2, tail);
+            return g_fail || ex::launch_errors() ? 1 : 0;
+        }
         for (int K : {2, 3, 4}) test_set(K, 2);
         return g_fail || ex::launch_errors() ? 1 : 0;
     }
