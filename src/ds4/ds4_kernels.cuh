@@ -293,4 +293,27 @@ struct ArGroup {
 constexpr int kArBlocks = 64;
 void allreduce(float* x, int n, const ArGroup& a, int mi, unsigned seq, unsigned* cnt, cudaStream_t s);
 
+#if defined(STRATA_USE_HIP)
+constexpr int kPeerArBlocks = 64, kPeerArFlagStride = 32;
+/// Experimental exact two-rank push/reduce. All payload/flag buffers are fine-grained device memory,
+/// and both devices must have peer access enabled. Each rank owns two `stride`-float receive slots
+/// and 2*kPeerArBlocks*kPeerArFlagStride flags; `peer_*` points to the other rank's allocations.
+/// Calls on each rank's single stream must have matching shapes/sequence, with no skipped calls.
+/// Initialize all flags to first_seq-1. Sequence wraps modulo2^32, with live distances below2^31.
+/// Two slots are safe because completing a call requires the peer to have started that call: a rank
+/// cannot start call k+2 before the peer has finished reading call k. This is not graph-replay safe
+/// with a frozen host sequence. The bounded wait sets sticky *error on timeout; caller MUST check it.
+struct PeerAr {
+    float* recv = nullptr;
+    float* peer_recv = nullptr;
+    unsigned* flags = nullptr;
+    unsigned* peer_flags = nullptr;
+    unsigned* error = nullptr;
+    size_t stride = 0;
+    uint64_t timeout_ticks = 0;
+};
+bool allreduce_peer(float* x, int n, const PeerAr& a, int mi, unsigned seq, cudaStream_t s);
+#endif
+
+
 }  // namespace strata::ds4

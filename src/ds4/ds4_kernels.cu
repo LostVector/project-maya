@@ -1648,6 +1648,45 @@ __global__ void __launch_bounds__(kThreads) ar_sum_kernel(float* x, int n4, cons
 }
 
 
+#if defined(STRATA_USE_HIP)
+__global__ void __launch_bounds__(kThreads) ar_peer_kernel(float* x, int n4, PeerAr a, int mi, unsigned seq) {
+    const int slot = int(seq & 1u);
+    float4* peer = reinterpret_cast<float4*>(a.peer_recv + size_t(slot) * a.stride);
+    const float4* received = reinterpret_cast<const float4*>(a.recv + size_t(slot) * a.stride);
+    for (int q = blockIdx.x * blockDim.x + threadIdx.x; q < n4; q += gridDim.x * blockDim.x)
+        peer[q] = reinterpret_cast<const float4*>(x)[q];
+    // Every producer's stores must reach the peer before this block publishes completion.
+    __threadfence_system();
+    __syncthreads();
+    const size_t fi = (size_t(slot) * kPeerArBlocks + blockIdx.x) * kPeerArFlagStride;
+    __shared__ int ready;
+    if (threadIdx.x == 0) {
+        *reinterpret_cast<volatile unsigned*>(a.peer_flags + fi) = seq;
+        __threadfence_system();
+        const auto begin = clock64();
+        ready = 1;
+        while (int(*reinterpret_cast<const volatile unsigned*>(a.flags + fi) - seq) < 0) {
+            if (clock64() - begin >= a.timeout_ticks) {
+                atomicOr(a.error, 1u);
+                ready = 0;
+                break;
+            }
+        }
+        __threadfence_system();
+    }
+    __syncthreads();
+    if (!ready) return;
+    for (int q = blockIdx.x * blockDim.x + threadIdx.x; q < n4; q += gridDim.x * blockDim.x) {
+        const float4 local = reinterpret_cast<const float4*>(x)[q];
+        const float4 remote = ld_fresh(received + q);
+        const float4 left = mi == 0 ? local : remote;
+        const float4 right = mi == 0 ? remote : local;
+        reinterpret_cast<float4*>(x)[q] = make_float4(__fadd_rn(left.x, right.x), __fadd_rn(left.y, right.y),
+                                                    __fadd_rn(left.z, right.z), __fadd_rn(left.w, right.w));
+    }
+}
+#endif
+
 // a thread a (token, value): every stream's value read before any is written
 __global__ void hc_post_inplace_kernel(const float* __restrict__ y, float* h, const float* __restrict__ post,
                                        const float* __restrict__ comb, int dim, int hc) {
@@ -2056,5 +2095,16 @@ void allreduce(float* x, int n, const ArGroup& a, int mi, unsigned seq, unsigned
     const int blocks = std::max(1, std::min(64, cdiv(n4, kThreads)));
     ar_sum_kernel<<<blocks, kThreads, 0, s>>>(x, n4, a.data, a.stride, a.flags, a.nm, mi, slot, a.slots, seq);
 }
+
+#if defined(STRATA_USE_HIP)
+bool allreduce_peer(float* x, int n, const PeerAr& a, int mi, unsigned seq, cudaStream_t s) {
+    if (!x || (reinterpret_cast<uintptr_t>(x) & 15u) || n <= 0 || n % 4 || mi < 0 || mi > 1 || !a.recv || !a.peer_recv ||
+        (reinterpret_cast<uintptr_t>(a.recv) & 15u) || (reinterpret_cast<uintptr_t>(a.peer_recv) & 15u) || !a.flags ||
+        !a.peer_flags || !a.error || !a.timeout_ticks || a.stride < size_t(n) || a.stride % 4) return false;
+    const int blocks = std::max(1, std::min(kPeerArBlocks, cdiv(n / 4, kThreads)));
+    ar_peer_kernel<<<blocks, kThreads, 0, s>>>(x, n / 4, a, mi, seq);
+    return cudaPeekAtLastError() == cudaSuccess;
+}
+#endif
 
 }  // namespace strata::ds4
