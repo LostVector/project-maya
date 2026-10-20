@@ -157,6 +157,15 @@ struct SetArgs {
 void set_gate_up(const SetArgs& a, const float* x, int ldx, const int* row_idx, uint16_t* h16, int ldh, cudaStream_t s);
 /// y[local row] = down(h[local row]) (F32 rows, ldy floats apart).
 void set_down(const SetArgs& a, const uint16_t* h16, int ldh, float* y, int ldy, cudaStream_t s);
+// Experimental HIP-only temporary FP16 fragment path. Caller owns decoded_set_bytes(a) bytes;
+// source blobs/bounds and scratch must remain valid until all work on s finishes. No persistent weight cache.
+size_t decoded_set_bytes(const SetArgs& a);
+bool decode_set(const SetArgs& a, uint32_t* decoded, cudaStream_t s);
+bool set_gate_up_decoded(const SetArgs& a, const uint32_t* decoded, const float* x, int ldx,
+                         const int* row_idx, uint16_t* h16, int ldh, cudaStream_t s);
+bool set_down_decoded(const SetArgs& a, const uint32_t* decoded, const uint16_t* h16, int ldh,
+                      float* y, int ldy, cudaStream_t s);
+
 /// Y[r] = beta Y[r] + (X[r] W) for r < rows: one matrix over FP16 rows (ldx), F32 output rows (ldy).
 void gemm_rows(const Mat& m, const uint16_t* x16, int ldx, int rows, float* y, int ldy, float beta, cudaStream_t s);
 
