@@ -83,6 +83,12 @@ int main(){
     }
     // Missing peer is a deliberate bounded failure, checked independently from successful collective trials.
     reset(1);CK(hipSetDevice(0));auto timeout=ranks[0].peer;timeout.timeout_ticks=uint64_t(ranks[0].props.clockRate)*50;REQUIRE(allreduce_peer(ranks[0].x,4,timeout,0,1,ranks[0].stream));sync();unsigned failure=0;CK(hipSetDevice(0));CK(hipMemcpy(&failure,ranks[0].peer.error,sizeof(failure),hipMemcpyDeviceToHost));REQUIRE(failure==1);std::puts("PEER_TIMEOUT detected=1 bounded=1");
+    // A poisoned stream must drain queued collectives without repeated two-second waits.
+    auto poisoned_start=std::chrono::steady_clock::now();
+    for(unsigned seq=2;seq<34;++seq)REQUIRE(allreduce_peer(ranks[0].x,4,ranks[0].peer,0,seq,ranks[0].stream));
+    sync();double poisoned_ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-poisoned_start).count();
+    REQUIRE(poisoned_ms<1000);CK(hipMemcpy(&failure,ranks[0].peer.error,sizeof(failure),hipMemcpyDeviceToHost));REQUIRE(failure==1);
+    std::printf("PEER_POISON subsequent_calls=32 drained_ms=%.3f sticky=1\n",poisoned_ms);
     reset(1);unsigned sequence[2]={0,0};
     for(int n:{5120,16*5120,kCapacity})for(int rep=-2;rep<20;++rep)for(int pos=0;pos<2;++pos){
         int mode=(pos+(rep&1))&1;unsigned seed=unsigned(rep+3)*100+unsigned(pos)+unsigned(n);unsigned seq=++sequence[mode];

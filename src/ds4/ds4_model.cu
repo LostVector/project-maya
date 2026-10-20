@@ -7065,6 +7065,9 @@ struct Model::Impl {
 #endif
         for (const std::string& e : errs)
             if (!e.empty()) {
+#if defined(STRATA_USE_HIP)
+                for (const Group& G : groups) if (G.peer_arb_on) peer_ar_failed = true;
+#endif
                 err = e;
                 return false;
             }
