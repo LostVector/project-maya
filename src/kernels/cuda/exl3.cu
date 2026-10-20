@@ -30,6 +30,7 @@
 #include <map>
 #include <mutex>
 #include <utility>
+#include <type_traits>
 
 #if !defined(STRATA_USE_HIP)
 namespace strata::kernels::exl3::legacy {   // exl3_legacy.cu: v1.1.8's decode kernels
@@ -363,7 +364,12 @@ struct BlockSmem {
     float out[kTok * kCols];
 };
 
+// Keep single-token and multi-token calls on the same compiled arithmetic.
+// Extra prefill specializations can otherwise change HIP's inlining decision.
 template <int K, int cb, class Input = Xin>
+#if defined(STRATA_USE_HIP)
+__attribute__((noinline))
+#endif
 __device__ void block_gemv(const uint32_t* __restrict__ tr, int ld, int tc0, int k0, int k1, const Input& x,
                            const uint16_t* __restrict__ suh, int nc, BlockSmem<K>& sm) {
     constexpr int W = Words<K>::W, R = Words<K>::R;
@@ -1149,52 +1155,152 @@ __global__ void __launch_bounds__(kThreads) gate_up_kernel(const GArgs a) {
 #endif
 
 #if defined(STRATA_USE_HIP)
-// Portable bring-up path: reuse the tested 8-activation GEMV decoder. Each
-// block owns one expert, up to eight routed rows, and 128 outputs. No host
-// bounds readback or expanded-weight cache is required.
-template <int K, int cb, bool gate_up>
+// WMMA changes only prefill products: decode/window kernels keep their original
+// arithmetic. Weight tiles stay compressed until consumed; no full reconstruction.
+#if defined(__gfx1200__) || defined(__gfx1201__)
+using HipOperand = _Float16 __attribute__((ext_vector_type(8)));
+constexpr int kHipOperand = 8;
+#else
+using HipOperand = _Float16 __attribute__((ext_vector_type(16)));
+constexpr int kHipOperand = 16;
+#endif
+using HipF8 = float __attribute__((ext_vector_type(8)));
+__device__ __forceinline__ HipF8 hip_mma(HipOperand a, HipOperand b, HipF8 c) {
+#if defined(__gfx1100__) || defined(__gfx1101__) || defined(__gfx1102__) || defined(__gfx1103__) || \
+    defined(__gfx1150__) || defined(__gfx1151__) || defined(__gfx1152__)
+    return __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a, b, c);
+#elif defined(__gfx1200__) || defined(__gfx1201__)
+    return __builtin_amdgcn_wmma_f32_16x16x16_f16_w32_gfx12(a, b, c);
+#else
+    __builtin_trap(); return c;
+#endif
+}
+__device__ __forceinline__ int hip_mma_row(int i, int hi) {
+#if defined(__gfx1200__) || defined(__gfx1201__)
+    return 8 * hi + i;
+#else
+    return 2 * i + hi;
+#endif
+}
+
+template <int K> struct HipMmaSmem {
+    __half xb[16 * kCols];
+    float out[16 * kCols];
+};
+// Read a tile word from the lanes holding its compressed words. No expanded
+// weight tile goes through LDS: trellis windows decode into WMMA registers.
+template <int K>
+__device__ __forceinline__ uint32_t hip_tile_word(const uint32_t (&w)[Words<K>::R], int index) {
+    index %= Words<K>::W;
+    const uint32_t lo = __shfl_sync(0xffffffffu, w[0], index & 31);
+    if constexpr (Words<K>::R > 1) {
+        const uint32_t hi = __shfl_sync(0xffffffffu, w[1], index & 31);
+        return index < 32 ? lo : hi;
+    }
+    return lo;
+}
+template <int K, int cb, class Input>
+__device__ void hip_block_wmma(const uint32_t* tr, int ld, int tc0, int k0, int k1, const Input (&x)[2],
+                              const uint16_t* suh, int nc, HipMmaSmem<K>& sm) {
+    constexpr int W = Words<K>::W, R = Words<K>::R;
+    const int lane = threadIdx.x & 31, warp = threadIdx.x >> 5, col = lane & 15;
+    const int kh = kHipOperand == 8 ? (lane >> 4) * 8 : 0;
+    const size_t stride = (size_t) ld * W;
+    HipF8 acc = {};
+    for (int q = k0; q < k1; q += kCols) {
+        for (int row = warp; row < nc; row += kWarps) {
+            float v[4], scales[4];
+            chunk_load(x[row / kWarps], suh, q, lane, v, scales);
+            chunk_store(v, scales, lane, sm.xb + row * kCols);
+        }
+        __syncthreads();
+        uint32_t words[8][R];
+        load_tiles<K>(tr + ((size_t) (q / 16) * ld + tc0 + warp) * W, stride, lane, words);
+#pragma unroll
+        for (int step = 0; step < 8; ++step) {
+            HipOperand av, bv;
+#pragma unroll
+            for (int i = 0; i < kHipOperand; ++i)
+                av[i] = col < nc ? __builtin_bit_cast(_Float16, __half_as_ushort(sm.xb[col * kCols + step * 16 + kh + i])) : (_Float16) 0;
+#pragma unroll
+            for (int pair = 0; pair < kHipOperand / 2; ++pair) {
+                const int row = kh + pair * 2;
+                const int p = (col & 7) * 32 + (col & 8) / 2 + (row & 6) * 4 + (row & 8) / 4;
+                const int b0 = (p + 257) * K - 16, b2 = b0 + K + 16;
+                const int i0 = b0 >> 5, i2 = (b2 - 1) >> 5, shift = (i2 + 1) * 32 - b2;
+                const uint32_t lo = hip_tile_word<K>(words[step], i0), hi = hip_tile_word<K>(words[step], i2);
+                const uint32_t bits = h2u(decode2h<cb>(fsh(hi, lo, shift + K) & 0xffffu, fsh(hi, lo, shift) & 0xffffu));
+                bv[2 * pair] = __builtin_bit_cast(_Float16, (uint16_t) bits);
+                bv[2 * pair + 1] = __builtin_bit_cast(_Float16, (uint16_t) (bits >> 16));
+            }
+            acc = hip_mma(av, bv, acc);
+        }
+        __syncthreads();
+    }
+#pragma unroll
+    for (int i = 0; i < 8; ++i) {
+        const int row = hip_mma_row(i, lane >> 4);
+        if (row < nc) sm.out[row * kCols + warp * 16 + col] = acc[i];
+    }
+    __syncthreads();
+}
+
+bool hip_prefill_wmma() {
+    const char* v = std::getenv("STRATA_GLM_EXL3_HIP_WMMA");
+    return v != nullptr && std::atoi(v) != 0;
+}
+
+template <bool wmma, int K, int cb, class Input, class Smem>
+__device__ __forceinline__ void hip_prefill_product(const uint32_t* tr, int ld, int tc0, int k0, int k1,
+                                                  const Input (&x)[2], const uint16_t* suh, int nc, Smem& sm) {
+    if constexpr (wmma) hip_block_wmma<K, cb>(tr, ld, tc0, k0, k1, x, suh, nc, sm);
+    else block_gemv<K, cb>(tr, ld, tc0, k0, k1, x[0], suh, nc, sm);
+}
+
+template <int K, int cb, bool gate_up, bool wmma = false>
 __global__ void __launch_bounds__(kThreads) hip_set_kernel(SetArgs a, const float* x, int ldx,
                                                         const int* idx, uint16_t* h, int ldh,
                                                         float* y, int ldy) {
-    __shared__ __align__(16) BlockSmem<K> sm;
-    __shared__ float gate[kTok * kCols];
+    constexpr int tok = wmma ? 16 : kTok;
+    using Smem = std::conditional_t<wmma, HipMmaSmem<K>, BlockSmem<K>>;
+    __shared__ __align__(16) Smem sm;
+    __shared__ float gate[tok * kCols];
     const int e = blockIdx.z, g = blockIdx.y, warp = threadIdx.x >> 5;
     const int start = a.bounds[e], end = a.bounds[e + 1];
-    const int row = start - a.row0 + (int) blockIdx.x * kTok;
-    const int nc = min(kTok, end - start - (int) blockIdx.x * kTok);
+    const int row = start - a.row0 + (int) blockIdx.x * tok;
+    const int nc = min(tok, end - start - (int) blockIdx.x * tok);
     if (nc <= 0) return;
     const uint8_t* blob = a.wbase + (size_t) e * a.stride;
     if constexpr (gate_up) {
-        Xin in;
-        if (warp < nc) in.f = x + (size_t) idx[row + warp] * ldx;
-        block_gemv<K, cb>((const uint32_t*) (blob + a.lay.trellis[0]), a.n_ff / 16,
+        Xin in[2];
+        for (int c = warp; c < nc; c += kWarps) in[c / kWarps].f = x + (size_t) idx[row + c] * ldx;
+        hip_prefill_product<wmma, K, cb>((const uint32_t*) (blob + a.lay.trellis[0]), a.n_ff / 16,
                           g * 8, 0, a.n_embd, in, (const uint16_t*) (blob + a.lay.suh[0]), nc, sm);
-        if (warp < nc)
-            block_out(sm.out + warp * kCols, (const uint16_t*) (blob + a.lay.svh[0]) + g * kCols,
-                      gate + warp * kCols);
+        for (int c = warp; c < nc; c += kWarps)
+            block_out(sm.out + c * kCols, (const uint16_t*) (blob + a.lay.svh[0]) + g * kCols, gate + c * kCols);
         __syncthreads();
-        block_gemv<K, cb>((const uint32_t*) (blob + a.lay.trellis[1]), a.n_ff / 16,
+        hip_prefill_product<wmma, K, cb>((const uint32_t*) (blob + a.lay.trellis[1]), a.n_ff / 16,
                           g * 8, 0, a.n_embd, in, (const uint16_t*) (blob + a.lay.suh[1]), nc, sm);
-        if (warp < nc) {
+        for (int c = warp; c < nc; c += kWarps) {
             const int lane = threadIdx.x & 31;
             float v[4];
-            for (int i = 0; i < 4; ++i) v[i] = sm.out[warp * kCols + lane * 4 + i];
+            for (int i = 0; i < 4; ++i) v[i] = sm.out[c * kCols + lane * 4 + i];
             had128(v, lane);
             for (int i = 0; i < 4; ++i) {
-                const int c = lane * 4 + i;
-                const float up = v[i] * h2f(((const uint16_t*) (blob + a.lay.svh[1]))[g * kCols + c]);
-                h[(size_t) (row + warp) * ldh + g * kCols + c] =
-                    __half_as_ushort(__float2half_rn(swiglu(gate[warp * kCols + c], up, a.limit)));
+                const int j = lane * 4 + i;
+                const float up = v[i] * h2f(((const uint16_t*) (blob + a.lay.svh[1]))[g * kCols + j]);
+                h[(size_t) (row + c) * ldh + g * kCols + j] =
+                    __half_as_ushort(__float2half_rn(swiglu(gate[c * kCols + j], up, a.limit)));
             }
         }
     } else {
-        XinHalf in;
-        if (warp < nc) in.h = h + (size_t) (row + warp) * ldh;
-        block_gemv<K, cb>((const uint32_t*) (blob + a.lay.trellis[2]), a.n_embd / 16,
+        XinHalf in[2];
+        for (int c = warp; c < nc; c += kWarps) in[c / kWarps].h = h + (size_t) (row + c) * ldh;
+        hip_prefill_product<wmma, K, cb>((const uint32_t*) (blob + a.lay.trellis[2]), a.n_embd / 16,
                           g * 8, 0, a.n_ff, in, (const uint16_t*) (blob + a.lay.suh[2]), nc, sm);
-        if (warp < nc)
-            block_out(sm.out + warp * kCols, (const uint16_t*) (blob + a.lay.svh[2]) + g * kCols,
-                      y + (size_t) (row + warp) * ldy + g * kCols);
+        for (int c = warp; c < nc; c += kWarps)
+            block_out(sm.out + c * kCols, (const uint16_t*) (blob + a.lay.svh[2]) + g * kCols,
+                      y + (size_t) (row + c) * ldy + g * kCols);
     }
 }
 
@@ -1222,14 +1328,18 @@ __global__ void __launch_bounds__(kThreads) hip_rows_kernel(Mat m, const uint16_
 }
 template <int K, int cb> struct RunHipGateUp {
     static void run(const SetArgs& a, const float* x, int ldx, const int* idx, uint16_t* h, int ldh, cudaStream_t s) {
-        hip_set_kernel<K, cb, true><<<dim3((a.max_rows + kTok - 1) / kTok, a.n_ff / kCols, a.n_exp), kThreads, 0, s>>>
-            (a, x, ldx, idx, h, ldh, nullptr, 0);
+        const int tok = hip_prefill_wmma() ? 16 : kTok;
+        const dim3 grid((a.max_rows + tok - 1) / tok, a.n_ff / kCols, a.n_exp);
+        if (hip_prefill_wmma()) hip_set_kernel<K, cb, true, true><<<grid, kThreads, 0, s>>>(a, x, ldx, idx, h, ldh, nullptr, 0);
+        else hip_set_kernel<K, cb, true><<<grid, kThreads, 0, s>>>(a, x, ldx, idx, h, ldh, nullptr, 0);
     }
 };
 template <int K, int cb> struct RunHipDown {
     static void run(const SetArgs& a, const uint16_t* h, int ldh, float* y, int ldy, cudaStream_t s) {
-        hip_set_kernel<K, cb, false><<<dim3((a.max_rows + kTok - 1) / kTok, a.n_embd / kCols, a.n_exp), kThreads, 0, s>>>
-            (a, nullptr, 0, nullptr, const_cast<uint16_t*>(h), ldh, y, ldy);
+        const int tok = hip_prefill_wmma() ? 16 : kTok;
+        const dim3 grid((a.max_rows + tok - 1) / tok, a.n_embd / kCols, a.n_exp);
+        if (hip_prefill_wmma()) hip_set_kernel<K, cb, false, true><<<grid, kThreads, 0, s>>>(a, nullptr, 0, nullptr, const_cast<uint16_t*>(h), ldh, y, ldy);
+        else hip_set_kernel<K, cb, false><<<grid, kThreads, 0, s>>>(a, nullptr, 0, nullptr, const_cast<uint16_t*>(h), ldh, y, ldy);
     }
 };
 template <int K, int cb> struct RunHipRows {

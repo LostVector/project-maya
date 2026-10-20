@@ -46,3 +46,17 @@ Same fixed synthetic prompts, one output token, temperature zero, reasoning none
 The Q8 setup used `abc09c7` plus PR #297's optimization; EXL3 used `8d9a9b5` plus that optimization and these kernels. Quant, expert profiles and default chunk sizes differ (Q8 8192, EXL3 2048). These compare usable setups, not an isolated quant-only or kernel-only A/B. Unmodified HIP has no valid grouped EXL3 prefill result to time.
 
 EXL3 allocation: each R9700 has 3.02 GB dense weights and 26.85 GB experts; the third GPU has 1.04 GB dense weights and 12.40 GB experts. Host experts occupy 173.1 GB. Engram tables remain disk-backed.
+
+## WMMA research checkpoint (disabled)
+
+`STRATA_GLM_EXL3_HIP_WMMA=1` opts into experimental routed prefill matrix instructions on gfx11/gfx12. Default is **off**. Decoded trellis windows go directly into matrix registers, serving up to 16 rows per weight decode. The existing FMA path remains available. HIP decode GEMV is kept out of line so token/window calls retain identical compiled arithmetic.
+
+Do not enable this as a validated optimization: the initial eight-row prototype passed all CPU-reference kernel tests but failed the predeclared 512-token full-model comparison (maximum logit difference10.63, relative L2 0.1269, top1 agreement98.44%; FMA repeat bit-identical). Its controlled1K prefill was8.71s versus5.90s FMA. Strict full-model parity remains required.
+
+The revised register-decoding16-row implementation passes the expanded CPU-reference suite for K1..8 and all codebooks, nonzero row offsets, empty experts/tails, and actual5120x1152/2304 shapes. Microbenchmarks show1.24–1.29x speedup at10 routed rows but0.82–0.83x at107 rows. Full-model parity/performance of this revision is outstanding; these measurements do not establish an end-to-end win. Production stays on FMA.
+
+Optional extended tests and per-expert timings:
+
+```sh
+STRATA_GLM_EXL3_HIP_WMMA=1 EXL3_TEST_WMMA_EXTENDED=1 EXL3_TEST_BENCH=1 build-hip/exl3_test
+```

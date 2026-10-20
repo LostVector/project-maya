@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -483,16 +484,16 @@ void test_gemm_rows(int k, int n, int K, int cb, int rows) {
 }
 
 // the prompt path's expert set: 3 experts (rows 37, 0, 70) through set_gate_up and set_down against the reference
-void test_set(int K, int cb) {
+void test_set(int K, int cb, int E = 512, int F = 256, int row0 = 0, int first = 37, int last = 70) {
 #if !defined(STRATA_USE_HIP)
     if (!ex::mma_supported()) {
         std::printf("  set_*: no tensor-core kernels on this device (skipped)\n");
         return;
     }
 #endif
-    const int E = 512, F = 256, T = 64;
+    const int T = 64;
     const float limit = 1.5f;
-    const int counts[3] = {37, 0, 70};
+    const int counts[3] = {first, 0, last};
     // the set's blobs back to back at a fixed stride, each [gate | up | down], a part [trellis | suh | svh]
     HostMat parts[3][3];
     ex::ExpertLayout lay;
@@ -520,10 +521,10 @@ void test_set(int K, int cb) {
         }
     std::vector<float> x = rand_x(T * E);
     // the sorted rows: expert e's rows are tokens (e * 7 + j) % T
-    std::vector<int> bounds = {0}, row_tok;
+    std::vector<int> bounds = {row0}, row_tok;
     for (int e = 0; e < 3; ++e) {
         for (int j = 0; j < counts[e]; ++j) row_tok.push_back((e * 7 + j) % T);
-        bounds.push_back((int) row_tok.size());
+        bounds.push_back(row0 + (int) row_tok.size());
     }
     const int rows = (int) row_tok.size();
     uint8_t* d_blob = dev_copy(blobs);
@@ -540,14 +541,51 @@ void test_set(int K, int cb) {
     sa.lay = lay;
     sa.n_exp = 3;
     sa.bounds = d_bounds;
-    sa.row0 = 0;
-    sa.max_rows = 70;
+    sa.row0 = row0;
+    sa.max_rows = std::max(first, last);
     sa.n_embd = E;
     sa.n_ff = F;
     sa.limit = limit;
     ex::set_gate_up(sa, d_x, E, d_rows, d_h, F, 0);
     ex::set_down(sa, d_h, F, d_out, E, 0);
     CK(cudaDeviceSynchronize());
+#if defined(STRATA_USE_HIP)
+    if (std::getenv("EXL3_TEST_BENCH") != nullptr && E >= 5120) {
+        const char* old = std::getenv("STRATA_GLM_EXL3_HIP_WMMA");
+        const std::string saved = old ? old : "0";
+        for (int mode : {0, 1}) {
+            #if defined(_WIN32)
+            _putenv_s("STRATA_GLM_EXL3_HIP_WMMA", mode ? "1" : "0");
+#else
+            setenv("STRATA_GLM_EXL3_HIP_WMMA", mode ? "1" : "0", 1);
+#endif
+            for (int i = 0; i < 5; ++i) {
+                ex::set_gate_up(sa, d_x, E, d_rows, d_h, F, 0);
+                ex::set_down(sa, d_h, F, d_out, E, 0);
+            }
+            cudaEvent_t begin, end;
+            CK(cudaEventCreate(&begin)); CK(cudaEventCreate(&end));
+            CK(cudaEventRecord(begin, 0));
+            for (int i = 0; i < 100; ++i) {
+                ex::set_gate_up(sa, d_x, E, d_rows, d_h, F, 0);
+                ex::set_down(sa, d_h, F, d_out, E, 0);
+            }
+            CK(cudaEventRecord(end, 0)); CK(cudaEventSynchronize(end));
+            float ms = 0; CK(cudaEventElapsedTime(&ms, begin, end));
+            std::printf("MICRO mode=%d K=%d E=%d F=%d rows=%d ms=%.6f\n", mode,K,E,F,rows,ms/100);
+            CK(cudaEventDestroy(begin)); CK(cudaEventDestroy(end));
+        }
+#if defined(_WIN32)
+        _putenv_s("STRATA_GLM_EXL3_HIP_WMMA", saved.c_str());
+#else
+        setenv("STRATA_GLM_EXL3_HIP_WMMA", saved.c_str(), 1);
+#endif
+        // Leave the reference comparison below looking at the selected test path.
+        ex::set_gate_up(sa, d_x, E, d_rows, d_h, F, 0);
+        ex::set_down(sa, d_h, F, d_out, E, 0);
+        CK(cudaDeviceSynchronize());
+    }
+#endif
     std::vector<float> ref((size_t) rows * E);
     for (int e = 0, r = 0; e < 3; ++e) {
         std::vector<float> wg((size_t) E * F), wu((size_t) E * F), wd((size_t) F * E);
@@ -567,7 +605,7 @@ void test_set(int K, int cb) {
                          ref.data() + (size_t) r * E);
         }
     }
-    close(("set K" + std::to_string(K) + " cb" + std::to_string(cb) + " (3 experts, 107 rows)").c_str(),
+    close(("set K" + std::to_string(K) + " cb" + std::to_string(cb) + " E" + std::to_string(E) + " F" + std::to_string(F) + " rows" + std::to_string(rows) + " row0=" + std::to_string(row0)).c_str(),
           host_copy(d_out, ref.size()), ref, 3e-3);
 }
 
@@ -1444,6 +1482,20 @@ int main(int argc, char** argv) {
     for (int K = 1; K <= 8; ++K) test_cpu_exact(512, 256, K);
     test_cpu_exact(592, 384, 3);
     test_cpu_exact(592, 256, 4);
+#if defined(STRATA_USE_HIP)
+    if (std::getenv("EXL3_TEST_WMMA_EXTENDED") != nullptr) {
+        for (int K = 1; K <= 8; ++K)
+            for (int cb = 0; cb <= 2; ++cb) test_set(K, cb, 128, 128, 11, 1, 17);
+        // DeepSeek's real widths: TP2 gate/up=1152, and singleton=2304.
+        test_set(3, 2, 5120, 1152, 19, 1, 9);
+        test_set(4, 2, 5120, 2304, 23, 1, 9);
+        if (std::getenv("EXL3_TEST_BENCH") != nullptr) {
+            test_set(3, 2, 5120, 1152, 11, 37, 70);
+            test_set(4, 2, 5120, 2304, 11, 37, 70);
+        }
+        std::printf("extended exl3_test: %d failures, %d launch errors\n", g_fail, ex::launch_errors());
+    }
+#endif
     std::printf("exl3_test: %s (%d failures, %d launch errors)\n", g_fail ? "FAIL" : "ok", g_fail,
                 ex::launch_errors());
     return g_fail || ex::launch_errors() ? 1 : 0;
