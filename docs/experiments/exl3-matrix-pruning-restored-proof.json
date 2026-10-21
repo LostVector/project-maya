@@ -1,0 +1,7 @@
+{
+  "accepted_commit": "ffcaf63",
+  "production_Model_source_identical_to_accepted": true,
+  "only_extra": "Existing test-only benchmark_peer_ar_inject_error method retained from public checkpoint",
+  "restored": "Complete skip-unpicked transfer path and RAM slice helper, not just MXFP4 row slicing",
+  "cause": "Public experiment base lost this production optimization despite DS4_SKIP_UNPICKED=1 in run environment"
+}
