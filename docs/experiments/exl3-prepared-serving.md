@@ -12,6 +12,6 @@ The local accepted peer-prefill stack passed finite bit-exact full cold2069/warm
 
 The existing flag-off decoded gate/up and down GPU instruction bodies were byte-identical to the accepted pre-preparation build (45524/23004bytes). Full-logit checks also guard compiler/code-generation differences outside those two bodies.
 
-The public model/kernel/header/test changes are source-identical to the executed local delta. The local measured stack contains separate accepted transfer-pruning/RAM-slice work, not added here. Clean public production/test builds are pending.
+The public model/kernel/header/test changes are source-identical to the executed local delta. The local measured stack contains separate accepted transfer-pruning/RAM-slice work, not added here. Clean public production/test builds and the verifier self-test passed. Production prepared-input test hooks are absent.
 
 This remains an experimental checkpoint. Current serving stays on the accepted peer-prefill build; activation is not claimed. A separate compressed-weight input-reuse experiment may cover more expert groups without expanded-weight decoding cost.
