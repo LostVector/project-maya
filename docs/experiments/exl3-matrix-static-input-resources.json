@@ -1,0 +1,26 @@
+[
+  {
+    "group_segment_fixed_size": "40960",
+    "name": "_ZN6strata7kernels4exl312_GLOBAL__N_123hip_set32_matrix_kernelILi3ELi2ELb1EEEvNS1_7SetArgsEPKfiPKiPtiPfi",
+    "private_segment_fixed_size": "0",
+    "sgpr_count": "67",
+    "vgpr_count": "115",
+    "vgpr_spill_count": "0"
+  },
+  {
+    "group_segment_fixed_size": "20480",
+    "name": "_ZN6strata7kernels4exl312_GLOBAL__N_116hip_set16_kernelILi3ELi2ELb1ELb1EEEvNS1_7SetArgsEPKfiPKiPtiPfi",
+    "private_segment_fixed_size": "0",
+    "sgpr_count": "54",
+    "vgpr_count": "90",
+    "vgpr_spill_count": "0"
+  },
+  {
+    "group_segment_fixed_size": "25344",
+    "name": "_ZN6strata7kernels4exl312_GLOBAL__N_116hip_set16_kernelILi3ELi2ELb1ELb0EEEvNS1_7SetArgsEPKfiPKiPtiPfi",
+    "private_segment_fixed_size": "0",
+    "sgpr_count": "70",
+    "vgpr_count": "195",
+    "vgpr_spill_count": "0"
+  }
+]
