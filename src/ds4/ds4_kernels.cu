@@ -1666,11 +1666,12 @@ __global__ void __launch_bounds__(kThreads) ar_peer_kernel(float* x, int n4, Pee
     if (threadIdx.x == 0) {
         *reinterpret_cast<volatile unsigned*>(a.peer_flags + fi) = seq;
         __threadfence_system();
-        const auto begin = clock64();
+        // Core cycle counters may move backwards on this hardware; use the steady clock.
+        const uint64_t begin = uint64_t(wall_clock64());
         ready = 1;
         unsigned observed;
         while (int((observed = *reinterpret_cast<const volatile unsigned*>(a.flags + fi)) - seq) < 0) {
-            const auto elapsed = clock64() - begin;
+            const uint64_t elapsed = uint64_t(wall_clock64()) - begin;
             if (elapsed >= a.timeout_ticks) {
                 if ((atomicOr(a.error, 1u) & 1u) == 0 && a.failure != nullptr) {
                     a.failure->sequence = seq;

@@ -1239,11 +1239,12 @@ struct Model::Impl {
                 ok = status == hipSuccess || status == hipErrorPeerAccessAlreadyEnabled;
                 if (!ok) break;
                 hipGetLastError(); // consume already-enabled status, if any
-                hipDeviceProp_t prop{};
-                ok = hipGetDeviceProperties(&prop, d.id) == hipSuccess;
+                int wall_clock_khz = 0;
+                ok = hipDeviceGetAttribute(&wall_clock_khz, hipDeviceAttributeWallClockRate, d.id) == hipSuccess &&
+                     wall_clock_khz > 0;
                 if (!ok) break;
                 a[m].stride = G.arb.stride;
-                a[m].timeout_ticks = uint64_t(prop.clockRate) * 2000; // bounded two-second wait
+                a[m].timeout_ticks = uint64_t(wall_clock_khz) * 2000; // bounded two-second wait
                 ok = hipExtMallocWithFlags((void**) &a[m].recv, 2 * a[m].stride * sizeof(float),
                                            hipDeviceMallocFinegrained) == hipSuccess &&
                      hipExtMallocWithFlags((void**) &a[m].flags,
