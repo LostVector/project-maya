@@ -1,0 +1,791 @@
+{
+  "status": "CPU_mapping_proof_only_no_GPU_implementation",
+  "source": "libr4d matrix-native packed weight fragments",
+  "current": "decoded128-word tile stores lane + fragment*32; WMMA gathers4 words per lane",
+  "proposed": "Swap within-tile address bits5 and6 at decode_set store; each WMMA lane then reads4 consecutive uint32 words (one aligned128-bit operand). Same512-byte tile and same total cache size.",
+  "proof": {
+    "all_128_positions_bijective": true,
+    "all_32_lanes_operand_order_exact": true,
+    "mapping": [
+      {
+        "lane": 0,
+        "pair": 0,
+        "old": 0,
+        "new": 0
+      },
+      {
+        "lane": 0,
+        "pair": 1,
+        "old": 1,
+        "new": 1
+      },
+      {
+        "lane": 0,
+        "pair": 2,
+        "old": 2,
+        "new": 2
+      },
+      {
+        "lane": 0,
+        "pair": 3,
+        "old": 3,
+        "new": 3
+      },
+      {
+        "lane": 1,
+        "pair": 0,
+        "old": 4,
+        "new": 4
+      },
+      {
+        "lane": 1,
+        "pair": 1,
+        "old": 5,
+        "new": 5
+      },
+      {
+        "lane": 1,
+        "pair": 2,
+        "old": 6,
+        "new": 6
+      },
+      {
+        "lane": 1,
+        "pair": 3,
+        "old": 7,
+        "new": 7
+      },
+      {
+        "lane": 2,
+        "pair": 0,
+        "old": 8,
+        "new": 8
+      },
+      {
+        "lane": 2,
+        "pair": 1,
+        "old": 9,
+        "new": 9
+      },
+      {
+        "lane": 2,
+        "pair": 2,
+        "old": 10,
+        "new": 10
+      },
+      {
+        "lane": 2,
+        "pair": 3,
+        "old": 11,
+        "new": 11
+      },
+      {
+        "lane": 3,
+        "pair": 0,
+        "old": 12,
+        "new": 12
+      },
+      {
+        "lane": 3,
+        "pair": 1,
+        "old": 13,
+        "new": 13
+      },
+      {
+        "lane": 3,
+        "pair": 2,
+        "old": 14,
+        "new": 14
+      },
+      {
+        "lane": 3,
+        "pair": 3,
+        "old": 15,
+        "new": 15
+      },
+      {
+        "lane": 4,
+        "pair": 0,
+        "old": 16,
+        "new": 16
+      },
+      {
+        "lane": 4,
+        "pair": 1,
+        "old": 17,
+        "new": 17
+      },
+      {
+        "lane": 4,
+        "pair": 2,
+        "old": 18,
+        "new": 18
+      },
+      {
+        "lane": 4,
+        "pair": 3,
+        "old": 19,
+        "new": 19
+      },
+      {
+        "lane": 5,
+        "pair": 0,
+        "old": 20,
+        "new": 20
+      },
+      {
+        "lane": 5,
+        "pair": 1,
+        "old": 21,
+        "new": 21
+      },
+      {
+        "lane": 5,
+        "pair": 2,
+        "old": 22,
+        "new": 22
+      },
+      {
+        "lane": 5,
+        "pair": 3,
+        "old": 23,
+        "new": 23
+      },
+      {
+        "lane": 6,
+        "pair": 0,
+        "old": 24,
+        "new": 24
+      },
+      {
+        "lane": 6,
+        "pair": 1,
+        "old": 25,
+        "new": 25
+      },
+      {
+        "lane": 6,
+        "pair": 2,
+        "old": 26,
+        "new": 26
+      },
+      {
+        "lane": 6,
+        "pair": 3,
+        "old": 27,
+        "new": 27
+      },
+      {
+        "lane": 7,
+        "pair": 0,
+        "old": 28,
+        "new": 28
+      },
+      {
+        "lane": 7,
+        "pair": 1,
+        "old": 29,
+        "new": 29
+      },
+      {
+        "lane": 7,
+        "pair": 2,
+        "old": 30,
+        "new": 30
+      },
+      {
+        "lane": 7,
+        "pair": 3,
+        "old": 31,
+        "new": 31
+      },
+      {
+        "lane": 8,
+        "pair": 0,
+        "old": 64,
+        "new": 32
+      },
+      {
+        "lane": 8,
+        "pair": 1,
+        "old": 65,
+        "new": 33
+      },
+      {
+        "lane": 8,
+        "pair": 2,
+        "old": 66,
+        "new": 34
+      },
+      {
+        "lane": 8,
+        "pair": 3,
+        "old": 67,
+        "new": 35
+      },
+      {
+        "lane": 9,
+        "pair": 0,
+        "old": 68,
+        "new": 36
+      },
+      {
+        "lane": 9,
+        "pair": 1,
+        "old": 69,
+        "new": 37
+      },
+      {
+        "lane": 9,
+        "pair": 2,
+        "old": 70,
+        "new": 38
+      },
+      {
+        "lane": 9,
+        "pair": 3,
+        "old": 71,
+        "new": 39
+      },
+      {
+        "lane": 10,
+        "pair": 0,
+        "old": 72,
+        "new": 40
+      },
+      {
+        "lane": 10,
+        "pair": 1,
+        "old": 73,
+        "new": 41
+      },
+      {
+        "lane": 10,
+        "pair": 2,
+        "old": 74,
+        "new": 42
+      },
+      {
+        "lane": 10,
+        "pair": 3,
+        "old": 75,
+        "new": 43
+      },
+      {
+        "lane": 11,
+        "pair": 0,
+        "old": 76,
+        "new": 44
+      },
+      {
+        "lane": 11,
+        "pair": 1,
+        "old": 77,
+        "new": 45
+      },
+      {
+        "lane": 11,
+        "pair": 2,
+        "old": 78,
+        "new": 46
+      },
+      {
+        "lane": 11,
+        "pair": 3,
+        "old": 79,
+        "new": 47
+      },
+      {
+        "lane": 12,
+        "pair": 0,
+        "old": 80,
+        "new": 48
+      },
+      {
+        "lane": 12,
+        "pair": 1,
+        "old": 81,
+        "new": 49
+      },
+      {
+        "lane": 12,
+        "pair": 2,
+        "old": 82,
+        "new": 50
+      },
+      {
+        "lane": 12,
+        "pair": 3,
+        "old": 83,
+        "new": 51
+      },
+      {
+        "lane": 13,
+        "pair": 0,
+        "old": 84,
+        "new": 52
+      },
+      {
+        "lane": 13,
+        "pair": 1,
+        "old": 85,
+        "new": 53
+      },
+      {
+        "lane": 13,
+        "pair": 2,
+        "old": 86,
+        "new": 54
+      },
+      {
+        "lane": 13,
+        "pair": 3,
+        "old": 87,
+        "new": 55
+      },
+      {
+        "lane": 14,
+        "pair": 0,
+        "old": 88,
+        "new": 56
+      },
+      {
+        "lane": 14,
+        "pair": 1,
+        "old": 89,
+        "new": 57
+      },
+      {
+        "lane": 14,
+        "pair": 2,
+        "old": 90,
+        "new": 58
+      },
+      {
+        "lane": 14,
+        "pair": 3,
+        "old": 91,
+        "new": 59
+      },
+      {
+        "lane": 15,
+        "pair": 0,
+        "old": 92,
+        "new": 60
+      },
+      {
+        "lane": 15,
+        "pair": 1,
+        "old": 93,
+        "new": 61
+      },
+      {
+        "lane": 15,
+        "pair": 2,
+        "old": 94,
+        "new": 62
+      },
+      {
+        "lane": 15,
+        "pair": 3,
+        "old": 95,
+        "new": 63
+      },
+      {
+        "lane": 16,
+        "pair": 0,
+        "old": 32,
+        "new": 64
+      },
+      {
+        "lane": 16,
+        "pair": 1,
+        "old": 33,
+        "new": 65
+      },
+      {
+        "lane": 16,
+        "pair": 2,
+        "old": 34,
+        "new": 66
+      },
+      {
+        "lane": 16,
+        "pair": 3,
+        "old": 35,
+        "new": 67
+      },
+      {
+        "lane": 17,
+        "pair": 0,
+        "old": 36,
+        "new": 68
+      },
+      {
+        "lane": 17,
+        "pair": 1,
+        "old": 37,
+        "new": 69
+      },
+      {
+        "lane": 17,
+        "pair": 2,
+        "old": 38,
+        "new": 70
+      },
+      {
+        "lane": 17,
+        "pair": 3,
+        "old": 39,
+        "new": 71
+      },
+      {
+        "lane": 18,
+        "pair": 0,
+        "old": 40,
+        "new": 72
+      },
+      {
+        "lane": 18,
+        "pair": 1,
+        "old": 41,
+        "new": 73
+      },
+      {
+        "lane": 18,
+        "pair": 2,
+        "old": 42,
+        "new": 74
+      },
+      {
+        "lane": 18,
+        "pair": 3,
+        "old": 43,
+        "new": 75
+      },
+      {
+        "lane": 19,
+        "pair": 0,
+        "old": 44,
+        "new": 76
+      },
+      {
+        "lane": 19,
+        "pair": 1,
+        "old": 45,
+        "new": 77
+      },
+      {
+        "lane": 19,
+        "pair": 2,
+        "old": 46,
+        "new": 78
+      },
+      {
+        "lane": 19,
+        "pair": 3,
+        "old": 47,
+        "new": 79
+      },
+      {
+        "lane": 20,
+        "pair": 0,
+        "old": 48,
+        "new": 80
+      },
+      {
+        "lane": 20,
+        "pair": 1,
+        "old": 49,
+        "new": 81
+      },
+      {
+        "lane": 20,
+        "pair": 2,
+        "old": 50,
+        "new": 82
+      },
+      {
+        "lane": 20,
+        "pair": 3,
+        "old": 51,
+        "new": 83
+      },
+      {
+        "lane": 21,
+        "pair": 0,
+        "old": 52,
+        "new": 84
+      },
+      {
+        "lane": 21,
+        "pair": 1,
+        "old": 53,
+        "new": 85
+      },
+      {
+        "lane": 21,
+        "pair": 2,
+        "old": 54,
+        "new": 86
+      },
+      {
+        "lane": 21,
+        "pair": 3,
+        "old": 55,
+        "new": 87
+      },
+      {
+        "lane": 22,
+        "pair": 0,
+        "old": 56,
+        "new": 88
+      },
+      {
+        "lane": 22,
+        "pair": 1,
+        "old": 57,
+        "new": 89
+      },
+      {
+        "lane": 22,
+        "pair": 2,
+        "old": 58,
+        "new": 90
+      },
+      {
+        "lane": 22,
+        "pair": 3,
+        "old": 59,
+        "new": 91
+      },
+      {
+        "lane": 23,
+        "pair": 0,
+        "old": 60,
+        "new": 92
+      },
+      {
+        "lane": 23,
+        "pair": 1,
+        "old": 61,
+        "new": 93
+      },
+      {
+        "lane": 23,
+        "pair": 2,
+        "old": 62,
+        "new": 94
+      },
+      {
+        "lane": 23,
+        "pair": 3,
+        "old": 63,
+        "new": 95
+      },
+      {
+        "lane": 24,
+        "pair": 0,
+        "old": 96,
+        "new": 96
+      },
+      {
+        "lane": 24,
+        "pair": 1,
+        "old": 97,
+        "new": 97
+      },
+      {
+        "lane": 24,
+        "pair": 2,
+        "old": 98,
+        "new": 98
+      },
+      {
+        "lane": 24,
+        "pair": 3,
+        "old": 99,
+        "new": 99
+      },
+      {
+        "lane": 25,
+        "pair": 0,
+        "old": 100,
+        "new": 100
+      },
+      {
+        "lane": 25,
+        "pair": 1,
+        "old": 101,
+        "new": 101
+      },
+      {
+        "lane": 25,
+        "pair": 2,
+        "old": 102,
+        "new": 102
+      },
+      {
+        "lane": 25,
+        "pair": 3,
+        "old": 103,
+        "new": 103
+      },
+      {
+        "lane": 26,
+        "pair": 0,
+        "old": 104,
+        "new": 104
+      },
+      {
+        "lane": 26,
+        "pair": 1,
+        "old": 105,
+        "new": 105
+      },
+      {
+        "lane": 26,
+        "pair": 2,
+        "old": 106,
+        "new": 106
+      },
+      {
+        "lane": 26,
+        "pair": 3,
+        "old": 107,
+        "new": 107
+      },
+      {
+        "lane": 27,
+        "pair": 0,
+        "old": 108,
+        "new": 108
+      },
+      {
+        "lane": 27,
+        "pair": 1,
+        "old": 109,
+        "new": 109
+      },
+      {
+        "lane": 27,
+        "pair": 2,
+        "old": 110,
+        "new": 110
+      },
+      {
+        "lane": 27,
+        "pair": 3,
+        "old": 111,
+        "new": 111
+      },
+      {
+        "lane": 28,
+        "pair": 0,
+        "old": 112,
+        "new": 112
+      },
+      {
+        "lane": 28,
+        "pair": 1,
+        "old": 113,
+        "new": 113
+      },
+      {
+        "lane": 28,
+        "pair": 2,
+        "old": 114,
+        "new": 114
+      },
+      {
+        "lane": 28,
+        "pair": 3,
+        "old": 115,
+        "new": 115
+      },
+      {
+        "lane": 29,
+        "pair": 0,
+        "old": 116,
+        "new": 116
+      },
+      {
+        "lane": 29,
+        "pair": 1,
+        "old": 117,
+        "new": 117
+      },
+      {
+        "lane": 29,
+        "pair": 2,
+        "old": 118,
+        "new": 118
+      },
+      {
+        "lane": 29,
+        "pair": 3,
+        "old": 119,
+        "new": 119
+      },
+      {
+        "lane": 30,
+        "pair": 0,
+        "old": 120,
+        "new": 120
+      },
+      {
+        "lane": 30,
+        "pair": 1,
+        "old": 121,
+        "new": 121
+      },
+      {
+        "lane": 30,
+        "pair": 2,
+        "old": 122,
+        "new": 122
+      },
+      {
+        "lane": 30,
+        "pair": 3,
+        "old": 123,
+        "new": 123
+      },
+      {
+        "lane": 31,
+        "pair": 0,
+        "old": 124,
+        "new": 124
+      },
+      {
+        "lane": 31,
+        "pair": 1,
+        "old": 125,
+        "new": 125
+      },
+      {
+        "lane": 31,
+        "pair": 2,
+        "old": 126,
+        "new": 126
+      },
+      {
+        "lane": 31,
+        "pair": 3,
+        "old": 127,
+        "new": 127
+      }
+    ]
+  },
+  "hazards": [
+    "FMA decoded consumers must retain original layout or invert this permutation; changing decode_set stores alone corrupts them.",
+    "Selection must remain consistent over lifetime of cached buffer; cannot reinterpret live cached buffers after changing environment flags.",
+    "gfx11 operand width/layout differs; restrict new path to proven gfx12 or supply independent mapping.",
+    "Capture actual emitted global loads; source vector reads alone do not establish reduced instructions."
+  ],
+  "gates": [
+    "Exact unit tests on compressed/cached paths with sparse/empty experts and odd row tails",
+    "Include decode_set packing cost and capacity in timing",
+    "Full candidate logits/greedy invariance before retaining prior quality evidence"
+  ]
+}

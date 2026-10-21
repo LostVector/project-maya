@@ -1,0 +1,109 @@
+{
+  "status": "HIP_build_and12_unit_configurations_passed",
+  "configurations": [
+    {
+      "gpu": 0,
+      "packed": 0,
+      "matrix": 0,
+      "passed": true,
+      "isolated": true,
+      "log_sha256": "e9926abdc6a6148d8eb1de03fd192375a89503e8c40bcac8bc464ab4f61bb4a0"
+    },
+    {
+      "gpu": 0,
+      "packed": 0,
+      "matrix": 1,
+      "passed": true,
+      "isolated": true,
+      "log_sha256": "d981dd029dc3180de51bdc1c0e20187412eff93130877fbd18b575a4bd1d62a3"
+    },
+    {
+      "gpu": 0,
+      "packed": 1,
+      "matrix": 0,
+      "passed": true,
+      "isolated": true,
+      "log_sha256": "e9926abdc6a6148d8eb1de03fd192375a89503e8c40bcac8bc464ab4f61bb4a0"
+    },
+    {
+      "gpu": 0,
+      "packed": 1,
+      "matrix": 1,
+      "passed": true,
+      "isolated": true,
+      "log_sha256": "d981dd029dc3180de51bdc1c0e20187412eff93130877fbd18b575a4bd1d62a3"
+    },
+    {
+      "gpu": 1,
+      "packed": 0,
+      "matrix": 0,
+      "passed": true,
+      "isolated": true,
+      "log_sha256": "e9926abdc6a6148d8eb1de03fd192375a89503e8c40bcac8bc464ab4f61bb4a0"
+    },
+    {
+      "gpu": 1,
+      "packed": 0,
+      "matrix": 1,
+      "passed": true,
+      "isolated": true,
+      "log_sha256": "d981dd029dc3180de51bdc1c0e20187412eff93130877fbd18b575a4bd1d62a3"
+    },
+    {
+      "gpu": 1,
+      "packed": 1,
+      "matrix": 0,
+      "passed": true,
+      "isolated": true,
+      "log_sha256": "e9926abdc6a6148d8eb1de03fd192375a89503e8c40bcac8bc464ab4f61bb4a0"
+    },
+    {
+      "gpu": 1,
+      "packed": 1,
+      "matrix": 1,
+      "passed": true,
+      "isolated": true,
+      "log_sha256": "d981dd029dc3180de51bdc1c0e20187412eff93130877fbd18b575a4bd1d62a3"
+    },
+    {
+      "gpu": 2,
+      "packed": 0,
+      "matrix": 0,
+      "passed": true,
+      "isolated": true,
+      "log_sha256": "c49b28b78f3da845e0f98c06899d0f15525363fd1fae5d3c46143086e3ec8783"
+    },
+    {
+      "gpu": 2,
+      "packed": 0,
+      "matrix": 1,
+      "passed": true,
+      "isolated": true,
+      "log_sha256": "af9f061d46d9571b95d411651e2332c92e74f8e9698fb1ba5538e4461a3eacb8"
+    },
+    {
+      "gpu": 2,
+      "packed": 1,
+      "matrix": 0,
+      "passed": true,
+      "isolated": true,
+      "log_sha256": "c49b28b78f3da845e0f98c06899d0f15525363fd1fae5d3c46143086e3ec8783"
+    },
+    {
+      "gpu": 2,
+      "packed": 1,
+      "matrix": 1,
+      "passed": true,
+      "isolated": true,
+      "log_sha256": "af9f061d46d9571b95d411651e2332c92e74f8e9698fb1ba5538e4461a3eacb8"
+    }
+  ],
+  "lifetime_regression": "Environment toggled after decode_set; frozen process layout retained by both readers",
+  "scope": "CPU-reference33 cases per process, exact scalar comparisons, matrix16/32 and cached/compressed equality. Not full-model, broad quality, or performance acceptance.",
+  "feature": "Opt-in DS4_EXL3_MATRIX_PACKED=1; frozen on first use. Same cache capacity; address bits5/6 swapped.",
+  "source_sha256": {
+    "src/kernels/cuda/exl3.cu": "dcad5265888f2051734c4dc882dbeddec0aa5431328d8a958ec0ec5e09d0163f",
+    "tests/exl3_test.cu": "219a7ec264a0e16b474c80cf5abcf1d1536dea010bb67146281b3a95e7e67152",
+    "src/ds4/ds4_model.cu": "f019b9b54c302213987ac7f0f6510de5ade6c0f9be570be868f3ee3584cef694"
+  }
+}
