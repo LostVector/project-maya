@@ -1258,9 +1258,9 @@ __device__ __forceinline__ int hip_mma_row(int i, int hi) {
 #endif
 }
 
-template <int K> struct HipMmaSmem {
-    __half xb[16 * kCols];
-    float out[16 * kCols];
+template <int K, int Rows = 16> struct HipMmaSmem {
+    __half xb[Rows * kCols];
+    float out[Rows * kCols];
 };
 // Read a tile word from the lanes holding its compressed words. No expanded
 // weight tile goes through LDS: trellis windows decode into WMMA registers.
@@ -1274,14 +1274,14 @@ __device__ __forceinline__ uint32_t hip_tile_word(const uint32_t (&w)[Words<K>::
     }
     return lo;
 }
-template <int K, int cb, class Input>
-__device__ void hip_block_wmma(const uint32_t* tr, int ld, int tc0, int k0, int k1, const Input (&x)[2],
-                              const uint16_t* suh, int nc, HipMmaSmem<K>& sm) {
+template <int K, int cb, int Rows = 16, class Input>
+__device__ void hip_block_wmma(const uint32_t* tr, int ld, int tc0, int k0, int k1, const Input (&x)[Rows / kWarps],
+                              const uint16_t* suh, int nc, HipMmaSmem<K, Rows>& sm) {
     constexpr int W = Words<K>::W, R = Words<K>::R;
     const int lane = threadIdx.x & 31, warp = threadIdx.x >> 5, col = lane & 15;
     const int kh = kHipOperand == 8 ? (lane >> 4) * 8 : 0;
     const size_t stride = (size_t) ld * W;
-    HipF8 acc = {};
+    HipF8 acc[Rows / 16] = {};
     for (int q = k0; q < k1; q += kCols) {
         for (int row = warp; row < nc; row += kWarps) {
             float v[4], scales[4];
@@ -1295,9 +1295,6 @@ __device__ void hip_block_wmma(const uint32_t* tr, int ld, int tc0, int k0, int 
         for (int step = 0; step < 8; ++step) {
             HipOperand av, bv;
 #pragma unroll
-            for (int i = 0; i < kHipOperand; ++i)
-                av[i] = col < nc ? __builtin_bit_cast(_Float16, __half_as_ushort(sm.xb[col * kCols + step * 16 + kh + i])) : (_Float16) 0;
-#pragma unroll
             for (int pair = 0; pair < kHipOperand / 2; ++pair) {
                 const int row = kh + pair * 2;
                 const int p = (col & 7) * 32 + (col & 8) / 2 + (row & 6) * 4 + (row & 8) / 4;
@@ -1308,14 +1305,22 @@ __device__ void hip_block_wmma(const uint32_t* tr, int ld, int tc0, int k0, int 
                 bv[2 * pair] = __builtin_bit_cast(_Float16, (uint16_t) bits);
                 bv[2 * pair + 1] = __builtin_bit_cast(_Float16, (uint16_t) (bits >> 16));
             }
-            acc = hip_mma(av, bv, acc);
+#pragma unroll
+            for (int m = 0; m < Rows / 16; ++m) {
+#pragma unroll
+                for (int i = 0; i < kHipOperand; ++i)
+                    av[i] = m * 16 + col < nc ? __builtin_bit_cast(_Float16, __half_as_ushort(sm.xb[(m * 16 + col) * kCols + step * 16 + kh + i])) : (_Float16) 0;
+                acc[m] = hip_mma(av, bv, acc[m]);
+            }
         }
         __syncthreads();
     }
 #pragma unroll
     for (int i = 0; i < 8; ++i) {
         const int row = hip_mma_row(i, lane >> 4);
-        if (row < nc) sm.out[row * kCols + warp * 16 + col] = acc[i];
+#pragma unroll
+        for (int m = 0; m < Rows / 16; ++m)
+            if (m * 16 + row < nc) sm.out[(m * 16 + row) * kCols + warp * 16 + col] = acc[m][i];
     }
     __syncthreads();
 }
@@ -1378,6 +1383,60 @@ __global__ void __launch_bounds__(kThreads) hip_set16_kernel(SetArgs a, const fl
         hip_matrix_product<matrix, K, cb>((const uint32_t*) (blob + a.lay.trellis[2]), a.n_embd / 16,
                               g * 8, 0, a.n_ff, in, (const uint16_t*) (blob + a.lay.suh[2]), nc, sm);
         for (int j = 0; j < 2; ++j) {
+            const int c = warp + j * 8;
+            if (c < nc) block_out(sm.out + c * kCols, (const uint16_t*) (blob + a.lay.svh[2]) + g * kCols,
+                                  y + (size_t) (row + c) * ldy + g * kCols);
+        }
+    }
+}
+template <int K, int cb, bool gate_up>
+__global__ void __launch_bounds__(kThreads) hip_set32_matrix_kernel(SetArgs a, const float* x, int ldx,
+                                                          const int* idx, uint16_t* h, int ldh,
+                                                          float* y, int ldy) {
+    __shared__ __align__(16) HipMmaSmem<K, 32> sm;
+    __shared__ float gate[32 * kCols];
+    const int e = blockIdx.z, g = blockIdx.y, warp = threadIdx.x >> 5;
+    const int start = a.bounds[e], end = a.bounds[e + 1];
+    const int row = start - a.row0 + (int) blockIdx.x * 32;
+    const int nc = min(32, end - start - (int) blockIdx.x * 32);
+    if (nc <= 0) return;
+    const uint8_t* blob = a.wbase + (size_t) e * a.stride;
+    if constexpr (gate_up) {
+        Xin in[4];
+        for (int j = 0; j < 4; ++j)
+            if (warp + j * 8 < nc) in[j].f = x + (size_t) idx[row + warp + j * 8] * ldx;
+        hip_block_wmma<K, cb, 32>((const uint32_t*) (blob + a.lay.trellis[0]), a.n_ff / 16,
+                              g * 8, 0, a.n_embd, in, (const uint16_t*) (blob + a.lay.suh[0]), nc, sm);
+        for (int j = 0; j < 4; ++j) {
+            const int c = warp + j * 8;
+            if (c < nc) block_out(sm.out + c * kCols, (const uint16_t*) (blob + a.lay.svh[0]) + g * kCols,
+                                  gate + c * kCols);
+        }
+        __syncthreads();
+        hip_block_wmma<K, cb, 32>((const uint32_t*) (blob + a.lay.trellis[1]), a.n_ff / 16,
+                              g * 8, 0, a.n_embd, in, (const uint16_t*) (blob + a.lay.suh[1]), nc, sm);
+        for (int j = 0; j < 4; ++j) {
+            const int r = warp + j * 8;
+            if (r < nc) {
+                const int lane = threadIdx.x & 31;
+                float v[4];
+                for (int i = 0; i < 4; ++i) v[i] = sm.out[r * kCols + lane * 4 + i];
+                had128(v, lane);
+                for (int i = 0; i < 4; ++i) {
+                    const int c = lane * 4 + i;
+                    const float up = v[i] * h2f(((const uint16_t*) (blob + a.lay.svh[1]))[g * kCols + c]);
+                    h[(size_t) (row + r) * ldh + g * kCols + c] =
+                        __half_as_ushort(__float2half_rn(swiglu(gate[r * kCols + c], up, a.limit)));
+                }
+            }
+        }
+    } else {
+        XinHalf in[4];
+        for (int j = 0; j < 4; ++j)
+            if (warp + j * 8 < nc) in[j].h = h + (size_t) (row + warp + j * 8) * ldh;
+        hip_block_wmma<K, cb, 32>((const uint32_t*) (blob + a.lay.trellis[2]), a.n_embd / 16,
+                              g * 8, 0, a.n_ff, in, (const uint16_t*) (blob + a.lay.suh[2]), nc, sm);
+        for (int j = 0; j < 4; ++j) {
             const int c = warp + j * 8;
             if (c < nc) block_out(sm.out + c * kCols, (const uint16_t*) (blob + a.lay.svh[2]) + g * kCols,
                                   y + (size_t) (row + c) * ldy + g * kCols);
@@ -1611,8 +1670,14 @@ __global__ void __launch_bounds__(kThreads) hip_rows_kernel(Mat m, const uint16_
 template <int K, int cb> struct RunHipGateUp {
     static void run(const SetArgs& a, const float* x, int ldx, const int* idx, uint16_t* h, int ldh, cudaStream_t s) {
         if (hip_matrix_relaxed_enabled()) {
+            const char* tile = std::getenv("DS4_EXL3_MATRIX_ROWS");
+            if (tile && std::atoi(tile) == 32) {
+                hip_set32_matrix_kernel<K, cb, true><<<dim3((a.max_rows + 31) / 32, a.n_ff / kCols, a.n_exp), kThreads, 0, s>>>
+                    (a, x, ldx, idx, h, ldh, nullptr, 0);
+            } else {
             hip_set16_kernel<K, cb, true, true><<<dim3((a.max_rows + 15) / 16, a.n_ff / kCols, a.n_exp), kThreads, 0, s>>>
                 (a, x, ldx, idx, h, ldh, nullptr, 0);
+            }
             return;
         }
         if (hip_fma16_enabled()) {
@@ -1627,8 +1692,14 @@ template <int K, int cb> struct RunHipGateUp {
 template <int K, int cb> struct RunHipDown {
     static void run(const SetArgs& a, const uint16_t* h, int ldh, float* y, int ldy, cudaStream_t s) {
         if (hip_matrix_relaxed_enabled()) {
+            const char* tile = std::getenv("DS4_EXL3_MATRIX_ROWS");
+            if (tile && std::atoi(tile) == 32) {
+                hip_set32_matrix_kernel<K, cb, false><<<dim3((a.max_rows + 31) / 32, a.n_embd / kCols, a.n_exp), kThreads, 0, s>>>
+                    (a, nullptr, 0, nullptr, const_cast<uint16_t*>(h), ldh, y, ldy);
+            } else {
             hip_set16_kernel<K, cb, false, true><<<dim3((a.max_rows + 15) / 16, a.n_embd / kCols, a.n_exp), kThreads, 0, s>>>
                 (a, nullptr, 0, nullptr, const_cast<uint16_t*>(h), ldh, y, ldy);
+            }
             return;
         }
         if (hip_fma16_enabled()) {
