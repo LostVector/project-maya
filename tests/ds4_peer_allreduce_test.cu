@@ -55,7 +55,7 @@ int main(){
     CK(hipHostMalloc(&old.flags,2*2*32*sizeof(unsigned),hipHostMallocMapped|hipHostMallocPortable));
     for(int i=0;i<2;++i){auto&r=ranks[i];CK(hipSetDevice(i));CK(hipGetDeviceProperties(&r.props,i));int supported=0;CK(hipDeviceCanAccessPeer(&supported,i,1-i));REQUIRE(supported);CK(hipDeviceEnablePeerAccess(1-i,0));size_t available,total;CK(hipMemGetInfo(&available,&total));REQUIRE(available>256ull*1024*1024);
         CK(hipStreamCreateWithFlags(&r.stream,hipStreamNonBlocking));CK(hipEventCreate(&r.begin));CK(hipEventCreate(&r.end));
-        CK(hipMalloc(&r.storage,(kCapacity+8ull)*sizeof(float)));r.x=r.storage+4;CK(hipMalloc(&r.reference,kCapacity*sizeof(float)));CK(hipMalloc(&r.counter,sizeof(unsigned)));CK(hipMalloc(&r.peer.error,4*sizeof(unsigned)));
+        CK(hipMalloc(&r.storage,(kCapacity+8ull)*sizeof(float)));r.x=r.storage+4;CK(hipMalloc(&r.reference,kCapacity*sizeof(float)));CK(hipMalloc(&r.counter,sizeof(unsigned)));CK(hipMalloc(&r.peer.error,4*sizeof(unsigned)));CK(hipMalloc(&r.peer.failure,sizeof(PeerArFailure)));
         CK(hipExtMallocWithFlags((void**)&r.peer.recv,2ull*kCapacity*sizeof(float),hipDeviceMallocFinegrained));
         CK(hipExtMallocWithFlags((void**)&r.peer.flags,flag_count*sizeof(unsigned),hipDeviceMallocFinegrained));r.peer.stride=kCapacity;r.peer.timeout_ticks=uint64_t(r.props.clockRate)*2000;
         hipPointerAttribute_t attr{};CK(hipPointerGetAttributes(&attr,r.peer.recv));REQUIRE(attr.type==hipMemoryTypeDevice && attr.device==i && !attr.isManaged && (attr.allocationFlags&hipDeviceMallocFinegrained));
@@ -63,7 +63,7 @@ int main(){
     }
     for(int i=0;i<2;++i){ranks[i].peer.peer_recv=ranks[1-i].peer.recv;ranks[i].peer.peer_flags=ranks[1-i].peer.flags;}
     auto sync=[&](){for(int i=0;i<2;++i){CK(hipSetDevice(i));CK(hipStreamSynchronize(ranks[i].stream));}};
-    auto reset=[&](unsigned first){sync();std::fill(old.flags,old.flags+128,first-1);for(int i=0;i<2;++i){CK(hipSetDevice(i));auto&r=ranks[i];init_flags<<<32,256,0,r.stream>>>(r.peer.flags,flag_count,first-1);CK(hipMemsetAsync(r.counter,0,sizeof(unsigned),r.stream));CK(hipMemsetAsync(r.peer.error,0,4*sizeof(unsigned),r.stream));CK(hipMemsetAsync(r.peer.error+1,0xff,sizeof(unsigned),r.stream));CK(hipGetLastError());}sync();};
+    auto reset=[&](unsigned first){sync();std::fill(old.flags,old.flags+128,first-1);for(int i=0;i<2;++i){CK(hipSetDevice(i));auto&r=ranks[i];init_flags<<<32,256,0,r.stream>>>(r.peer.flags,flag_count,first-1);CK(hipMemsetAsync(r.counter,0,sizeof(unsigned),r.stream));CK(hipMemsetAsync(r.peer.failure,0,sizeof(PeerArFailure),r.stream));CK(hipMemsetAsync(r.peer.error,0,4*sizeof(unsigned),r.stream));CK(hipMemsetAsync(r.peer.error+1,0xff,sizeof(unsigned),r.stream));CK(hipGetLastError());}sync();};
     auto errors=[&](){sync();for(int i=0;i<2;++i){unsigned e[4];CK(hipSetDevice(i));CK(hipMemcpy(e,ranks[i].peer.error,sizeof(e),hipMemcpyDeviceToHost));if(e[0]){std::fprintf(stderr,"PEER_ERROR rank=%d flags=%u index=%u actual=%08x expected=%08x\n",i,e[0],e[1],e[2],e[3]);return false;}}return true;};
     reset(1);
     REQUIRE(!allreduce_peer(ranks[0].x,3,ranks[0].peer,0,1,ranks[0].stream));
@@ -79,15 +79,19 @@ int main(){
                 if(i==0 && trial%17==0)std::this_thread::sleep_for(std::chrono::milliseconds(2));
             }
         }
-        REQUIRE(errors());std::printf("PEER_CHAIN first=%u calls=128 variable_sizes=1 signed_zero_extreme_subnormal=1 guards=1 exact=1\n",first);std::fflush(stdout);
+        REQUIRE(errors());for(int rank=0;rank<2;++rank){PeerArFailure detail{};CK(hipSetDevice(rank));CK(hipMemcpy(&detail,ranks[rank].peer.failure,sizeof(detail),hipMemcpyDeviceToHost));REQUIRE(detail.captured==0);}std::printf("PEER_CHAIN first=%u calls=128 variable_sizes=1 signed_zero_extreme_subnormal=1 guards=1 exact=1\n",first);std::fflush(stdout);
     }
     // Missing peer is a deliberate bounded failure, checked independently from successful collective trials.
-    reset(1);CK(hipSetDevice(0));auto timeout=ranks[0].peer;timeout.timeout_ticks=uint64_t(ranks[0].props.clockRate)*50;REQUIRE(allreduce_peer(ranks[0].x,4,timeout,0,1,ranks[0].stream));sync();unsigned failure=0;CK(hipSetDevice(0));CK(hipMemcpy(&failure,ranks[0].peer.error,sizeof(failure),hipMemcpyDeviceToHost));REQUIRE(failure==1);std::puts("PEER_TIMEOUT detected=1 bounded=1");
+    reset(1);const auto timeout_start=std::chrono::steady_clock::now();CK(hipSetDevice(0));auto timeout=ranks[0].peer;timeout.timeout_ticks=uint64_t(ranks[0].props.clockRate)*50;REQUIRE(allreduce_peer(ranks[0].x,4,timeout,0,1,ranks[0].stream));sync();unsigned failure=0;CK(hipSetDevice(0));CK(hipMemcpy(&failure,ranks[0].peer.error,sizeof(failure),hipMemcpyDeviceToHost));REQUIRE(failure==1);const double timeout_wall_ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-timeout_start).count();
+    PeerArFailure first_failure{};CK(hipMemcpy(&first_failure,ranks[0].peer.failure,sizeof(first_failure),hipMemcpyDeviceToHost));
+    REQUIRE(first_failure.captured==1 && first_failure.sequence==1 && first_failure.observed==0 && first_failure.block==0 && first_failure.n4==1 && first_failure.rank==0);
+    REQUIRE(first_failure.elapsed_ticks>=first_failure.timeout_ticks && first_failure.timeout_ticks==timeout.timeout_ticks);
+    std::printf("PEER_TIMEOUT detected=1 bounded=1 first_sequence=1 observed=0 block=0 payload_bytes=16 detail_checked=1 wall_ms=%.3f elapsed_ticks=%llu budget_ticks=%llu\n",timeout_wall_ms,(unsigned long long)first_failure.elapsed_ticks,(unsigned long long)first_failure.timeout_ticks);
     // A poisoned stream must drain queued collectives without repeated two-second waits.
     auto poisoned_start=std::chrono::steady_clock::now();
     for(unsigned seq=2;seq<34;++seq)REQUIRE(allreduce_peer(ranks[0].x,4,ranks[0].peer,0,seq,ranks[0].stream));
     sync();double poisoned_ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-poisoned_start).count();
-    REQUIRE(poisoned_ms<1000);CK(hipMemcpy(&failure,ranks[0].peer.error,sizeof(failure),hipMemcpyDeviceToHost));REQUIRE(failure==1);
+    REQUIRE(poisoned_ms<1000);CK(hipMemcpy(&failure,ranks[0].peer.error,sizeof(failure),hipMemcpyDeviceToHost));REQUIRE(failure==1);PeerArFailure after_poison{};CK(hipMemcpy(&after_poison,ranks[0].peer.failure,sizeof(after_poison),hipMemcpyDeviceToHost));REQUIRE(std::memcmp(&first_failure,&after_poison,sizeof(first_failure))==0);
     std::printf("PEER_POISON subsequent_calls=32 drained_ms=%.3f sticky=1\n",poisoned_ms);
     reset(1);unsigned sequence[2]={0,0};
     for(int n:{5120,16*5120,kCapacity})for(int rep=-2;rep<20;++rep)for(int pos=0;pos<2;++pos){
@@ -96,5 +100,5 @@ int main(){
         auto begin=std::chrono::steady_clock::now();for(int i=0;i<2;++i){CK(hipSetDevice(i));auto&r=ranks[i];CK(hipEventRecord(r.begin,r.stream));if(mode)REQUIRE(allreduce_peer(r.x,n,r.peer,i,seq,r.stream));else allreduce(r.x,n,old,i,seq,r.counter,r.stream);CK(hipEventRecord(r.end,r.stream));}sync();double wall=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-begin).count();float gpu[2];for(int i=0;i<2;++i){CK(hipSetDevice(i));auto&r=ranks[i];CK(hipEventElapsedTime(&gpu[i],r.begin,r.end));check_values<<<256,256,0,r.stream>>>(r.x,r.reference,n,r.peer.error);CK(hipGetLastError());}REQUIRE(errors());
         std::printf("PEER_BENCH n=%d rep=%d mode=%d warmup=%d wall_ms=%.9g gpu0_ms=%.9g gpu1_ms=%.9g exact=1\n",n,rep,mode,rep<0,wall,gpu[0],gpu[1]);std::fflush(stdout);
     }
-    for(int i=0;i<2;++i){CK(hipSetDevice(i));auto&r=ranks[i];CK(hipFree(r.peer.recv));CK(hipFree(r.peer.flags));CK(hipFree(r.peer.error));CK(hipFree(r.counter));CK(hipFree(r.reference));CK(hipFree(r.storage));CK(hipEventDestroy(r.begin));CK(hipEventDestroy(r.end));CK(hipStreamDestroy(r.stream));}CK(hipHostFree(old.data));CK(hipHostFree(old.flags));std::puts("PEER_COMPLETE exact=1");return 0;
+    for(int i=0;i<2;++i){CK(hipSetDevice(i));auto&r=ranks[i];CK(hipFree(r.peer.recv));CK(hipFree(r.peer.flags));CK(hipFree(r.peer.error));CK(hipFree(r.peer.failure));CK(hipFree(r.counter));CK(hipFree(r.reference));CK(hipFree(r.storage));CK(hipEventDestroy(r.begin));CK(hipEventDestroy(r.end));CK(hipStreamDestroy(r.stream));}CK(hipHostFree(old.data));CK(hipHostFree(old.flags));std::puts("PEER_COMPLETE exact=1");return 0;
 }

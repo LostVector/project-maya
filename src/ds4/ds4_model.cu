@@ -1249,9 +1249,11 @@ struct Model::Impl {
                      hipExtMallocWithFlags((void**) &a[m].flags,
                                            2 * kPeerArBlocks * kPeerArFlagStride * sizeof(unsigned),
                                            hipDeviceMallocFinegrained) == hipSuccess &&
-                     hipMalloc((void**) &a[m].error, sizeof(unsigned)) == hipSuccess;
+                     hipMalloc((void**) &a[m].error, sizeof(unsigned)) == hipSuccess &&
+                     hipMalloc((void**) &a[m].failure, sizeof(PeerArFailure)) == hipSuccess;
                 if (ok) ok = hipMemset(a[m].flags, 0, 2 * kPeerArBlocks * kPeerArFlagStride * sizeof(unsigned)) == hipSuccess &&
-                             hipMemset(a[m].error, 0, sizeof(unsigned)) == hipSuccess;
+                             hipMemset(a[m].error, 0, sizeof(unsigned)) == hipSuccess &&
+                             hipMemset(a[m].failure, 0, sizeof(PeerArFailure)) == hipSuccess;
             }
             if (!ok) {
                 for (int m = 0; m < 2; ++m) {
@@ -1259,6 +1261,7 @@ struct Model::Impl {
                     if (a[m].recv) hipFree(a[m].recv);
                     if (a[m].flags) hipFree(a[m].flags);
                     if (a[m].error) hipFree(a[m].error);
+                    if (a[m].failure) hipFree(a[m].failure);
                     hipGetLastError();
                 }
                 std::fprintf(stderr, "ds4: peer prefill all-reduce unavailable; retaining host transport\n");
@@ -1271,8 +1274,9 @@ struct Model::Impl {
                 d.allocs.push_back(a[m].recv);
                 d.allocs.push_back(a[m].flags);
                 d.allocs.push_back(a[m].error);
+                d.allocs.push_back(a[m].failure);
                 d.scratch += 2 * a[m].stride * sizeof(float) +
-                             (2 * kPeerArBlocks * kPeerArFlagStride + 1) * sizeof(unsigned);
+                             (2 * kPeerArBlocks * kPeerArFlagStride + 1) * sizeof(unsigned) + sizeof(PeerArFailure);
             }
             G.peer_arb = a;
             G.peer_arb_on = true;
@@ -1292,6 +1296,16 @@ struct Model::Impl {
                 if (sync_status != cudaSuccess || copy_status != hipSuccess || error) {
                     std::fprintf(stderr, "PEER_AR_FAILURE gpu=%d rank=%d stream_status=%d copy_status=%d error=%u sequence=%u\n",
                                  d.id, m, int(sync_status), int(copy_status), error, chunks[(size_t) G.mem[m]]->arb_seq);
+                    if (error & 1u) {
+                        PeerArFailure detail{};
+                        const auto detail_status = hipMemcpy(&detail, G.peer_arb[m].failure, sizeof(detail), hipMemcpyDeviceToHost);
+                        std::fprintf(stderr, "PEER_AR_TIMEOUT_DETAIL gpu=%d rank=%d copy_status=%d captured=%u "
+                                     "failed_sequence=%u observed=%u block=%u n4=%u elapsed_ticks=%llu timeout_ticks=%llu "
+                                     "last_submitted_sequence=%u\n", d.id, m, int(detail_status), detail.captured,
+                                     detail.sequence, detail.observed, detail.block, detail.n4,
+                                     (unsigned long long) detail.elapsed_ticks, (unsigned long long) detail.timeout_ticks,
+                                     chunks[(size_t) G.mem[m]]->arb_seq);
+                    }
                     peer_ar_failed = true;
                 }
             }
