@@ -1,0 +1,26 @@
+{
+  "status": "frozen_before_operator_measurement",
+  "device": 1,
+  "groups": [
+    8,
+    4,
+    2,
+    1
+  ],
+  "cases": [
+    "steady512",
+    "early512",
+    "ragged73",
+    "window_only",
+    "explicit7",
+    "single",
+    "ragged511",
+    "one_head",
+    "scale_edges"
+  ],
+  "layout": "DS4_HIP_ATTN_SWIZZLE=1 throughout",
+  "treatment": "DS4_HIP_ATTN_GLOBAL_READS0/1",
+  "parity": "72comparisons vsG8genericreads;finite andguards;scale_edges coversall254finiteE4M3codes",
+  "timing": "2warmups,8timedsamples/option,alternatingforward/reverse8options;GPUevent andhostwall;allstaging/unpackincluded",
+  "decision": "Quickscreenonly;positiveconsistentG8steadyandearly requireconfirmationbeforefullmodel. No promotionfromoperatorresults."
+}

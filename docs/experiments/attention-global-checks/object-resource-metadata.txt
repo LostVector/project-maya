@@ -1,0 +1,123 @@
+
+      - .actual_access:  read_only
+        .address_space:  global
+        .offset:         0
+        .size:           8
+        .value_kind:     global_buffer
+      - .address_space:  global
+        .offset:         8
+        .size:           8
+        .value_kind:     global_buffer
+      - .address_space:  global
+        .offset:         16
+        .size:           8
+        .value_kind:     global_buffer
+      - .actual_access:  read_only
+        .address_space:  global
+        .offset:         24
+        .size:           8
+        .value_kind:     global_buffer
+      - .offset:         32
+        .size:           4
+        .value_kind:     by_value
+      - .offset:         40
+        .size:           224
+        .value_kind:     by_value
+      - .actual_access:  read_only
+        .address_space:  global
+        .offset:         264
+        .size:           8
+        .value_kind:     global_buffer
+      - .offset:         272
+        .size:           4
+        .value_kind:     by_value
+      - .offset:         276
+        .size:           4
+        .value_kind:     by_value
+      - .actual_access:  write_only
+        .address_space:  global
+        .offset:         280
+        .size:           8
+        .value_kind:     global_buffer
+    .gfx1250_revision: B0
+    .group_segment_fixed_size: 19040
+    .kernarg_segment_align: 8
+    .kernarg_segment_size: 288
+    .language:       OpenCL C
+    .language_version:
+      - 2
+      - 0
+    .max_flat_workgroup_size: 256
+    .name:           _ZN6strata3ds412_GLOBAL__N_125sparse_attn_packed_kernelILi8ELb1ELb0EEEvPKfPKtPKhPKiiNS0_8AttnRowsES4_ifPf
+    .private_segment_fixed_size: 0
+    .sgpr_count:     33
+    .sgpr_spill_count: 0
+    .symbol:         _ZN6strata3ds412_GLOBAL__N_125sparse_attn_packed_kernelILi8ELb1ELb0EEEvPKfPKtPKhPKiiNS0_8AttnRowsES4_ifPf.kd
+    .uniform_work_group_size: 1
+    .uses_dynamic_stack: false
+    .vgpr_count:     88
+    .vgpr_spill_count: 0
+    .wavefront_size: 32
+    .workgroup_processor_mode: 1
+
+  - .args:
+      - .actual_access:  read_only
+        .address_space:  global
+        .offset:         0
+        .size:           8
+        .value_kind:     global_buffer
+      - .address_space:  global
+        .offset:         8
+        .size:           8
+        .value_kind:     global_buffer
+      - .address_space:  global
+        .offset:         16
+        .size:           8
+        .value_kind:     global_buffer
+      - .actual_access:  read_only
+        .address_space:  global
+        .offset:         24
+        .size:           8
+        .value_kind:     global_buffer
+      - .offset:         32
+        .size:           4
+        .value_kind:     by_value
+      - .offset:         40
+        .size:           224
+        .value_kind:     by_value
+      - .actual_access:  read_only
+        .address_space:  global
+        .offset:         264
+        .size:           8
+        .value_kind:     global_buffer
+      - .offset:         272
+        .size:           4
+        .value_kind:     by_value
+      - .offset:         276
+        .size:           4
+        .value_kind:     by_value
+      - .actual_access:  write_only
+        .address_space:  global
+        .offset:         280
+        .size:           8
+        .value_kind:     global_buffer
+    .gfx1250_revision: B0
+    .group_segment_fixed_size: 19040
+    .kernarg_segment_align: 8
+    .kernarg_segment_size: 288
+    .language:       OpenCL C
+    .language_version:
+      - 2
+      - 0
+    .max_flat_workgroup_size: 256
+    .name:           _ZN6strata3ds412_GLOBAL__N_125sparse_attn_packed_kernelILi8ELb1ELb1EEEvPKfPKtPKhPKiiNS0_8AttnRowsES4_ifPf
+    .private_segment_fixed_size: 0
+    .sgpr_count:     33
+    .sgpr_spill_count: 0
+    .symbol:         _ZN6strata3ds412_GLOBAL__N_125sparse_attn_packed_kernelILi8ELb1ELb1EEEvPKfPKtPKhPKiiNS0_8AttnRowsES4_ifPf.kd
+    .uniform_work_group_size: 1
+    .uses_dynamic_stack: false
+    .vgpr_count:     88
+    .vgpr_spill_count: 0
+    .wavefront_size: 32
+    .workgroup_processor_mode: 1

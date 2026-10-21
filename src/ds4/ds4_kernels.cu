@@ -903,11 +903,41 @@ __global__ void __launch_bounds__(kThreads) sparse_attn_kernel(const float* __re
 // output value's weighted sum by the same thread in row order - the same bits for any G.
 constexpr int kStage = 16;   // rows a pass stages (a thread: 32 values of one)
 
+// Row pointers staged in LDS still refer exclusively to global allocations.
+// Keep that address-space information for the optional HIP load experiment.
+template <bool GlobalReads>
+__device__ __forceinline__ uint4 attn_row_load128(const uint8_t* p) {
+#if defined(STRATA_USE_HIP)
+    if constexpr (GlobalReads) {
+        // HIP vector structs cannot be copied from an address-space-qualified
+        // source; scalar 64-bit loads retain the exact sixteen bytes instead.
+        typedef __attribute__((address_space(1))) const unsigned long long* Global64;
+        const Global64 g = (Global64) p;
+        const unsigned long long a = g[0], b = g[1];
+        return make_uint4((uint32_t) a, (uint32_t) (a >> 32), (uint32_t) b, (uint32_t) (b >> 32));
+    }
+#endif
+    return *(const uint4*) p;
+}
+
+template <bool GlobalReads>
+__device__ __forceinline__ uint8_t attn_row_load8(const uint8_t* p) {
+#if defined(STRATA_USE_HIP)
+    if constexpr (GlobalReads) {
+        typedef __attribute__((address_space(1))) const uint8_t* Global8;
+        return *((Global8) p);
+    }
+#endif
+    return *p;
+}
+
 // values part * 32 .. + 32 of a packed compressed row (kKvFp4, 512 values) as BF16 into dst[0 .. 4) (exact: the
 // values are E2M1 times an E4M3 scale)
+template <bool GlobalReads = false>
 __device__ __forceinline__ void unpack32(const uint8_t* rr, int part, uint4* dst) {
-    const uint4 cw = *(const uint4*) (rr + part * 16);   // 32 codes, two scale groups
-    const float k0 = e4m3_value(rr[256 + part * 2]) * 16384.0f, k1 = e4m3_value(rr[256 + part * 2 + 1]) * 16384.0f;
+    const uint4 cw = attn_row_load128<GlobalReads>(rr + part * 16);   // 32 codes, two scale groups
+    const float k0 = e4m3_value(attn_row_load8<GlobalReads>(rr + 256 + part * 2)) * 16384.0f,
+                k1 = e4m3_value(attn_row_load8<GlobalReads>(rr + 256 + part * 2 + 1)) * 16384.0f;
     const uint32_t wv[4] = {cw.x, cw.y, cw.z, cw.w};
     uint32_t o[16];
 #pragma unroll
@@ -954,7 +984,7 @@ __device__ __forceinline__ int attn_tile_offset(int row, int col) {
     return row * 512 + col;
 }
 
-template <int G, bool Swizzle = false>
+template <int G, bool Swizzle = false, bool GlobalReads = false>
 __global__ void __launch_bounds__(kThreads) sparse_attn_packed_kernel(const float* __restrict__ q,
                                                                       const uint16_t* __restrict__ win,
                                                                       const uint8_t* __restrict__ ckv,
@@ -1000,11 +1030,10 @@ __global__ void __launch_bounds__(kThreads) sparse_attn_packed_kernel(const floa
         if constexpr (Swizzle) {
             uint4 decoded[4];
             if (t0 + j < n_win) {
-                const uint4* src = (const uint4*) (rows[j] + part * 64);
 #pragma unroll
-                for (int i = 0; i < 4; ++i) decoded[i] = src[i];
+                for (int i = 0; i < 4; ++i) decoded[i] = attn_row_load128<GlobalReads>(rows[j] + part * 64 + i * 16);
             } else {
-                unpack32(rows[j], part, decoded);
+                unpack32<GlobalReads>(rows[j], part, decoded);
             }
 #pragma unroll
             for (int i = 0; i < 4; ++i)
@@ -2035,6 +2064,14 @@ void sparse_attn(const float* q, const uint16_t* win, const void* ckv, const int
 #if defined(STRATA_USE_HIP)
     const char* swizzle = std::getenv("DS4_HIP_ATTN_SWIZZLE");
     if (swizzle && std::atoi(swizzle) == 1) {
+        const char* global_reads = std::getenv("DS4_HIP_ATTN_GLOBAL_READS");
+        if (global_reads && std::atoi(global_reads) == 1) {
+            if (G == 8) sparse_attn_packed_kernel<8, true, true><<<grid, kThreads, 0, s>>>(q, win, c, sel, sel_stride, a, sink, heads, scale, out);
+            else if (G == 4) sparse_attn_packed_kernel<4, true, true><<<grid, kThreads, 0, s>>>(q, win, c, sel, sel_stride, a, sink, heads, scale, out);
+            else if (G == 2) sparse_attn_packed_kernel<2, true, true><<<grid, kThreads, 0, s>>>(q, win, c, sel, sel_stride, a, sink, heads, scale, out);
+            else sparse_attn_packed_kernel<1, true, true><<<grid, kThreads, 0, s>>>(q, win, c, sel, sel_stride, a, sink, heads, scale, out);
+            return;
+        }
         if (G == 8) sparse_attn_packed_kernel<8, true><<<grid, kThreads, 0, s>>>(q, win, c, sel, sel_stride, a, sink, heads, scale, out);
         else if (G == 4) sparse_attn_packed_kernel<4, true><<<grid, kThreads, 0, s>>>(q, win, c, sel, sel_stride, a, sink, heads, scale, out);
         else if (G == 2) sparse_attn_packed_kernel<2, true><<<grid, kThreads, 0, s>>>(q, win, c, sel, sel_stride, a, sink, heads, scale, out);
