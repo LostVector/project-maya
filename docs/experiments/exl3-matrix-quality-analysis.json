@@ -1,0 +1,273 @@
+{
+  "scope": "Twelve-task handcrafted smoke screen, not broad quality proof",
+  "cases": [
+    {
+      "id": "multiply",
+      "expected": "391",
+      "long_context": false,
+      "arms": [
+        {
+          "mode": 0,
+          "text": "391",
+          "ended": true,
+          "passed": true,
+          "answer_mean_nll": 3.293512833124623e-05
+        },
+        {
+          "mode": 1,
+          "text": "391",
+          "ended": true,
+          "passed": true,
+          "answer_mean_nll": 3.293512833124623e-05
+        }
+      ],
+      "regression": false
+    },
+    {
+      "id": "signed_arithmetic",
+      "expected": "-24",
+      "long_context": false,
+      "arms": [
+        {
+          "mode": 0,
+          "text": "-24",
+          "ended": true,
+          "passed": true,
+          "answer_mean_nll": 5.474680252959274e-05
+        },
+        {
+          "mode": 1,
+          "text": "-24",
+          "ended": true,
+          "passed": true,
+          "answer_mean_nll": 5.474680252959274e-05
+        }
+      ],
+      "regression": false
+    },
+    {
+      "id": "python_comprehension",
+      "expected": "[0, 4, 16]",
+      "long_context": false,
+      "arms": [
+        {
+          "mode": 0,
+          "text": "[0, 4, 16]",
+          "ended": true,
+          "passed": true,
+          "answer_mean_nll": 3.3420784780623258e-06
+        },
+        {
+          "mode": 1,
+          "text": "[0, 4, 16]",
+          "ended": true,
+          "passed": true,
+          "answer_mean_nll": 3.3420784780623258e-06
+        }
+      ],
+      "regression": false
+    },
+    {
+      "id": "python_count",
+      "expected": "3",
+      "long_context": false,
+      "arms": [
+        {
+          "mode": 0,
+          "text": "3",
+          "ended": true,
+          "passed": true,
+          "answer_mean_nll": 0.0002869164825511916
+        },
+        {
+          "mode": 1,
+          "text": "3",
+          "ended": true,
+          "passed": true,
+          "answer_mean_nll": 0.0002869164825511916
+        }
+      ],
+      "regression": false
+    },
+    {
+      "id": "sql_distinct",
+      "expected": "2",
+      "long_context": false,
+      "arms": [
+        {
+          "mode": 0,
+          "text": "2",
+          "ended": true,
+          "passed": true,
+          "answer_mean_nll": 0.03922587716905923
+        },
+        {
+          "mode": 1,
+          "text": "2",
+          "ended": true,
+          "passed": true,
+          "answer_mean_nll": 0.03922587716905923
+        }
+      ],
+      "regression": false
+    },
+    {
+      "id": "logic",
+      "expected": "No",
+      "long_context": false,
+      "arms": [
+        {
+          "mode": 0,
+          "text": "No",
+          "ended": true,
+          "passed": true,
+          "answer_mean_nll": 4.3490912560173456e-07
+        },
+        {
+          "mode": 1,
+          "text": "No",
+          "ended": true,
+          "passed": true,
+          "answer_mean_nll": 4.3490912560173456e-07
+        }
+      ],
+      "regression": false
+    },
+    {
+      "id": "state_machine",
+      "expected": "12",
+      "long_context": true,
+      "arms": [
+        {
+          "mode": 0,
+          "text": "12",
+          "ended": true,
+          "passed": true,
+          "answer_mean_nll": 0.08239518259125589
+        },
+        {
+          "mode": 1,
+          "text": "12",
+          "ended": true,
+          "passed": true,
+          "answer_mean_nll": 0.051583217509787005
+        }
+      ],
+      "regression": false
+    },
+    {
+      "id": "json_lookup",
+      "expected": "11",
+      "long_context": true,
+      "arms": [
+        {
+          "mode": 0,
+          "text": "11",
+          "ended": true,
+          "passed": true,
+          "answer_mean_nll": 5.614085168303973e-06
+        },
+        {
+          "mode": 1,
+          "text": "11",
+          "ended": true,
+          "passed": true,
+          "answer_mean_nll": 2.6686224714467244e-06
+        }
+      ],
+      "regression": false
+    },
+    {
+      "id": "sort_key",
+      "expected": "Aspen",
+      "long_context": true,
+      "arms": [
+        {
+          "mode": 0,
+          "text": "Sable",
+          "ended": true,
+          "passed": false,
+          "answer_mean_nll": 1.6440346761802207
+        },
+        {
+          "mode": 1,
+          "text": "Sable",
+          "ended": true,
+          "passed": false,
+          "answer_mean_nll": 1.3804535280256456
+        }
+      ],
+      "regression": false
+    },
+    {
+      "id": "sql_sum",
+      "expected": "10",
+      "long_context": true,
+      "arms": [
+        {
+          "mode": 0,
+          "text": "10",
+          "ended": true,
+          "passed": true,
+          "answer_mean_nll": 0.0017343185218479107
+        },
+        {
+          "mode": 1,
+          "text": "10",
+          "ended": true,
+          "passed": true,
+          "answer_mean_nll": 0.0017633999134716305
+        }
+      ],
+      "regression": false
+    },
+    {
+      "id": "intervals",
+      "expected": "5",
+      "long_context": true,
+      "arms": [
+        {
+          "mode": 0,
+          "text": "5",
+          "ended": true,
+          "passed": true,
+          "answer_mean_nll": 0.0016221975140453537
+        },
+        {
+          "mode": 1,
+          "text": "5",
+          "ended": true,
+          "passed": true,
+          "answer_mean_nll": 0.0018943392569212847
+        }
+      ],
+      "regression": false
+    },
+    {
+      "id": "text_fact",
+      "expected": "Lima",
+      "long_context": true,
+      "arms": [
+        {
+          "mode": 0,
+          "text": "Lima",
+          "ended": true,
+          "passed": true,
+          "answer_mean_nll": 4.46979981916229e-08
+        },
+        {
+          "mode": 1,
+          "text": "Lima",
+          "ended": true,
+          "passed": true,
+          "answer_mean_nll": 1.261544468889042e-07
+        }
+      ],
+      "regression": false
+    }
+  ],
+  "baseline_pass": 11,
+  "candidate_pass": 11,
+  "regressions": [],
+  "mean_case_nll_delta": -0.024507896175649375
+}

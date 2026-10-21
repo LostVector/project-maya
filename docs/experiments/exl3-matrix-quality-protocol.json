@@ -1,0 +1,13 @@
+{
+  "scope": "Twelve original deterministic task smoke tests, six short and six with96 distractor records; not a broad held-out benchmark. Frozen before padded-model results.",
+  "generation": "Greedy, thinking disabled, max64 tokens; decode both arms and score normalized exact answers. Preserve outputs even when baseline fails.",
+  "teacher_forcing": "Score expected-answer token NLL from each arm after its own prompt prefill; compare per-case and aggregate, without inventing equality requirements.",
+  "acceptance": "Report all per-case pass/fail and baseline-to-candidate regressions. Any observed task regression needs investigation before enabling. No tuning the fixture or dropping failed cases.",
+  "quality_limit": "A pass cannot establish unchanged general quality; numerical drift and this smoke screen remain explicit limitations.",
+  "template_sha256": "2561a5200b62f7816c667ee6f7a3b9483beb62ce27b79acc70e39b60fad33bd0",
+  "cases_sha256": "fc825d737aca22b586b1b4177800eaf9cdd17cda0be1ab1b01d0d5f8ab52a5a3",
+  "normalization": "Trim surrounding whitespace/code delimiters; parse Python literals and compare values; Yes/No case-insensitive; other text exact. Require EOS before64-token cap.",
+  "analyzer_sha256": "900ab4a19fd538a12bd0fa34fb9dc5a744c8ce3df25c8504234db8555e7ef053",
+  "harness_commit": "02989de",
+  "state": "source_prepared_not_built"
+}
