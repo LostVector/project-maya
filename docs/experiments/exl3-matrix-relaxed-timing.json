@@ -1,0 +1,87 @@
+{
+  "cold-code": {
+    "blocks": [
+      {
+        "block": 0,
+        "baseline_mean_ms": 15810.194,
+        "candidate_mean_ms": 13999.815999999999,
+        "gain_pct": 11.450700731439479
+      },
+      {
+        "block": 1,
+        "baseline_mean_ms": 13896.3825,
+        "candidate_mean_ms": 14019.593499999999,
+        "gain_pct": -0.8866408218109953
+      }
+    ],
+    "mean_block_gain_pct": 5.2820299548142415,
+    "ci95_pct": [
+      -73.09836388196615,
+      83.66242379159462
+    ],
+    "baseline_median_ms": 13896.3825,
+    "candidate_median_ms": 13999.815999999999,
+    "all_swap_zero": true
+  },
+  "warm-database": {
+    "blocks": [
+      {
+        "block": 0,
+        "baseline_mean_ms": 9404.9255,
+        "candidate_mean_ms": 9867.91,
+        "gain_pct": -4.9227875329794
+      },
+      {
+        "block": 1,
+        "baseline_mean_ms": 9389.0335,
+        "candidate_mean_ms": 9866.6375,
+        "gain_pct": -5.0868281596822635
+      },
+      {
+        "block": 2,
+        "baseline_mean_ms": 9392.4235,
+        "candidate_mean_ms": 9867.189,
+        "gain_pct": -5.0547710077170125
+      },
+      {
+        "block": 3,
+        "baseline_mean_ms": 9392.827000000001,
+        "candidate_mean_ms": 9862.711,
+        "gain_pct": -5.002583354297893
+      },
+      {
+        "block": 4,
+        "baseline_mean_ms": 9404.8705,
+        "candidate_mean_ms": 9876.919,
+        "gain_pct": -5.01919191763458
+      },
+      {
+        "block": 5,
+        "baseline_mean_ms": 9405.716499999999,
+        "candidate_mean_ms": 9863.099,
+        "gain_pct": -4.862814013158929
+      }
+    ],
+    "mean_block_gain_pct": -4.991495997578347,
+    "ci95_pct": [
+      -5.079625910279857,
+      -4.903366084876836
+    ],
+    "baseline_median_ms": 9399.384,
+    "candidate_median_ms": 9866.189,
+    "all_swap_zero": true
+  },
+  "decode_pairs": [
+    [
+      "0",
+      "5176.340",
+      "12.364"
+    ],
+    [
+      "1",
+      "3032.724",
+      "21.103"
+    ]
+  ],
+  "scope": "Balanced isolated native run; cold2 blocks, warm6 blocks. Decode single pair is diagnostic only. Numerical and quality acceptance separate."
+}

@@ -1,0 +1,17 @@
+{
+  "status": "kernel_tests_passed_full_model_starting",
+  "authorization": "User relaxed strict bit-for-bit equivalence for next matrix experiment; quality regression is still an issue to measure, not assumed acceptable.",
+  "baseline_commit": "e58fba87860cd3035711285fac67d29db6f9b850",
+  "flag": "DS4_EXL3_MATRIX_RELAXED",
+  "scope": "Compressed grouped expert prefill uses earlier register16 WMMA prototype; existing predecoded branch retained. Decode unchanged.",
+  "gates": [
+    "CPU-reference kernel checks and finite outputs",
+    "Compare complete logits: max error, relative L2, mean KL, top1 agreement; report against prior strict limits without treating mismatch alone as failure",
+    "Held-out prompt log-likelihood and deterministic generation review before enabling",
+    "Balanced full-model timings; reject speed regression",
+    "Keep accepted serving selected until explicit experimental review"
+  ],
+  "prior_issue": "Initial older WMMA prototype max logit error10.63, relL2 .1269, top1 98.44%; cold prefill slowdown. Revised register16 previously lacked fullmodel validation.",
+  "activation": "Default off; no deployment based solely on kernel test.",
+  "kernel_validation": "33 all-K/codebook/shape cases pass direct CPU-reference tolerance, zero failures/launch errors, both modes; relaxed candidate differs from exact FMA as expected."
+}

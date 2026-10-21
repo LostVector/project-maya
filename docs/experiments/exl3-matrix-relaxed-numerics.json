@@ -1,0 +1,37 @@
+{
+  "scope": "Numerical diagnostics, not held-out quality acceptance",
+  "comparisons": {
+    "cold": {
+      "rows": 2069,
+      "finite": true,
+      "baseline_repeat_exact": true,
+      "independent_baseline_exact": true,
+      "max_abs_error": 85.90084075927734,
+      "relative_l2": 0.12450371358459018,
+      "top1_agreement": 0.9685838569357177,
+      "mean_kl": 0.014279390843676883,
+      "p99_kl": 0.1388696780817979,
+      "mean_next_token_nll_baseline": 1.0422307102863964,
+      "mean_next_token_nll_candidate": 1.0342449391714894
+    },
+    "warm": {
+      "rows": 2048,
+      "finite": true,
+      "baseline_repeat_exact": true,
+      "independent_baseline_exact": true,
+      "max_abs_error": 18.591460704803467,
+      "relative_l2": 0.16807942332102807,
+      "top1_agreement": 0.98828125,
+      "mean_kl": 0.011892756770806173,
+      "p99_kl": 0.18028678789110034,
+      "mean_next_token_nll_baseline": 0.20038842970436296,
+      "mean_next_token_nll_candidate": 0.20573410715531992
+    }
+  },
+  "generation": {
+    "tokens_baseline": 80,
+    "tokens_candidate": 80,
+    "equal": false,
+    "first_divergence": 20
+  }
+}
