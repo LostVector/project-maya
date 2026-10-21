@@ -43,17 +43,21 @@ passed: **156 exact comparisons** total. Small ragged cases have microsecond
 noise/regressions; all samples are retained.
 
 These are operator results, not a full-model speedup. A strict 2/3/2 native
-validation is in progress at this checkpoint: 195 candidate/repeat states,
-independent prior references, resumed pruned prefix, and free answers. Mode 3
+validation passed: 195 candidate and 195 repeat full-vocabulary states matched
+exactly, and 195 independently accepted prior references also matched. All nine
+free responses were correct, including the resumed pruned prefix case; observed
+model swap was zero. Matched API performance validation is in progress. Mode 3
 is not selected in serving. A fresh production executable and test executable
 were built with freshly compiled model objects and kernel object; the internal
 combine signature changed, so reusing an older model object would be invalid.
-No full CMake build or full-model numerical/API acceptance is claimed here.
+CMake configure passed; no full CMake build or API performance acceptance is
+claimed here.
 
 ## Regrade
 
 ```sh
 python3 docs/experiments/moe-combine-rows-checks/check.py
+python3 docs/experiments/moe-combine-rows-checks/check_native.py
 ```
 
 Explicit build targets are `ds4_moe_combine_rows_bench` and
