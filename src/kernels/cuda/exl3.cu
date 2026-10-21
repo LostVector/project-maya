@@ -1468,8 +1468,15 @@ struct HipDecodedSmem {
     __half xb[2 * 16 * kCols];
     float out[16 * kCols];
 };
+// Freeze the cache layout for this process: existing buffers must never be
+// reinterpreted after an environment change. Both FMA and matrix readers agree.
+inline bool hip_matrix_packed_enabled() {
+    static const bool enabled = [] { const char* v=std::getenv("DS4_EXL3_MATRIX_PACKED"); return v && std::atoi(v)!=0; }();
+    return enabled;
+}
+__device__ __forceinline__ int hip_packed_fragment(int i) { return ((i & 1) << 1) | (i >> 1); }
 template <int K, int cb>
-__global__ void __launch_bounds__(kThreads) hip_decode_set_kernel(SetArgs a, int part, uint32_t* decoded) {
+__global__ void __launch_bounds__(kThreads) hip_decode_set_kernel(SetArgs a, int part, uint32_t* decoded, bool packed) {
     const int e = blockIdx.z, q = blockIdx.x, g = blockIdx.y;
     if (a.bounds[e + 1] <= a.bounds[e]) return;
     const int k = part < 2 ? a.n_embd : a.n_ff, n = part < 2 ? a.n_ff : a.n_embd;
@@ -1488,12 +1495,12 @@ __global__ void __launch_bounds__(kThreads) hip_decode_set_kernel(SetArgs a, int
         slice_frags<K, cb>(wc[s], stage + warp * W, lane, value);
         const size_t at = ((((size_t) g * (k / 128) + q) * 8 + s) * 8 + warp) * 128 + lane;
 #pragma unroll
-        for (int i = 0; i < 4; ++i) dst[at + i * 32] = value[i];
+        for (int i = 0; i < 4; ++i) dst[at + (packed ? hip_packed_fragment(i) : i) * 32] = value[i];
     }
 }
 template <class Input>
 __device__ void hip_block_decoded16(const uint32_t* __restrict__ decoded, int output_block, int k0, int k1, const Input (&x)[2],
-                           const uint16_t* __restrict__ suh, int nc, HipDecodedSmem& sm) {
+                           const uint16_t* __restrict__ suh, int nc, HipDecodedSmem& sm, bool packed) {
     const int lane = threadIdx.x & 31, warp = threadIdx.x >> 5, g = lane >> 2, t = lane & 3;
 
     const int nq = (k1 - k0) / kCols;
@@ -1518,7 +1525,7 @@ __device__ void hip_block_decoded16(const uint32_t* __restrict__ decoded, int ou
             uint32_t f[4];
             const size_t at = ((((size_t) output_block * nq + q) * 8 + s) * 8 + warp) * 128 + lane;
 #pragma unroll
-            for (int i = 0; i < 4; ++i) f[i] = decoded[at + i * 32];
+            for (int i = 0; i < 4; ++i) f[i] = decoded[at + (packed ? hip_packed_fragment(i) : i) * 32];
             float v[8];
 #pragma unroll
             for (int i = 0; i < 4; ++i) {
@@ -1561,7 +1568,7 @@ __device__ void hip_block_decoded16(const uint32_t* __restrict__ decoded, int ou
 template <bool gate_up>
 __global__ void __launch_bounds__(kThreads) hip_set_decoded_kernel(SetArgs a, const uint32_t* decoded, const float* x, int ldx,
                                                           const int* idx, uint16_t* h, int ldh,
-                                                          float* y, int ldy) {
+                                                          float* y, int ldy, bool packed) {
     __shared__ __align__(16) HipDecodedSmem sm;
     __shared__ float gate[16 * kCols];
     const int e = blockIdx.z, g = blockIdx.y, warp = threadIdx.x >> 5;
@@ -1575,7 +1582,7 @@ __global__ void __launch_bounds__(kThreads) hip_set_decoded_kernel(SetArgs a, co
         for (int j = 0; j < 2; ++j)
             if (warp + j * 8 < nc) in[j].f = x + (size_t) idx[row + warp + j * 8] * ldx;
         hip_block_decoded16(decoded + ((size_t) e * 3 + 0) * ((size_t) a.n_embd * a.n_ff / 2),
-                              g, 0, a.n_embd, in, (const uint16_t*) (blob + a.lay.suh[0]), nc, sm);
+                              g, 0, a.n_embd, in, (const uint16_t*) (blob + a.lay.suh[0]), nc, sm, packed);
         for (int j = 0; j < 2; ++j) {
             const int c = warp + j * 8;
             if (c < nc) block_out(sm.out + c * kCols, (const uint16_t*) (blob + a.lay.svh[0]) + g * kCols,
@@ -1583,7 +1590,7 @@ __global__ void __launch_bounds__(kThreads) hip_set_decoded_kernel(SetArgs a, co
         }
         __syncthreads();
         hip_block_decoded16(decoded + ((size_t) e * 3 + 1) * ((size_t) a.n_embd * a.n_ff / 2),
-                              g, 0, a.n_embd, in, (const uint16_t*) (blob + a.lay.suh[1]), nc, sm);
+                              g, 0, a.n_embd, in, (const uint16_t*) (blob + a.lay.suh[1]), nc, sm, packed);
         for (int j = 0; j < 2; ++j) {
             const int r = warp + j * 8;
             if (r < nc) {
@@ -1604,7 +1611,7 @@ __global__ void __launch_bounds__(kThreads) hip_set_decoded_kernel(SetArgs a, co
         for (int j = 0; j < 2; ++j)
             if (warp + j * 8 < nc) in[j].h = h + (size_t) (row + warp + j * 8) * ldh;
         hip_block_decoded16(decoded + ((size_t) e * 3 + 2) * ((size_t) a.n_embd * a.n_ff / 2),
-                              g, 0, a.n_ff, in, (const uint16_t*) (blob + a.lay.suh[2]), nc, sm);
+                              g, 0, a.n_ff, in, (const uint16_t*) (blob + a.lay.suh[2]), nc, sm, packed);
         for (int j = 0; j < 2; ++j) {
             const int c = warp + j * 8;
             if (c < nc) block_out(sm.out + c * kCols, (const uint16_t*) (blob + a.lay.svh[2]) + g * kCols,
@@ -1614,7 +1621,7 @@ __global__ void __launch_bounds__(kThreads) hip_set_decoded_kernel(SetArgs a, co
 }
 template <int Rows, class Input>
 __device__ void hip_block_decoded_matrix(const uint32_t* decoded, int output_block, int k0, int k1,
- const Input (&x)[Rows / kWarps], const uint16_t* suh, int nc, HipMmaSmem<1, Rows>& sm) {
+ const Input (&x)[Rows / kWarps], const uint16_t* suh, int nc, HipMmaSmem<1, Rows>& sm, bool packed) {
  const int lane=threadIdx.x&31, warp=threadIdx.x>>5, col=lane&15;
  const int kh=kHipOperand==8?(lane>>4)*8:0;
  const int nq=(k1-k0)/kCols;
@@ -1629,15 +1636,24 @@ __device__ void hip_block_decoded_matrix(const uint32_t* decoded, int output_blo
 #pragma unroll
   for(int step=0;step<8;++step) {
    HipOperand bv;
+#if defined(__gfx1200__) || defined(__gfx1201__)
+   if (packed) {
+    const size_t tile=((((size_t)output_block*nq+q)*8+step)*8+warp)*128;
+    bv=hip_matrix_load_operand(reinterpret_cast<const __half*>(decoded+tile+lane*4),true);
+   } else
+#endif
+   {
 #pragma unroll
    for(int pair=0;pair<kHipOperand/2;++pair) {
     const int k=kh+pair*2;
     const int flane=(col&7)*4+(k&7)/2;
     const int fragment=(col/8)*2+k/8;
     const size_t at=((((size_t)output_block*nq+q)*8+step)*8+warp)*128+flane+fragment*32;
-    const uint32_t bits=decoded[at];
+    const size_t mapped=(at & ~size_t(127)) | (at & 31) | ((at & 32)<<1) | ((at & 64)>>1);
+    const uint32_t bits=decoded[packed ? mapped : at];
     bv[pair*2]=__builtin_bit_cast(_Float16,(uint16_t)bits);
     bv[pair*2+1]=__builtin_bit_cast(_Float16,(uint16_t)(bits>>16));
+   }
    }
 #pragma unroll
    for(int m=0;m<Rows/16;++m) {
@@ -1657,7 +1673,7 @@ __device__ void hip_block_decoded_matrix(const uint32_t* decoded, int output_blo
 template <bool gate_up, int Rows>
 __global__ void __launch_bounds__(kThreads) hip_set_decoded_matrix_kernel(SetArgs a, const uint32_t* decoded, const float* x, int ldx,
                                                           const int* idx, uint16_t* h, int ldh,
-                                                          float* y, int ldy) {
+                                                          float* y, int ldy, bool packed) {
     __shared__ __align__(16) HipMmaSmem<1, Rows> sm;
     __shared__ float gate[Rows * kCols];
     const int e = blockIdx.z, g = blockIdx.y, warp = threadIdx.x >> 5;
@@ -1671,7 +1687,7 @@ __global__ void __launch_bounds__(kThreads) hip_set_decoded_matrix_kernel(SetArg
         for (int j = 0; j < Rows / kWarps; ++j)
             if (warp + j * 8 < nc) in[j].f = x + (size_t) idx[row + warp + j * 8] * ldx;
         hip_block_decoded_matrix<Rows>(decoded + ((size_t) e * 3 + 0) * ((size_t) a.n_embd * a.n_ff / 2),
-                              g, 0, a.n_embd, in, (const uint16_t*) (blob + a.lay.suh[0]), nc, sm);
+                              g, 0, a.n_embd, in, (const uint16_t*) (blob + a.lay.suh[0]), nc, sm, packed);
         for (int j = 0; j < Rows / kWarps; ++j) {
             const int c = warp + j * 8;
             if (c < nc) block_out(sm.out + c * kCols, (const uint16_t*) (blob + a.lay.svh[0]) + g * kCols,
@@ -1679,7 +1695,7 @@ __global__ void __launch_bounds__(kThreads) hip_set_decoded_matrix_kernel(SetArg
         }
         __syncthreads();
         hip_block_decoded_matrix<Rows>(decoded + ((size_t) e * 3 + 1) * ((size_t) a.n_embd * a.n_ff / 2),
-                              g, 0, a.n_embd, in, (const uint16_t*) (blob + a.lay.suh[1]), nc, sm);
+                              g, 0, a.n_embd, in, (const uint16_t*) (blob + a.lay.suh[1]), nc, sm, packed);
         for (int j = 0; j < Rows / kWarps; ++j) {
             const int r = warp + j * 8;
             if (r < nc) {
@@ -1700,7 +1716,7 @@ __global__ void __launch_bounds__(kThreads) hip_set_decoded_matrix_kernel(SetArg
         for (int j = 0; j < Rows / kWarps; ++j)
             if (warp + j * 8 < nc) in[j].h = h + (size_t) (row + warp + j * 8) * ldh;
         hip_block_decoded_matrix<Rows>(decoded + ((size_t) e * 3 + 2) * ((size_t) a.n_embd * a.n_ff / 2),
-                              g, 0, a.n_ff, in, (const uint16_t*) (blob + a.lay.suh[2]), nc, sm);
+                              g, 0, a.n_ff, in, (const uint16_t*) (blob + a.lay.suh[2]), nc, sm, packed);
         for (int j = 0; j < Rows / kWarps; ++j) {
             const int c = warp + j * 8;
             if (c < nc) block_out(sm.out + c * kCols, (const uint16_t*) (blob + a.lay.svh[2]) + g * kCols,
@@ -1857,7 +1873,7 @@ bool dispatch(int K, int cb, A&&... args) {
 template <int K, int cb> struct RunHipDecodeSet {
     static void run(const SetArgs& a, int r, uint32_t* dst, cudaStream_t stream) {
         const int k = r < 2 ? a.n_embd : a.n_ff, n = r < 2 ? a.n_ff : a.n_embd;
-        hip_decode_set_kernel<K, cb><<<dim3(k / 128, n / 128, a.n_exp), kThreads, 0, stream>>>(a, r, dst);
+        hip_decode_set_kernel<K, cb><<<dim3(k / 128, n / 128, a.n_exp), kThreads, 0, stream>>>(a, r, dst, hip_matrix_packed_enabled());
     }
 };
 #endif
@@ -2336,12 +2352,12 @@ bool set_gate_up_decoded(const SetArgs& a, const uint32_t* decoded, const float*
     if(hip_matrix_relaxed_enabled() && decoded_matrix && std::atoi(decoded_matrix)!=0) {
         const char* rows=std::getenv("DS4_EXL3_MATRIX_ROWS");
         if(rows && std::atoi(rows)==32)
-            hip_set_decoded_matrix_kernel<true,32><<<dim3((a.max_rows+31)/32,a.n_ff/kCols,a.n_exp),kThreads,0,stream>>>(a, decoded, x, ldx, idx, h, ldh, nullptr, 0);
-        else hip_set_decoded_matrix_kernel<true,16><<<dim3((a.max_rows+15)/16,a.n_ff/kCols,a.n_exp),kThreads,0,stream>>>(a, decoded, x, ldx, idx, h, ldh, nullptr, 0);
+            hip_set_decoded_matrix_kernel<true,32><<<dim3((a.max_rows+31)/32,a.n_ff/kCols,a.n_exp),kThreads,0,stream>>>(a, decoded, x, ldx, idx, h, ldh, nullptr, 0, hip_matrix_packed_enabled());
+        else hip_set_decoded_matrix_kernel<true,16><<<dim3((a.max_rows+15)/16,a.n_ff/kCols,a.n_exp),kThreads,0,stream>>>(a, decoded, x, ldx, idx, h, ldh, nullptr, 0, hip_matrix_packed_enabled());
         launch_check("set_decoded_matrix");return g_launch_errors.load()==before;
     }
     hip_set_decoded_kernel<true><<<dim3((a.max_rows + 15) / 16, a.n_ff / kCols, a.n_exp), kThreads, 0, stream>>>
-        (a, decoded, x, ldx, idx, h, ldh, nullptr, 0);
+        (a, decoded, x, ldx, idx, h, ldh, nullptr, 0, hip_matrix_packed_enabled());
     launch_check("set_gate_up_decoded"); return g_launch_errors.load() == before;
 #else
     (void) a; (void) decoded; (void) x; (void) ldx; (void) idx; (void) h; (void) ldh; (void) stream; return false;
@@ -2356,12 +2372,12 @@ bool set_down_decoded(const SetArgs& a, const uint32_t* decoded, const uint16_t*
     if(hip_matrix_relaxed_enabled() && decoded_matrix && std::atoi(decoded_matrix)!=0) {
         const char* rows=std::getenv("DS4_EXL3_MATRIX_ROWS");
         if(rows && std::atoi(rows)==32)
-            hip_set_decoded_matrix_kernel<false,32><<<dim3((a.max_rows+31)/32,a.n_embd/kCols,a.n_exp),kThreads,0,stream>>>(a, decoded, nullptr, 0, nullptr, const_cast<uint16_t*>(h), ldh, y, ldy);
-        else hip_set_decoded_matrix_kernel<false,16><<<dim3((a.max_rows+15)/16,a.n_embd/kCols,a.n_exp),kThreads,0,stream>>>(a, decoded, nullptr, 0, nullptr, const_cast<uint16_t*>(h), ldh, y, ldy);
+            hip_set_decoded_matrix_kernel<false,32><<<dim3((a.max_rows+31)/32,a.n_embd/kCols,a.n_exp),kThreads,0,stream>>>(a, decoded, nullptr, 0, nullptr, const_cast<uint16_t*>(h), ldh, y, ldy, hip_matrix_packed_enabled());
+        else hip_set_decoded_matrix_kernel<false,16><<<dim3((a.max_rows+15)/16,a.n_embd/kCols,a.n_exp),kThreads,0,stream>>>(a, decoded, nullptr, 0, nullptr, const_cast<uint16_t*>(h), ldh, y, ldy, hip_matrix_packed_enabled());
         launch_check("set_decoded_matrix");return g_launch_errors.load()==before;
     }
     hip_set_decoded_kernel<false><<<dim3((a.max_rows + 15) / 16, a.n_embd / kCols, a.n_exp), kThreads, 0, stream>>>
-        (a, decoded, nullptr, 0, nullptr, const_cast<uint16_t*>(h), ldh, y, ldy);
+        (a, decoded, nullptr, 0, nullptr, const_cast<uint16_t*>(h), ldh, y, ldy, hip_matrix_packed_enabled());
     launch_check("set_down_decoded"); return g_launch_errors.load() == before;
 #else
     (void) a; (void) decoded; (void) h; (void) ldh; (void) y; (void) ldy; (void) stream; return false;

@@ -571,8 +571,14 @@ void test_set(int K, int cb, int tail = 0) {
     test_env("DS4_EXL3_FMA16", "1", 1);
 #endif
 #if defined(STRATA_USE_HIP)
-    if (!ex::decode_set(sa, decoded, 0) || !ex::set_gate_up_decoded(sa, decoded, d_x, E, d_rows, d_h, F, 0) ||
+    if (!ex::decode_set(sa, decoded, 0)) ++g_fail;
+    // A live decoded buffer retains its layout even if the environment changes.
+    const char* packed_value = std::getenv("DS4_EXL3_MATRIX_PACKED");
+    const std::string packed_before = packed_value ? packed_value : "0";
+    test_env("DS4_EXL3_MATRIX_PACKED", std::atoi(packed_before.c_str()) ? "0" : "1", 1);
+    if (!ex::set_gate_up_decoded(sa, decoded, d_x, E, d_rows, d_h, F, 0) ||
         !ex::set_down_decoded(sa, decoded, d_h, F, d_out, E, 0)) ++g_fail;
+    test_env("DS4_EXL3_MATRIX_PACKED", packed_before.c_str(), 1);
 #else
     ex::set_gate_up(sa, d_x, E, d_rows, d_h, F, 0);
     ex::set_down(sa, d_h, F, d_out, E, 0);

@@ -1,0 +1,35 @@
+{
+  "status": "implemented_not_built_or_tested",
+  "base_commit": "08d8a49",
+  "flag": "DS4_EXL3_MATRIX_PACKED=1",
+  "layout_lifetime": "Frozen on first API lookup; decode writer, scalar reader and matrix reader agree",
+  "source_technique": "libr4d native operand-order cached weights",
+  "proof": "/home/rkuo/research/llm-weight-compression/_meta/maya-rdna4-techniques-followup-20261020/matrix-packed-layout-proof.json",
+  "next_gates": [
+    "Build after current API comparison",
+    "Separate process packed on/off exact unit tests",
+    "ISA load counts",
+    "Cost-inclusive screen",
+    "Exact full model candidate logits and tokens",
+    "Matched serving comparison"
+  ],
+  "unit_protocol": {
+    "processes": 12,
+    "gpus": [
+      0,
+      1,
+      2
+    ],
+    "packed_modes": [
+      0,
+      1
+    ],
+    "matrix_modes": [
+      0,
+      1
+    ],
+    "per_process_checks": "33 CPU-reference cases; FMA exact or33 matrix tile and66 cached/compressed exact comparisons; zero launch failures",
+    "lifetime_regression": "Flip packed environment after decoding live buffer; all readers must retain frozen layout",
+    "controller_pid": 158616
+  }
+}
