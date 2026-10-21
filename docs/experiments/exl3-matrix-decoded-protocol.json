@@ -1,0 +1,13 @@
+{
+  "status": "building",
+  "hypothesis": "Amortize trellis decoding over all tokens in an expert group, then use FP16/FP32 WMMA from exact decoded fragments",
+  "flag": "DS4_EXL3_MATRIX_DECODED=1 plus MATRIX_RELAXED=1",
+  "timings": "Four interleaved modes: compressed FMA16, compressed WMMA16, decoded WMMA16 including decode_set, decoded WMMA32 including decode_set",
+  "scope": "Kernel API experiment only; Model predecode eligibility and allocation unchanged",
+  "gates": [
+    "33 CPU-reference cases",
+    "66 cached-vs-compressed WMMA exact comparisons",
+    "12 synthetic model-shaped groups; decoding cost included",
+    "Captured shapes and full-model numerical/quality validation before enabling"
+  ]
+}
