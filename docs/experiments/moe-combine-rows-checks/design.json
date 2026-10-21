@@ -1,0 +1,10 @@
+{
+  "status": "source_reviewed_hypothesis_beforebuild",
+  "base": "ca0f9bc4f816599036e71f02f9c0c6469149bc24",
+  "hypothesis": "Useexisting sortedrow_tok[a:a+nrows] tolaunchonlyexpertbatchrows ratherthanallT tokens. A tokenmayoccurmultiple times;onlyCTAwhoseglobalrowequalsfirstmatching originalpick maywrite. Its sixFMAs remainoriginalpickorder. No additionalworkspace orprepkernel.",
+  "selection": "Offdefaultmode3 only fork6,row_tok present,nrows<T;otherwiseusemode2fixedsix ororiginal fallback.",
+  "source_evidence": "run_set constructs a=b[i0],nrows=b[j]-a;expertgate/up alreadyusec.row_tok+a andc.y indexedrelativea;moesort produces c.pos inverseglobal sortedrow.",
+  "first_gate": "Quickcostinclusiveoperator screen includingduplicate tokens,firstmatchingpicknotfirstbatchrow,ragged,empty,otherk/fallback;GPUbaseline andsmallCPUfma exactfiniteguards. No model/APItestunlesspositive.",
+  "scientific_constraints": "Do not alterweights,cache,chunk,precision orFMAorder. Source defaultmode0 unchanged,CUDAunchanged.",
+  "workspace_note": "Freshscratchinitializedfromlocalmain;localmainandvalidatedforkhaveunrelatedhistories,sofreshcleanexperimentbranchrepointedtovalidatedcomponentbase;mainuntouched."
+}

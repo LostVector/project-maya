@@ -1860,6 +1860,28 @@ __global__ void moe_combine6_kernel(float* acc, const float* __restrict__ y, con
     acc[(size_t) t * dim + e] = a;
 }
 
+// A token can occur once per matching expert. Its first matching pick owns
+// the only write; all matching picks are still accumulated in original order.
+__global__ void moe_combine6_rows_kernel(float* acc, const float* __restrict__ y, const int* __restrict__ pos,
+                                    const float* __restrict__ w, const int* __restrict__ row_tok, int r0, int r1, int dim) {
+    const int e = blockIdx.x * blockDim.x + threadIdx.x, t = row_tok[r0 + blockIdx.y];
+    if (e >= dim) return;
+    int rows[6];
+    unsigned mask = 0;
+#pragma unroll
+    for (int i = 0; i < 6; ++i) {
+        rows[i] = pos[(size_t) t * kPicks + i];
+        if (rows[i] >= r0 && rows[i] < r1) mask |= 1u << i;
+    }
+    if (!mask || rows[__ffs(mask) - 1] != r0 + (int) blockIdx.y) return;
+    float a = acc[(size_t) t * dim + e];
+#pragma unroll
+    for (int i = 0; i < 6; ++i)
+        if (mask & (1u << i))
+            a = __fmaf_rn(w[(size_t) t * kPicks + i], y[(size_t) (rows[i] - r0) * dim + e], a);
+    acc[(size_t) t * dim + e] = a;
+}
+
 int cdiv(int a, int b) { return (a + b - 1) / b; }
 
 }  // namespace
@@ -1932,13 +1954,18 @@ void moe_sort(const int* idx, int T, int k, const int* vs, int n_vs, int* bounds
     moe_sort_kernel<true><<<n_vs, kThreads, 0, s>>>(idx, T, k, vs, bounds, row_tok, pos);
 }
 void moe_combine(float* acc, const float* y, const int* pos, const float* w, int T, int k, int r0, int r1, int dim,
-                 cudaStream_t s) {
+                 cudaStream_t s, const int* row_tok) {
     if (r1 <= r0 || T <= 0) return;
     const dim3 grid(cdiv(dim, kThreads), T);
 #if defined(STRATA_USE_HIP)
     const char* opt = std::getenv("DS4_MOE_COMBINE_MODE");
     const int mode = opt ? std::atoi(opt) : 0;
-    if (mode == 2 && k == 6) {
+    if (mode == 3 && k == 6 && row_tok != nullptr && r1 - r0 < T) {
+        const dim3 rows_grid(cdiv(dim, kThreads), r1 - r0);
+        moe_combine6_rows_kernel<<<rows_grid, kThreads, 0, s>>>(acc, y, pos, w, row_tok, r0, r1, dim);
+        return;
+    }
+    if ((mode == 2 || mode == 3) && k == 6) {
         moe_combine6_kernel<<<grid, kThreads, 0, s>>>(acc, y, pos, w, r0, r1, dim);
         return;
     }
