@@ -1,0 +1,10 @@
+{
+  "frozen_utc": "2026-10-21T18:52:07.766795+00:00",
+  "base": "ab24dbc independent selected row-list baseline; new scratch from accepted source to avoid speculative-prefetch contamination",
+  "conditions": "4K TP2 36/4 fixed94/165 expert slots;240W all3;baseline then paired+768MiB cache;warm0/1 then ABBA0/1/1/0",
+  "numerical_gate": "six full-vocabulary prefill states exact vs independent accepted baseline;finite;zero swap;no model errors;stream plan fully consumed",
+  "performance_gate": "both paired timing blocks >=1% latency reduction;nonzero cache hits/savedH2D; otherwise no expensive quality suite",
+  "constraints": "Default off; packed-RAM batch streamer only, HIP only, DSpark off;wholechunk pruning;no expert placement changes;512MiB measured free guard;new scheduler preserves per-layer chronological order,virtual slots and expert accumulation order. No decode/snapshot/full parity claims until broader validation.",
+  "workspace": "~360MiB extra chunk state +768MiB cache/rank;perrun allocate before worker launch;sync and free after all workers finish",
+  "monitor": "controller checks live PID,swap,time limit;always restores serving; no extra concurrent model"
+}

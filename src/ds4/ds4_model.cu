@@ -589,6 +589,9 @@ struct Chunk {
     // all the chunks; a chunk's state between its layers (h | pre | topk | cand, chunk k at k chunk_hand_bytes()) in
     // host memory, and the layer cache - RAM slots where the experts a layer's chunk reads from the files are kept for
     // its later chunks, so each is read once a run
+    // Experimental pair schedule: one additional chunk state and a bounded per-layer cache.
+    uint8_t *pair_state = nullptr, *pair_cache = nullptr;
+    size_t pair_cache_bytes = 0;
     bool lm = false, lm_pinned = false;
     uint8_t* lm_state = nullptr;
     size_t lm_state_bytes = 0;
@@ -2904,6 +2907,11 @@ struct Model::Impl {
         const bool collect_prefill = std::getenv("DS4_PREFILL_STATS") != nullptr &&
                                      std::atoi(std::getenv("DS4_PREFILL_STATS")) != 0;
         PrefillCounts prefill;
+        bool paired = false;
+        int pair_layer = -1, pair_index = -1;
+        size_t pair_used = 0;
+        std::vector<size_t> pair_offsets;
+        uint64_t pair_hits = 0, pair_saved = 0, pair_d2d = 0, pair_admissions = 0;
         void report_prefill(int gpu, int tokens, int chunk, double streamed_bytes) const {
             if (!collect_prefill) return;
             std::fprintf(stderr, "DS4_PREFILL gpu=%d tokens=%d chunk=%d expert_row_picks=%llu vram_row_picks=%llu "
@@ -3017,10 +3025,28 @@ struct Model::Impl {
                 if (!picked(i)) { ++S.skipped; continue; }
                 if (skip_unpicked) ++S.copied;
                 uint8_t* dst = c.ring + ((size_t) half * (c.ring_n / P) + i) * c.ring_stride;
-                if (!stream_expert(l0, mi, l0.host_list[(size_t) (bt.j0 + i)], dst, c.cs, err,
-                                   sb != nullptr ? sb + (size_t) i * c.stage_stride : nullptr))
-                    return false;
-                c.stream_bytes += (double) unit(member(l0, mi));
+                const int expert = l0.host_list[(size_t)(bt.j0 + i)];
+                const size_t bytes = unit(member(l0, mi));
+                if (S.paired && (S.pair_layer != bt.il || S.pair_index != bt.k / 2)) {
+                    S.pair_layer = bt.il; S.pair_index = bt.k / 2; S.pair_used = 0;
+                    S.pair_offsets.assign((size_t)l0.n_exp, size_t(-1));
+                }
+                const size_t offset = S.paired ? S.pair_offsets[(size_t)expert] : size_t(-1);
+                if (offset != size_t(-1)) {
+                    CK(cudaMemcpyAsync(dst, c.pair_cache + offset, bytes, cudaMemcpyDeviceToDevice, c.cs));
+                    ++S.pair_hits; S.pair_saved += bytes; S.pair_d2d += bytes;
+                } else {
+                    if (!stream_expert(l0, mi, expert, dst, c.cs, err,
+                                       sb != nullptr ? sb + (size_t)i * c.stage_stride : nullptr)) return false;
+                    c.stream_bytes += (double)bytes;
+                    // Causal first-chunk admission. The second chunk never changes the cache.
+                    const size_t aligned = (bytes + 255) & ~size_t(255);
+                    if (S.paired && bt.k % 2 == 0 && aligned <= c.pair_cache_bytes - S.pair_used) {
+                        CK(cudaMemcpyAsync(c.pair_cache + S.pair_used, dst, bytes, cudaMemcpyDeviceToDevice, c.cs));
+                        S.pair_offsets[(size_t)expert] = S.pair_used; S.pair_used += aligned;
+                        ++S.pair_admissions; S.pair_d2d += bytes;
+                    }
+                }
             }
             CK(cudaEventRecord(c.filled[half], c.cs));
             ++S.cp;
@@ -3768,6 +3794,16 @@ struct Model::Impl {
             std::fprintf(stderr, "ds4: Windows' commit has room for the GPU's experts (%.1f GB beside %.0f GB for the other "
                                  "programs)\n", room0 / 1e9, commit_margin() / 1e9);
         }
+#if defined(STRATA_DS4_HOST_LAYOUT_TEST)
+        if (std::getenv("DS4_TEST_FIXED_LAYER_SLOTS")) {
+            for (Layer& l : L) {
+                const int slots = l.nm > 1 ? 94 : 165;
+                if (l.n_vram < slots) { err = "fixed test layout does not fit"; return false; }
+                l.n_vram = slots;
+                std::fprintf(stderr, "FIXED_TEST_LAYOUT layer=%d slots=%d\n", l.il, slots);
+            }
+        }
+#endif
         for (Layer& l : L) {
             // the hottest experts of the profile first, then by index
             std::vector<int> order((size_t) l.n_exp);
@@ -6450,6 +6486,7 @@ struct Model::Impl {
         std::vector<int64_t> p0;
         std::vector<int> T;
         std::vector<unsigned> seq;
+        bool paired = false;
         int64_t snap_pos = -1;   // feed_mark: the position whose state before it the layers keep (-1: none)
         // a long prompt's skip (forward_chunks): the cut at row cut_r of chunk cut_k - the chunks before it go through
         // the layers before `yoco`, that layer as layer_chunk's kv_only and none after it; chunk cut_k's rows before
@@ -6620,7 +6657,181 @@ struct Model::Impl {
         return true;
     }
 
+    // Experimental pair-major/layer-major schedule; each layer still sees chunks chronologically.
+    bool run_dev_pairs(int di, const Run& run, std::string& err) {
+        Dev& d = devs[(size_t)di]; Chunk& c = *chunks[(size_t)di];
+        cudaSetDevice(d.id); cudaStream_t s = d.st;
+        const int D = g.dim, H = g.hc, nk = (int)run.T.size();
+        Streamer S; S.paired = true;
+        const double stream_start = c.stream_bytes;
+        const int B = std::max(1,c.ring_n / Chunk::kParts);
+        float *h0=c.h, *pre0=c.pre; int *tk0=c.topk, *cd0=c.cand;
+        struct Restore { Chunk& c; float *h,*pre; int *tk,*cd;
+            ~Restore(){c.h=h;c.pre=pre;c.topk=tk;c.cand=cd;}
+        } restore{c,h0,pre0,tk0,cd0};
+        const size_t nh=(size_t)chunk*H*D*4, np=(size_t)chunk*8*4, nt=(size_t)chunk*topk_stride()*4;
+        for (int pair = 0; pair < nk; pair += 2)
+            for (int il = 0; il < g.nl; ++il)
+                for (int k = pair; k < std::min(nk, pair + 2); ++k) {
+                    if (!run.runs(k, il) || run.kv_only(k, il)) continue;
+                    const Layer& l = L[(size_t)il];
+                    bool here = false;
+                    for (int m = 0; m < l.nm; ++m) here = here || member(l,m).dev == di;
+                    if (here) for (int j = 0; j < (int)l.host_list.size(); j += B)
+                        S.b.push_back({k,il,j,std::min(B,(int)l.host_list.size()-j)});
+                }
+        if (!S.b.empty() && c.ring == nullptr) {
+            err = "no slots to stream experts into on CUDA" + std::to_string(d.id);
+            return false;
+        }
+        std::atomic<bool> ra_stop{false};
+        std::thread ra;
+        if (file_experts && !S.b.empty()) ra = std::thread([this, &S, di, &ra_stop] { read_ahead(S, di, ra_stop); });
+        struct Join {   // (every way out of the run: the read-ahead ends before S does)
+            std::atomic<bool>& stop;
+            std::thread& th;
+            ~Join() {
+                stop.store(true);
+                if (th.joinable()) th.join();
+            }
+        } ra_join{ra_stop, ra};
+        if (!copy_ahead(d, c, S, di, err)) return false;
+
+        std::vector<std::pair<int,int>> egu;
+        for(int pair=0;pair<nk;pair+=2) for(int il=0;il<g.nl;++il) {
+            const Layer& l=L[(size_t)il]; bool here=false;
+            for(int m=0;m<l.nm;++m) here=here || member(l,m).dev==di;
+            if(here && l.eg>=0) for(int k=pair;k<std::min(nk,pair+2);++k)
+                if(run.runs(k,il)) egu.push_back({l.eg,k});
+        }
+        const size_t eg_per=(size_t)(pk.eg_ngram-1)*pk.eg_heads*(pk.eg_hd+pk.eg_hd/32);
+        auto read_eg=[this,&c,&run,&egu,eg_per](size_t u){
+            if(u>=2) cudaEventSynchronize(c.eg_ev[u%2]);
+            const int li=egu[u].first,k=egu[u].second;
+            engram_rows(run.p0[(size_t)k],run.T[(size_t)k],li,c.eg_host[u%2]+(size_t)li*c.C*eg_per);
+        };
+        size_t eg_u=0; std::future<void> eg_next;
+        if(!egu.empty()) eg_next=std::async(std::launch::async,read_eg,size_t(0));
+        for(int pair=0;pair<nk;pair+=2) {
+            bool starts[2]={false,false};
+            std::vector<char> received[2]={std::vector<char>(srcs.size(),0),std::vector<char>(srcs.size(),0)};
+            // Even pruned chunks must consume/ack source slots so upstream can reuse them.
+            for(int k=pair;k<std::min(nk,pair+2);++k) {
+                const int64_t p0=run.p0[(size_t)k]; const int T=run.T[(size_t)k];
+                WinPlan wp; wp.par=true;wp.async=true;wp.win=run.seq[(size_t)k];wp.k=k;
+                auto& got=received[k-pair];
+            if (run.yoco >= 0 && k < run.cut_k) {
+                for (int il = run.yoco + 1; il < g.nl; ++il) {
+                    Layer& L0 = L[(size_t) il];
+                    bool here = false;
+                    for (int mi = 0; mi < L0.nm; ++mi) here = here || member(L0, mi).dev == di;
+                    if (!here) continue;
+                    for (int sidx : {L0.src, L0.ix_src ? L0.ik_src : -1}) {
+                        if (sidx < 0 || got[(size_t) sidx]) continue;
+                        got[(size_t) sidx] = 1;
+                        if (!receive_chunk_source(sidx, di, p0, T, wp)) return false;
+                    }
+                }
+            }
+
+            }
+            for(int il=0;il<g.nl;++il) for(int k=pair;k<std::min(nk,pair+2);++k) {
+                if(!run.runs(k,il)) continue;
+                bool here=false;for(int m=0;m<L[(size_t)il].nm;++m)here=here||member(L[(size_t)il],m).dev==di;
+                if(!here)continue;
+                if(k%2==0){c.h=h0;c.pre=pre0;c.topk=tk0;c.cand=cd0;}
+                else {c.h=(float*)c.pair_state;c.pre=(float*)(c.pair_state+nh);
+                    c.topk=(int*)(c.pair_state+nh+np);c.cand=(int*)(c.pair_state+nh+np+nt);}
+                const int64_t p0=run.p0[(size_t)k];const int T=run.T[(size_t)k],slot=k%2;
+                const bool last_k=k+1==nk; bool& started=starts[k-pair];auto& got=received[k-pair];
+                WinPlan wp;wp.par=true;wp.async=true;wp.win=run.seq[(size_t)k];wp.k=k;
+                wp.snap_t=run.snap_pos>=p0&&run.snap_pos<p0+T?int(run.snap_pos-p0):-1;
+                if(L[(size_t)il].eg>=0){eg_next.get();wp.eg_slot=int(eg_u%2);
+                    if(++eg_u<egu.size())eg_next=std::async(std::launch::async,read_eg,eg_u);}
+                Layer& L0 = L[(size_t) il];
+                int mi = -1;
+                for (int m = 0; m < L0.nm; ++m)
+                    if (member(L0, m).dev == di) mi = m;
+                if (mi < 0) continue;
+                if (!started) {   // the chunk's input: its embedding rows, or the previous group's hand-off
+                    started = true;
+                    if (il == 0) {
+                        if (k >= 2) CK(cudaEventSynchronize(c.emb_ev[slot]));
+                        for (int t = 0; t < T; ++t)
+                            std::memcpy(c.emb_host[slot] + (size_t) t * D, emb_row(p0 + t, toks[(size_t) (p0 + t)]),
+                                        (size_t) D * 2);
+                        CK(cudaMemcpyAsync(c.emb, c.emb_host[slot], (size_t) T * D * 2, cudaMemcpyHostToDevice, s));
+                        CK(cudaEventRecord(c.emb_ev[slot], s));
+                        embed(c.emb, T, c.h, D, H, s);
+                        init_pre(c.pre, T, s);
+                    } else {
+                        Chunk& a = *chunks[(size_t) L[(size_t) il - 1].dev];
+                        xfer_get(chunk_xfer(a.hand[slot], c, T, false), a.hand_flag[slot], wp.win, s);
+                        set_flag(a.hand_ack + ((size_t) slot * 8 + mi) * 32, wp.win, s);
+                    }
+                }
+                for (int sidx : {L0.src, L0.ix_src ? L0.ik_src : -1}) {
+                    if (sidx < 0 || got[(size_t) sidx]) continue;
+                    got[(size_t) sidx] = 1;
+                    if (!receive_chunk_source(sidx, di, p0, T, wp)) return false;
+                }
+                if (last_k && mi == 0 && g.n_mtp > 0) {   // the drafter's taps: the last chunk's last rows
+                    const auto it = std::find(g.d_targets.begin(), g.d_targets.end(), il);
+                    if (it != g.d_targets.end()) {
+                        const size_t j = (size_t) (it - g.d_targets.begin()), nt = g.d_targets.size();
+                        const int nr = std::min(T, tap_cap);
+                        hc_mean(c.h + (size_t) (T - nr) * H * D, nr, H, D, d.tap, D, s);
+                        CK(cudaStreamWaitEvent(s, ev_seed, 0));
+                        CK(cudaMemcpy2DAsync(h_taps + j * D, nt * D * 4, d.tap, (size_t) D * 4, (size_t) D * 4,
+                                             (size_t) nr, cudaMemcpyDeviceToHost, s));
+                    }
+                }
+                if (!run_layer(L0, mi, p0, T, wp, S, err, run, k, il)) return false;
+                if (dump_l != nullptr && mi == 0) dump_layer(d, c.h, il, p0, T);
+                const bool last = il + 1 == g.nl || L[(size_t) il + 1].grp != L0.grp;
+                if (last && mi == 0 && il + 1 < g.nl) {   // the hand-off, once the next group took the chunk before last
+                    const int nnext = L[(size_t) il + 1].nm;
+                    if (k >= 2 && run.runs(k - 2, il) && !run.kv_only(k - 2, il))
+                        wait_flags(c.hand_ack + (size_t) slot * 8 * 32, nnext, 32, wp.win - 2, s);
+                    xfer_put(chunk_xfer(c.hand[slot], c, T, true), c.hand_flag[slot], wp.win, d.xcnt, s);
+                }
+
+                if(last) {
+            if (di == head_dev && (size_t) k < chunk_done.size()) {
+                CK(cudaEventRecord(chunk_done[(size_t) k], s));
+                chunk_rec[(size_t) k].store(1, std::memory_order_release);
+            }
+            if (d.grp == devs[(size_t) head_dev].grp) {   // the head group: each member its share of the logits
+                if (logits_all) {   // every row's logits (tests): the head over the chunk's rows, 16 at a time
+                    const size_t base = (size_t) (p0 - run.p0[0]) * g.vocab;
+                    for (int r0 = 0; r0 < T; r0 += kWin) {
+                        const int nr = std::min(kWin, T - r0);
+                        hc_pre_norm(c.h + (size_t) r0 * H * D, c.pre + (size_t) r0 * 8, d.norm_w, D, H, nr, g.eps, d.x, s);
+                        if (!head_share(d, d.mi, d.x, nr, err)) return false;
+                        if (di != head_dev) continue;
+                        CK(cudaMemcpyAsync(chunk_logits.data() + base + (size_t) r0 * g.vocab, d.logits,
+                                           (size_t) nr * g.vocab * 4, cudaMemcpyDeviceToHost, s));
+                        CK(cudaStreamSynchronize(s));
+                    }
+                } else if (last_k && n_logits > 0) {   // (the last rows' logits, into the window path's buffers)
+                    const int t0 = T - n_logits;
+                    hc_pre_norm(c.h + (size_t) t0 * H * D, c.pre + (size_t) t0 * 8, d.norm_w, D, H, n_logits, g.eps, d.x, s);
+                    if (!head_share(d, d.mi, d.x, n_logits, err)) return false;
+                }
+            }
+
+                }
+            }
+        }
+        if(S.kp!=S.b.size() || S.cp!=S.b.size()){err="pair schedule did not consume its stream plan";return false;}
+        std::fprintf(stderr,"DS4_PAIR gpu=%d hits=%llu saved_h2d_bytes=%llu d2d_bytes=%llu admissions=%llu state_bytes=%zu cache_bytes=%zu\n",
+            d.id,(unsigned long long)S.pair_hits,(unsigned long long)S.pair_saved,(unsigned long long)S.pair_d2d,
+            (unsigned long long)S.pair_admissions,chunk_hand_bytes(),c.pair_cache_bytes);
+        S.report_prefill(d.id,std::accumulate(run.T.begin(),run.T.end(),0),chunk,c.stream_bytes-stream_start);
+        return true;
+    }
     bool run_dev_chunks(int di, const Run& run, std::string& err) {
+        if(run.paired) return run_dev_pairs(di,run,err);
         Dev& d = devs[(size_t) di];
         Chunk& c = *chunks[(size_t) di];
         cudaSetDevice(d.id);
@@ -7298,6 +7509,43 @@ struct Model::Impl {
                 if (on) p->lm_end();
             }
         } lm_end_{this, lm};
+        struct PairEnd {
+            Impl* p; bool on=false;
+            ~PairEnd(){if(!on)return;for(size_t i=0;i<p->devs.size();++i){
+                auto& d=p->devs[i];auto& c=*p->chunks[i];cudaSetDevice(d.id);
+                cudaStreamSynchronize(d.st);cudaStreamSynchronize(c.cs);
+                if(c.pair_cache)cudaFree(c.pair_cache);if(c.pair_state)cudaFree(c.pair_state);
+                c.pair_cache=c.pair_state=nullptr;c.pair_cache_bytes=0;
+            }}
+        } pair_end{this};
+        const char* pair_opt=std::getenv("DS4_LAYER_PAIR");
+        if(pair_opt && std::atoi(pair_opt)!=0) {
+#if !defined(STRATA_USE_HIP)
+            err="experimental layer pairs require HIP";return false;
+#else
+            if(lm || file_experts || NH!=1 || g.n_mtp>0 || !std::getenv("DS4_SKIP_UNPICKED") ||
+                std::atoi(std::getenv("DS4_SKIP_UNPICKED"))!=1 ||
+                (run.yoco>=0 && run.cut_r!=0)) {err="unsupported layer-pair execution mode";return false;}
+            for(const Layer& layer:L) if(!layer.mtp && (layer.lay.fmt==gg::kFmtMXFP4 || (layer.nm>1 && !layer.packed_host))) {
+                err="pair schedule requires packed EXL3 RAM weights";return false;
+            }
+            const char* budget_opt=std::getenv("DS4_PAIR_CACHE_MIB");
+            const int budget=budget_opt?std::atoi(budget_opt):768;
+            if(budget<0 || budget>1024){err="pair cache budget outside 0..1024 MiB";return false;}
+            pair_end.on=true;
+            for(size_t i=0;i<devs.size();++i){auto& d=devs[i];auto& c=*chunks[i];
+                if(c.flow || c.stage || c.lm){err="pair schedule requires packed-RAM batch streamer";return false;}
+                cudaSetDevice(d.id);CK(cudaStreamSynchronize(d.st));CK(cudaStreamSynchronize(c.cs));
+                size_t free=0,total=0;CK(cudaMemGetInfo(&free,&total));
+                const size_t bytes=chunk_hand_bytes(),cb=(size_t)budget*1048576;
+                if(free<bytes+cb+size_t(512)*1048576){err="pair workspace would breach 512 MiB free guard";return false;}
+                CK(cudaMalloc((void**)&c.pair_state,bytes));
+                if(cb)CK(cudaMalloc((void**)&c.pair_cache,cb));c.pair_cache_bytes=cb;
+                std::fprintf(stderr,"DS4_PAIR_ALLOC gpu=%d free_before=%zu state=%zu cache=%zu\n",d.id,free,bytes,cb);
+            }
+            run.paired=true;
+#endif
+        }
         std::vector<std::string> errs(devs.size());
         for (size_t di = 0; di < devs.size(); ++di)
             workers[di]->submit([this, di, &run, &errs] {
