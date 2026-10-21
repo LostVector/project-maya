@@ -1156,7 +1156,7 @@ template <int K> struct HipBlockSmem16 {
     uint32_t stage[kWarps * 8 * K];
     float out[16 * kCols];
 };
-template <int K, int cb, class Input = Xin>
+template <int K, int cb, class Input = Xin, bool prepared = false>
 __device__ void hip_block_gemv16(const uint32_t* __restrict__ tr, int ld, int tc0, int k0, int k1, const Input (&x)[2],
                            const uint16_t* __restrict__ suh, int nc, HipBlockSmem16<K>& sm) {
     constexpr int W = Words<K>::W, R = Words<K>::R;
@@ -1169,7 +1169,7 @@ __device__ void hip_block_gemv16(const uint32_t* __restrict__ tr, int ld, int tc
     uint32_t wc[8][R], wn[8][R];
     float xv[2][4], xs4[2][4];
     load_tiles<K>(tile, sstride, lane, wc);
-    for (int j = 0; j < 2; ++j)
+    if constexpr (!prepared) for (int j = 0; j < 2; ++j)
         if (warp + j * 8 < nc) chunk_load(x[j], suh, k0, lane, xv[j], xs4[j]);
     float acc[16][2];
 #pragma unroll
@@ -1177,12 +1177,16 @@ __device__ void hip_block_gemv16(const uint32_t* __restrict__ tr, int ld, int tc
 
     for (int q = 0; q < nq; ++q) {
         __half* xq = sm.xb + (q & 1) * (16 * kCols);
-        for (int j = 0; j < 2; ++j)
-            if (warp + j * 8 < nc) chunk_store(xv[j], xs4[j], lane, xq + (warp + j * 8) * kCols);
+        for (int j = 0; j < 2; ++j) if (warp + j * 8 < nc) {
+            if constexpr (prepared) {
+                *reinterpret_cast<uint2*>(xq + (warp + j * 8) * kCols + lane * 4) =
+                    *reinterpret_cast<const uint2*>(x[j].h + k0 + q * kCols + lane * 4);
+            } else chunk_store(xv[j], xs4[j], lane, xq + (warp + j * 8) * kCols);
+        }
         __syncthreads();
         if (q + 1 < nq) {
             load_tiles<K>(tile + (size_t) (q + 1) * 8 * sstride, sstride, lane, wn);
-            for (int j = 0; j < 2; ++j)
+            if constexpr (!prepared) for (int j = 0; j < 2; ++j)
                 if (warp + j * 8 < nc) chunk_load(x[j], suh, k0 + (q + 1) * kCols, lane, xv[j], xs4[j]);
         }
 #pragma unroll
@@ -1231,10 +1235,10 @@ __device__ void hip_block_gemv16(const uint32_t* __restrict__ tr, int ld, int tc
     __syncthreads();
 }
 
-template <int K, int cb, bool gate_up>
+template <int K, int cb, bool gate_up, bool prepared = false>
 __global__ void __launch_bounds__(kThreads) hip_set16_kernel(SetArgs a, const float* x, int ldx,
                                                           const int* idx, uint16_t* h, int ldh,
-                                                          float* y, int ldy) {
+                                                          float* y, int ldy, const uint16_t* staged, size_t capacity) {
     __shared__ __align__(16) HipBlockSmem16<K> sm;
     __shared__ float gate[16 * kCols];
     const int e = blockIdx.z, g = blockIdx.y, warp = threadIdx.x >> 5;
@@ -1244,10 +1248,13 @@ __global__ void __launch_bounds__(kThreads) hip_set16_kernel(SetArgs a, const fl
     if (nc <= 0) return;
     const uint8_t* blob = a.wbase + (size_t) e * a.stride;
     if constexpr (gate_up) {
-        Xin in[2];
-        for (int j = 0; j < 2; ++j)
-            if (warp + j * 8 < nc) in[j].f = x + (size_t) idx[row + warp + j * 8] * ldx;
-        hip_block_gemv16<K, cb>((const uint32_t*) (blob + a.lay.trellis[0]), a.n_ff / 16,
+        using Input = std::conditional_t<prepared, XinHalf, Xin>;
+        Input in[2];
+        for (int j = 0; j < 2; ++j) if (warp + j * 8 < nc) {
+            if constexpr (prepared) in[j].h = staged + size_t(row + warp + j * 8) * a.n_embd;
+            else in[j].f = x + (size_t) idx[row + warp + j * 8] * ldx;
+        }
+        hip_block_gemv16<K, cb, Input, prepared>((const uint32_t*) (blob + a.lay.trellis[0]), a.n_ff / 16,
                               g * 8, 0, a.n_embd, in, (const uint16_t*) (blob + a.lay.suh[0]), nc, sm);
         for (int j = 0; j < 2; ++j) {
             const int c = warp + j * 8;
@@ -1255,7 +1262,9 @@ __global__ void __launch_bounds__(kThreads) hip_set16_kernel(SetArgs a, const fl
                                   gate + c * kCols);
         }
         __syncthreads();
-        hip_block_gemv16<K, cb>((const uint32_t*) (blob + a.lay.trellis[1]), a.n_ff / 16,
+        if constexpr (prepared) for (int j = 0; j < 2; ++j)
+            if (warp + j * 8 < nc) in[j].h = staged + (capacity + size_t(row + warp + j * 8)) * a.n_embd;
+        hip_block_gemv16<K, cb, Input, prepared>((const uint32_t*) (blob + a.lay.trellis[1]), a.n_ff / 16,
                               g * 8, 0, a.n_embd, in, (const uint16_t*) (blob + a.lay.suh[1]), nc, sm);
         for (int j = 0; j < 2; ++j) {
             const int r = warp + j * 8;
@@ -1275,8 +1284,11 @@ __global__ void __launch_bounds__(kThreads) hip_set16_kernel(SetArgs a, const fl
     } else {
         XinHalf in[2];
         for (int j = 0; j < 2; ++j)
-            if (warp + j * 8 < nc) in[j].h = h + (size_t) (row + warp + j * 8) * ldh;
-        hip_block_gemv16<K, cb>((const uint32_t*) (blob + a.lay.trellis[2]), a.n_embd / 16,
+            if (warp + j * 8 < nc) {
+                if constexpr (prepared) in[j].h = staged + size_t(row + warp + j * 8) * a.n_ff;
+                else in[j].h = h + (size_t) (row + warp + j * 8) * ldh;
+            }
+        hip_block_gemv16<K, cb, XinHalf, prepared>((const uint32_t*) (blob + a.lay.trellis[2]), a.n_embd / 16,
                               g * 8, 0, a.n_ff, in, (const uint16_t*) (blob + a.lay.suh[2]), nc, sm);
         for (int j = 0; j < 2; ++j) {
             const int c = warp + j * 8;
@@ -1550,7 +1562,7 @@ template <int K, int cb> struct RunHipGateUp {
     static void run(const SetArgs& a, const float* x, int ldx, const int* idx, uint16_t* h, int ldh, cudaStream_t s) {
         if (hip_fma16_enabled()) {
             hip_set16_kernel<K, cb, true> <<<dim3((a.max_rows + 15) / 16, a.n_ff / kCols, a.n_exp), kThreads, 0, s>>>
-                (a, x, ldx, idx, h, ldh, nullptr, 0);
+                (a, x, ldx, idx, h, ldh, nullptr, 0, nullptr, 0);
             return;
         }
         hip_set_kernel<K, cb, true><<<dim3((a.max_rows + kTok - 1) / kTok, a.n_ff / kCols, a.n_exp), kThreads, 0, s>>>
@@ -1561,11 +1573,25 @@ template <int K, int cb> struct RunHipDown {
     static void run(const SetArgs& a, const uint16_t* h, int ldh, float* y, int ldy, cudaStream_t s) {
         if (hip_fma16_enabled()) {
             hip_set16_kernel<K, cb, false> <<<dim3((a.max_rows + 15) / 16, a.n_embd / kCols, a.n_exp), kThreads, 0, s>>>
-                (a, nullptr, 0, nullptr, const_cast<uint16_t*>(h), ldh, y, ldy);
+                (a, nullptr, 0, nullptr, const_cast<uint16_t*>(h), ldh, y, ldy, nullptr, 0);
             return;
         }
         hip_set_kernel<K, cb, false><<<dim3((a.max_rows + kTok - 1) / kTok, a.n_embd / kCols, a.n_exp), kThreads, 0, s>>>
             (a, nullptr, 0, nullptr, const_cast<uint16_t*>(h), ldh, y, ldy);
+    }
+};
+template <int K, int cb> struct RunHipGateUpCompressedPrepared {
+    static void run(const SetArgs& a, const float* x, int ldx, const int* idx, uint16_t* h, int ldh,
+                    const uint16_t* staged, size_t capacity, cudaStream_t stream) {
+        hip_set16_kernel<K, cb, true, true><<<dim3((a.max_rows+15)/16,a.n_ff/kCols,a.n_exp),kThreads,0,stream>>>
+            (a,x,ldx,idx,h,ldh,nullptr,0,staged,capacity);
+    }
+};
+template <int K, int cb> struct RunHipDownCompressedPrepared {
+    static void run(const SetArgs& a, const uint16_t* h, int ldh, float* y, int ldy,
+                    const uint16_t* staged, size_t capacity, cudaStream_t stream) {
+        hip_set16_kernel<K, cb, false, true><<<dim3((a.max_rows+15)/16,a.n_embd/kCols,a.n_exp),kThreads,0,stream>>>
+            (a,nullptr,0,nullptr,const_cast<uint16_t*>(h),ldh,y,ldy,staged,capacity);
     }
 };
 template <int K, int cb> struct RunHipRows {
@@ -2203,6 +2229,41 @@ bool set_down_prepared(const SetArgs& a, const uint32_t* decoded, const uint16_t
     launch_check("set_down_prepared");return g_launch_errors.load()==before;
 #else
     (void)a;(void)decoded;(void)h;(void)ldh;(void)y;(void)ldy;(void)staged;(void)capacity;(void)stream;return false;
+#endif
+}
+
+bool set_gate_up_compressed_prepared(const SetArgs& a, const float* x, int ldx,
+        const int* idx, uint16_t* h, int ldh, uint16_t* staged, size_t capacity, cudaStream_t stream) {
+#if defined(STRATA_USE_HIP)
+    if (!prepared_set_input_bytes(a,capacity) || capacity<size_t(a.max_rows) || !a.wbase || !a.bounds ||
+        !x || !idx || !h || !staged || a.max_rows<=0 || ldx<a.n_embd || ldh<a.n_ff ||
+        a.lay.K[0]!=a.lay.K[1] || a.lay.K[0]<1 || a.lay.K[0]>8 || a.lay.cb<0 || a.lay.cb>2) return false;
+    const int before=g_launch_errors.load();
+    const size_t warps=size_t(a.max_rows)*(a.n_embd/kCols);
+    hip_prepare_set_input_kernel<true><<<dim3((warps+kWarps-1)/kWarps,2,a.n_exp),kThreads,0,stream>>>
+        (a,x,ldx,idx,nullptr,0,staged,capacity);
+    launch_check("prepare_compressed_gate_up");
+    if (!dispatch<RunHipGateUpCompressedPrepared>(a.lay.K[0],a.lay.cb,a,x,ldx,idx,h,ldh,staged,capacity,stream)) return false;
+    launch_check("compressed_gate_up_prepared");return g_launch_errors.load()==before;
+#else
+    (void)a;(void)x;(void)ldx;(void)idx;(void)h;(void)ldh;(void)staged;(void)capacity;(void)stream;return false;
+#endif
+}
+bool set_down_compressed_prepared(const SetArgs& a, const uint16_t* h, int ldh,
+        float* y, int ldy, uint16_t* staged, size_t capacity, cudaStream_t stream) {
+#if defined(STRATA_USE_HIP)
+    if (!prepared_set_input_bytes(a,capacity) || capacity<size_t(a.max_rows) || !a.wbase || !a.bounds ||
+        !h || !y || !staged || a.max_rows<=0 || ldh<a.n_ff || ldy<a.n_embd ||
+        a.lay.K[2]<1 || a.lay.K[2]>8 || a.lay.cb<0 || a.lay.cb>2) return false;
+    const int before=g_launch_errors.load();
+    const size_t warps=size_t(a.max_rows)*(a.n_ff/kCols);
+    hip_prepare_set_input_kernel<false><<<dim3((warps+kWarps-1)/kWarps,1,a.n_exp),kThreads,0,stream>>>
+        (a,nullptr,0,nullptr,h,ldh,staged,capacity);
+    launch_check("prepare_compressed_down");
+    if (!dispatch<RunHipDownCompressedPrepared>(a.lay.K[2],a.lay.cb,a,h,ldh,y,ldy,staged,capacity,stream)) return false;
+    launch_check("compressed_down_prepared");return g_launch_errors.load()==before;
+#else
+    (void)a;(void)h;(void)ldh;(void)y;(void)ldy;(void)staged;(void)capacity;(void)stream;return false;
 #endif
 }
 
