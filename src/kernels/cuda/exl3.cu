@@ -1230,11 +1230,111 @@ __device__ void hip_block_gemv16(const uint32_t* __restrict__ tr, int ld, int tc
     __syncthreads();
 }
 
-template <int K, int cb, bool gate_up>
+// WMMA changes only prefill products: decode/window kernels keep their original
+// arithmetic. Weight tiles stay compressed until consumed; no full reconstruction.
+#if defined(__gfx1200__) || defined(__gfx1201__)
+using HipOperand = _Float16 __attribute__((ext_vector_type(8)));
+constexpr int kHipOperand = 8;
+#else
+using HipOperand = _Float16 __attribute__((ext_vector_type(16)));
+constexpr int kHipOperand = 16;
+#endif
+using HipF8 = float __attribute__((ext_vector_type(8)));
+__device__ __forceinline__ HipF8 hip_mma(HipOperand a, HipOperand b, HipF8 c) {
+#if defined(__gfx1100__) || defined(__gfx1101__) || defined(__gfx1102__) || defined(__gfx1103__) || \
+    defined(__gfx1150__) || defined(__gfx1151__) || defined(__gfx1152__)
+    return __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a, b, c);
+#elif defined(__gfx1200__) || defined(__gfx1201__)
+    return __builtin_amdgcn_wmma_f32_16x16x16_f16_w32_gfx12(a, b, c);
+#else
+    __builtin_trap(); return c;
+#endif
+}
+__device__ __forceinline__ int hip_mma_row(int i, int hi) {
+#if defined(__gfx1200__) || defined(__gfx1201__)
+    return 8 * hi + i;
+#else
+    return 2 * i + hi;
+#endif
+}
+
+template <int K> struct HipMmaSmem {
+    __half xb[16 * kCols];
+    float out[16 * kCols];
+};
+// Read a tile word from the lanes holding its compressed words. No expanded
+// weight tile goes through LDS: trellis windows decode into WMMA registers.
+template <int K>
+__device__ __forceinline__ uint32_t hip_tile_word(const uint32_t (&w)[Words<K>::R], int index) {
+    index %= Words<K>::W;
+    const uint32_t lo = __shfl_sync(0xffffffffu, w[0], index & 31);
+    if constexpr (Words<K>::R > 1) {
+        const uint32_t hi = __shfl_sync(0xffffffffu, w[1], index & 31);
+        return index < 32 ? lo : hi;
+    }
+    return lo;
+}
+template <int K, int cb, class Input>
+__device__ void hip_block_wmma(const uint32_t* tr, int ld, int tc0, int k0, int k1, const Input (&x)[2],
+                              const uint16_t* suh, int nc, HipMmaSmem<K>& sm) {
+    constexpr int W = Words<K>::W, R = Words<K>::R;
+    const int lane = threadIdx.x & 31, warp = threadIdx.x >> 5, col = lane & 15;
+    const int kh = kHipOperand == 8 ? (lane >> 4) * 8 : 0;
+    const size_t stride = (size_t) ld * W;
+    HipF8 acc = {};
+    for (int q = k0; q < k1; q += kCols) {
+        for (int row = warp; row < nc; row += kWarps) {
+            float v[4], scales[4];
+            chunk_load(x[row / kWarps], suh, q, lane, v, scales);
+            chunk_store(v, scales, lane, sm.xb + row * kCols);
+        }
+        __syncthreads();
+        uint32_t words[8][R];
+        load_tiles<K>(tr + ((size_t) (q / 16) * ld + tc0 + warp) * W, stride, lane, words);
+#pragma unroll
+        for (int step = 0; step < 8; ++step) {
+            HipOperand av, bv;
+#pragma unroll
+            for (int i = 0; i < kHipOperand; ++i)
+                av[i] = col < nc ? __builtin_bit_cast(_Float16, __half_as_ushort(sm.xb[col * kCols + step * 16 + kh + i])) : (_Float16) 0;
+#pragma unroll
+            for (int pair = 0; pair < kHipOperand / 2; ++pair) {
+                const int row = kh + pair * 2;
+                const int p = (col & 7) * 32 + (col & 8) / 2 + (row & 6) * 4 + (row & 8) / 4;
+                const int b0 = (p + 257) * K - 16, b2 = b0 + K + 16;
+                const int i0 = b0 >> 5, i2 = (b2 - 1) >> 5, shift = (i2 + 1) * 32 - b2;
+                const uint32_t lo = hip_tile_word<K>(words[step], i0), hi = hip_tile_word<K>(words[step], i2);
+                const uint32_t bits = h2u(decode2h<cb>(fsh(hi, lo, shift + K) & 0xffffu, fsh(hi, lo, shift) & 0xffffu));
+                bv[2 * pair] = __builtin_bit_cast(_Float16, (uint16_t) bits);
+                bv[2 * pair + 1] = __builtin_bit_cast(_Float16, (uint16_t) (bits >> 16));
+            }
+            acc = hip_mma(av, bv, acc);
+        }
+        __syncthreads();
+    }
+#pragma unroll
+    for (int i = 0; i < 8; ++i) {
+        const int row = hip_mma_row(i, lane >> 4);
+        if (row < nc) sm.out[row * kCols + warp * 16 + col] = acc[i];
+    }
+    __syncthreads();
+}
+
+inline bool hip_matrix_relaxed_enabled() {
+    const char* v = std::getenv("DS4_EXL3_MATRIX_RELAXED");
+    return v && std::atoi(v) != 0;
+}
+template <bool matrix, int K, int cb, class Input, class Smem>
+__device__ __forceinline__ void hip_matrix_product(const uint32_t* tr, int ld, int tc0, int k0, int k1,
+ const Input (&x)[2], const uint16_t* suh, int nc, Smem& sm) {
+ if constexpr (matrix) hip_block_wmma<K, cb>(tr, ld, tc0, k0, k1, x, suh, nc, sm);
+ else hip_block_gemv16<K, cb>(tr, ld, tc0, k0, k1, x, suh, nc, sm);
+}
+template <int K, int cb, bool gate_up, bool matrix = false>
 __global__ void __launch_bounds__(kThreads) hip_set16_kernel(SetArgs a, const float* x, int ldx,
                                                           const int* idx, uint16_t* h, int ldh,
                                                           float* y, int ldy) {
-    __shared__ __align__(16) HipBlockSmem16<K> sm;
+    __shared__ __align__(16) std::conditional_t<matrix, HipMmaSmem<K>, HipBlockSmem16<K>> sm;
     __shared__ float gate[16 * kCols];
     const int e = blockIdx.z, g = blockIdx.y, warp = threadIdx.x >> 5;
     const int start = a.bounds[e], end = a.bounds[e + 1];
@@ -1246,7 +1346,7 @@ __global__ void __launch_bounds__(kThreads) hip_set16_kernel(SetArgs a, const fl
         Xin in[2];
         for (int j = 0; j < 2; ++j)
             if (warp + j * 8 < nc) in[j].f = x + (size_t) idx[row + warp + j * 8] * ldx;
-        hip_block_gemv16<K, cb>((const uint32_t*) (blob + a.lay.trellis[0]), a.n_ff / 16,
+        hip_matrix_product<matrix, K, cb>((const uint32_t*) (blob + a.lay.trellis[0]), a.n_ff / 16,
                               g * 8, 0, a.n_embd, in, (const uint16_t*) (blob + a.lay.suh[0]), nc, sm);
         for (int j = 0; j < 2; ++j) {
             const int c = warp + j * 8;
@@ -1254,7 +1354,7 @@ __global__ void __launch_bounds__(kThreads) hip_set16_kernel(SetArgs a, const fl
                                   gate + c * kCols);
         }
         __syncthreads();
-        hip_block_gemv16<K, cb>((const uint32_t*) (blob + a.lay.trellis[1]), a.n_ff / 16,
+        hip_matrix_product<matrix, K, cb>((const uint32_t*) (blob + a.lay.trellis[1]), a.n_ff / 16,
                               g * 8, 0, a.n_embd, in, (const uint16_t*) (blob + a.lay.suh[1]), nc, sm);
         for (int j = 0; j < 2; ++j) {
             const int r = warp + j * 8;
@@ -1275,7 +1375,7 @@ __global__ void __launch_bounds__(kThreads) hip_set16_kernel(SetArgs a, const fl
         XinHalf in[2];
         for (int j = 0; j < 2; ++j)
             if (warp + j * 8 < nc) in[j].h = h + (size_t) (row + warp + j * 8) * ldh;
-        hip_block_gemv16<K, cb>((const uint32_t*) (blob + a.lay.trellis[2]), a.n_embd / 16,
+        hip_matrix_product<matrix, K, cb>((const uint32_t*) (blob + a.lay.trellis[2]), a.n_embd / 16,
                               g * 8, 0, a.n_ff, in, (const uint16_t*) (blob + a.lay.suh[2]), nc, sm);
         for (int j = 0; j < 2; ++j) {
             const int c = warp + j * 8;
@@ -1510,6 +1610,11 @@ __global__ void __launch_bounds__(kThreads) hip_rows_kernel(Mat m, const uint16_
 }
 template <int K, int cb> struct RunHipGateUp {
     static void run(const SetArgs& a, const float* x, int ldx, const int* idx, uint16_t* h, int ldh, cudaStream_t s) {
+        if (hip_matrix_relaxed_enabled()) {
+            hip_set16_kernel<K, cb, true, true><<<dim3((a.max_rows + 15) / 16, a.n_ff / kCols, a.n_exp), kThreads, 0, s>>>
+                (a, x, ldx, idx, h, ldh, nullptr, 0);
+            return;
+        }
         if (hip_fma16_enabled()) {
             hip_set16_kernel<K, cb, true> <<<dim3((a.max_rows + 15) / 16, a.n_ff / kCols, a.n_exp), kThreads, 0, s>>>
                 (a, x, ldx, idx, h, ldh, nullptr, 0);
@@ -1521,6 +1626,11 @@ template <int K, int cb> struct RunHipGateUp {
 };
 template <int K, int cb> struct RunHipDown {
     static void run(const SetArgs& a, const uint16_t* h, int ldh, float* y, int ldy, cudaStream_t s) {
+        if (hip_matrix_relaxed_enabled()) {
+            hip_set16_kernel<K, cb, false, true><<<dim3((a.max_rows + 15) / 16, a.n_embd / kCols, a.n_exp), kThreads, 0, s>>>
+                (a, nullptr, 0, nullptr, const_cast<uint16_t*>(h), ldh, y, ldy);
+            return;
+        }
         if (hip_fma16_enabled()) {
             hip_set16_kernel<K, cb, false> <<<dim3((a.max_rows + 15) / 16, a.n_embd / kCols, a.n_exp), kThreads, 0, s>>>
                 (a, nullptr, 0, nullptr, const_cast<uint16_t*>(h), ldh, y, ldy);
