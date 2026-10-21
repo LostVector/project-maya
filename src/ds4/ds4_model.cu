@@ -11,6 +11,7 @@
 //   h = post * moe + comb^T h;  pre = f_pre
 // and after the last layer logits = head(rmsnorm(sum_s pre[s] h[s])).
 #include "ds4_model.hpp"
+#include "ds4_dense_recon_cache.hpp"
 #include "ds4_engram_io.hpp"
 
 #include "ds4_gguf.cuh"
@@ -514,6 +515,7 @@ struct Chunk {
     uint16_t *x16 = nullptr, *qr16 = nullptr, *o16 = nullptr, *oa16 = nullptr, *lat16 = nullptr, *sh16 = nullptr,
              *h16 = nullptr, *eg_x16 = nullptr, *ext = nullptr, *w16 = nullptr, *emb = nullptr;
     size_t w16_elems = 0;
+    DenseReconCache dense_recon; // optional phase-local FP16 tiles, allocated after expert placement
 #if defined(STRATA_USE_HIP)
     uint32_t* predecoded = nullptr;
 #if defined(STRATA_DS4_PREDECODE_TEST)
@@ -2629,6 +2631,9 @@ struct Model::Impl {
         init_peer_ar();
 #endif
         calibrate_paths();
+#if defined(STRATA_USE_HIP)
+        init_dense_recon_cache();
+#endif
         if (o.verbose) std::fprintf(stderr, "ds4: loaded in %.1f s\n%s", (now_ms() - t0) / 1000.0, describe().c_str());
         reset();
         return true;
@@ -2731,17 +2736,65 @@ struct Model::Impl {
         return true;
     }
 
+#if defined(STRATA_USE_HIP)
+    void init_dense_recon_cache() {
+        const char* opt = std::getenv("DS4_DENSE_RECON_CACHE_MIB");
+        if (!opt || chunk <= 0) return;
+        char* end = nullptr;
+        const long mib = std::strtol(opt, &end, 10);
+        if (end == opt || *end != '\0' || mib <= 0 || mib > 2048) return;
+        const size_t bytes = size_t(mib) << 20;
+        for (size_t di = 0; di < devs.size(); ++di) {
+            Dev& d = devs[di];
+            Chunk& c = *chunks[di];
+            cudaSetDevice(d.id);
+            size_t available = 0, total = 0;
+            // Leave at least 512 MiB of existing post-placement headroom.
+            if (cudaMemGetInfo(&available, &total) != cudaSuccess ||
+                available < bytes || available - bytes < (size_t(512) << 20)) {
+                std::fprintf(stderr, "ds4: dense reconstruction cache disabled on CUDA%d (headroom)\n", d.id);
+                cudaGetLastError();
+                continue;
+            }
+            void* p = nullptr;
+            if (cudaMalloc(&p, bytes) != cudaSuccess) {
+                std::fprintf(stderr, "ds4: dense reconstruction cache disabled on CUDA%d (allocation)\n", d.id);
+                cudaGetLastError();
+                continue;
+            }
+            c.dense_recon.data = static_cast<uint16_t*>(p);
+            c.dense_recon.capacity = bytes;
+            d.allocs.push_back(p);
+            d.scratch += bytes;
+            std::fprintf(stderr, "ds4: dense reconstruction cache CUDA%d bytes=%zu after expert placement\n", d.id, bytes);
+        }
+    }
+#endif
+
     // y[r][c] = x16[r] . W[:, c] (+ beta y) for r < rows: W reconstructed to FP16 in whole 128-column blocks, cuBLAS
     bool gemm(Dev& d, Chunk& c, const x3::Mat& m, const uint16_t* x16, int ldx, int rows, float* y, int ldy, float beta,
-              std::string& err) {
+              std::string& err, bool reuse = false) {
         if (rows <= 0) return true;
         const int cols = std::max(128, (int) std::min<size_t>((size_t) m.n, c.w16_elems / (size_t) m.k) / 128 * 128);
         for (int c0 = 0; c0 < m.n; c0 += cols) {
             const int nc = std::min(cols, m.n - c0);
-            if (m.fmt != 0) gg::rows(nc == m.n ? m : gg::view(m, c0, nc), c.w16, false, d.st);   // (a GGUF's)
-            else x3::reconstruct_rows(nc == m.n ? m : x3::view(m, c0, nc), c.w16, false, d.st);
+            uint16_t* weights = c.w16;
+            bool hit = false;
+            x3::Mat tile = m;
+            if (m.fmt == 0 && nc != m.n) tile = x3::view(m, c0, nc);
+#if defined(STRATA_USE_HIP)
+            const char* cache_use = std::getenv("DS4_DENSE_RECON_CACHE_USE");
+            if (reuse && m.fmt == 0 && (!cache_use || std::atoi(cache_use) != 0)) {
+                const auto cached = c.dense_recon.get(tile);
+                if (cached.ptr) { weights = cached.ptr; hit = cached.hit; }
+            }
+#endif
+            if (!hit) {
+                if (m.fmt != 0) gg::rows(nc == m.n ? m : gg::view(m, c0, nc), weights, false, d.st);
+                else x3::reconstruct_rows(tile, weights, false, d.st);
+            }
             const float one = 1.0f;
-            const cublasStatus_t st = cublasGemmEx(c.blas, CUBLAS_OP_T, CUBLAS_OP_N, nc, rows, m.k, &one, c.w16, CUDA_R_16F,
+            const cublasStatus_t st = cublasGemmEx(c.blas, CUBLAS_OP_T, CUBLAS_OP_N, nc, rows, m.k, &one, weights, CUDA_R_16F,
                                                    m.k, x16, CUDA_R_16F, ldx, &beta, y + c0, CUDA_R_32F, ldy,
                                                    CUBLAS_COMPUTE_32F, CUBLAS_GEMM_DEFAULT_TENSOR_OP);
             if (st != CUBLAS_STATUS_SUCCESS) {
@@ -3768,6 +3821,16 @@ struct Model::Impl {
             std::fprintf(stderr, "ds4: Windows' commit has room for the GPU's experts (%.1f GB beside %.0f GB for the other "
                                  "programs)\n", room0 / 1e9, commit_margin() / 1e9);
         }
+#if defined(STRATA_DS4_HOST_LAYOUT_TEST)
+        if (std::getenv("DS4_TEST_FIXED_LAYER_SLOTS")) {
+            for (Layer& l : L) {
+                const int slots = l.nm > 1 ? 94 : 165;
+                if (l.n_vram < slots) { err = "fixed test layout does not fit"; return false; }
+                l.n_vram = slots;
+                std::fprintf(stderr, "FIXED_TEST_LAYOUT layer=%d slots=%d\n", l.il, slots);
+            }
+        }
+#endif
         for (Layer& l : L) {
             // the hottest experts of the profile first, then by index
             std::vector<int> order((size_t) l.n_exp);
@@ -6081,6 +6144,7 @@ struct Model::Impl {
         const int D = g.dim, H = g.hc, HD = g.hd, NHL = l.ahn, HQ = NHL * HD, OG = l.ogn, FF = l.ffn;
         Group& reduce_group = groups[(size_t) L0.grp];
         const float* freqs = l.ratio ? d.freqs_comp : d.freqs_win;
+        c.dense_recon.begin_scope();
         // Engram, in slabs of 256 tokens
         if (l.eg >= 0) {
             const int cols = (pk.eg_ngram - 1) * pk.eg_heads, ehd = pk.eg_hd;
@@ -6093,7 +6157,7 @@ struct Model::Impl {
                 const int ns = std::min(256, T - s0);
                 engram_dequant_tok(c.eg_rows + (size_t) s0 * per, per, cols, ns, ehd, c.eg_x, s, eg_q6k[(size_t) l.eg] != 0);
                 x3::rows_f16(c.eg_x, cols * ehd, nullptr, ns, cols * ehd, c.eg_x16, s);
-                if (!gemm(d, c, l.eg_wkv, c.eg_x16, cols * ehd, ns, c.eg_kv, (H + 1) * D, 0.0f, err)) return false;
+                if (!gemm(d, c, l.eg_wkv, c.eg_x16, cols * ehd, ns, c.eg_kv, (H + 1) * D, 0.0f, err, true)) return false;
                 engram_gate(c.h + (size_t) s0 * H * D, c.eg_kv, l.eg_w, H, D, ns, g.eps, s);
             }
         }
@@ -6135,6 +6199,7 @@ struct Model::Impl {
         }
         const uint8_t* ckv = nullptr;
         const long long ss = (long long) o.max_context + 64;
+        c.dense_recon.begin_scope(); // indexer query projection slabs
         if (l.ratio > 0) {
             Src& sr = srcs[(size_t) l.src];
             const int R = l.ratio;
@@ -6188,7 +6253,7 @@ struct Model::Impl {
                         const int na = std::min(c.AI, T - a0);
                         const int64_t pa = p0 + a0;
                         if (!gemm(d, c, l.i_wq_b, c.qr16 + (size_t) a0 * g.q_lora, g.q_lora, na, c.iq,
-                                  g.ix_heads * g.ix_hd, 0.0f, err))
+                                  g.ix_heads * g.ix_hd, 0.0f, err, true))
                             return false;
                         Finish fi;
                         fi.rd = g.rd;
@@ -6267,11 +6332,12 @@ struct Model::Impl {
             ckv = sr.ckv[(size_t) l.dev];
         }
         if (kv_only) return true;
+        c.dense_recon.begin_scope(); // repeated attention weights share the bounded pool
         // the attention in slabs: q, the sparse attention, wo_a, wo_b (this member's share) into acc
         if (NHL == 0) CK(cudaMemsetAsync(c.acc, 0, (size_t) T * D * sizeof(*c.acc), s));   // (no heads)
         for (int a0 = 0; a0 < T && NHL > 0; a0 += c.A) {
             const int na = std::min(c.A, T - a0);
-            if (!gemm(d, c, l.wq_b, c.qr16 + (size_t) a0 * g.q_lora, g.q_lora, na, c.q, HQ, 0.0f, err)) return false;
+            if (!gemm(d, c, l.wq_b, c.qr16 + (size_t) a0 * g.q_lora, g.q_lora, na, c.q, HQ, 0.0f, err, true)) return false;
             Finish fr;
             fr.rd = g.rd;
             fr.pos = (int) (p0 + a0);
@@ -6299,10 +6365,10 @@ struct Model::Impl {
             const int per = HQ / OG;
             for (int gi = 0; gi < OG; ++gi)
                 if (!gemm(d, c, l.wo_a[gi], c.o16 + (size_t) gi * per, HQ, na, c.oa + (size_t) gi * g.o_lora,
-                          OG * g.o_lora, 0.0f, err))
+                          OG * g.o_lora, 0.0f, err, true))
                     return false;
             x3::rows_f16(c.oa, OG * g.o_lora, nullptr, na, OG * g.o_lora, c.oa16, s);
-            if (!gemm(d, c, l.wo_b, c.oa16, OG * g.o_lora, na, c.acc + (size_t) a0 * D, D, 0.0f, err)) return false;
+            if (!gemm(d, c, l.wo_b, c.oa16, OG * g.o_lora, na, c.acc + (size_t) a0 * D, D, 0.0f, err, true)) return false;
         }
         if (nm > 1 && !chunk_reduce(c.acc, T * D, reduce_group, mi, ++c.arb_seq, d.xcnt, s, err)) return false;
         hc_post_inplace(c.acc, c.h, c.a_post, c.a_comb, D, H, T, s);

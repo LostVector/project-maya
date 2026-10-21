@@ -1,0 +1,514 @@
+{
+  "status": "experimental_default_off_not_selected_not_ready_upstream",
+  "reason": "FullAPIgatefailed8Knoregression;retainalloutliers",
+  "native": {
+    "states_per_trial": 195,
+    "candidate_and_repeat_exact": true,
+    "independent_accepted_reference_exact": 195,
+    "answers_correct": [
+      3,
+      3,
+      3
+    ],
+    "fixed_slots": {
+      "TP_layer": 94,
+      "tail_layer": 165
+    },
+    "swap_peak_kib": 0
+  },
+  "operator": {
+    "attention_tp2": {
+      "0": {
+        "median_ms": 12.24537945,
+        "reduction_pct": 0.0,
+        "samples": 6
+      },
+      "256": {
+        "median_ms": 7.32579899,
+        "reduction_pct": 40.17499400559612,
+        "samples": 6
+      },
+      "320": {
+        "median_ms": 7.337959525,
+        "reduction_pct": 40.07568687469297,
+        "samples": 6
+      },
+      "384": {
+        "median_ms": 7.320699455,
+        "reduction_pct": 40.21663857055896,
+        "samples": 6
+      }
+    },
+    "indexer": {
+      "0": {
+        "median_ms": 8.727929594999999,
+        "reduction_pct": 0.0,
+        "samples": 6
+      },
+      "256": {
+        "median_ms": 1.460931955,
+        "reduction_pct": 83.26141453023487,
+        "samples": 6
+      },
+      "320": {
+        "median_ms": 1.460932015,
+        "reduction_pct": 83.26141384278661,
+        "samples": 6
+      },
+      "384": {
+        "median_ms": 1.459550975,
+        "reduction_pct": 83.2772370685009,
+        "samples": 6
+      }
+    },
+    "engram": {
+      "0": {
+        "median_ms": 44.70116045,
+        "reduction_pct": 0.0,
+        "samples": 6
+      },
+      "256": {
+        "median_ms": 26.785376550000002,
+        "reduction_pct": 40.079012982312854,
+        "samples": 6
+      },
+      "320": {
+        "median_ms": 23.626492499999998,
+        "reduction_pct": 47.14568422350656,
+        "samples": 6
+      },
+      "384": {
+        "median_ms": 23.6949921,
+        "reduction_pct": 46.99244524870048,
+        "samples": 6
+      }
+    },
+    "view_aliases": {
+      "0": {
+        "median_ms": 1.07076895,
+        "reduction_pct": 0.0,
+        "samples": 6
+      },
+      "256": {
+        "median_ms": 0.4084029945,
+        "reduction_pct": 61.85890574245732,
+        "samples": 6
+      },
+      "320": {
+        "median_ms": 0.402862996,
+        "reduction_pct": 62.37629079550728,
+        "samples": 6
+      },
+      "384": {
+        "median_ms": 0.4086840005,
+        "reduction_pct": 61.8326623591392,
+        "samples": 6
+      }
+    }
+  },
+  "api": {
+    "pooled": {
+      "8192": {
+        "mean_prompt_ms": {
+          "control": 11081.8,
+          "candidate": 12307.05
+        },
+        "tokens_per_second": {
+          "control": 739.2300889747154,
+          "candidate": 665.6347378128796
+        },
+        "latency_reduction_percent": -11.056416827591175
+      },
+      "32768": {
+        "mean_prompt_ms": {
+          "control": 32070.499999999996,
+          "candidate": 29617.949999999997
+        },
+        "tokens_per_second": {
+          "control": 1021.7489593239894,
+          "candidate": 1106.3561117498004
+        },
+        "latency_reduction_percent": 7.6473706365663086
+      }
+    },
+    "paired": {
+      "8192": {
+        "latency_reductions_percent": [
+          -20.556046373257853,
+          -1.5382530936681293
+        ],
+        "mean_percent": -11.047149733462991,
+        "descriptive_t95_df1": [
+          -131.86913725215896,
+          109.77483778523298
+        ]
+      },
+      "32768": {
+        "latency_reductions_percent": [
+          3.793616025093227,
+          11.150513856108379
+        ],
+        "mean_percent": 7.472064940600803,
+        "descriptive_t95_df1": [
+          -39.26706009075561,
+          54.21118997195722
+        ]
+      }
+    },
+    "performance_gate_passed": false,
+    "limits": "Two fresh loads per variant; two timed prompts per length per load. Warmups excluded. Descriptive paired intervals with only2 blocks. This is not broad model quality or sustained decode evidence."
+  },
+  "arms": [
+    {
+      "index": 0,
+      "label": "control",
+      "allocation": [
+        [
+          "0",
+          "26.41",
+          "3409",
+          "13824"
+        ],
+        [
+          "1",
+          "26.41",
+          "3409",
+          "13824"
+        ],
+        [
+          "2",
+          "11.96",
+          "670",
+          "1536"
+        ]
+      ],
+      "requests": [
+        {
+          "name": "Warm8K",
+          "warmup": true,
+          "tokens": 8192,
+          "prompt_ms": 14110.8,
+          "correct": true,
+          "cache_n": 0,
+          "swap_kib": 0,
+          "isolated": true
+        },
+        {
+          "name": "Warm32K",
+          "warmup": true,
+          "tokens": 32768,
+          "prompt_ms": 30216.8,
+          "correct": true,
+          "cache_n": 0,
+          "swap_kib": 0,
+          "isolated": true
+        },
+        {
+          "name": "Amber",
+          "warmup": false,
+          "tokens": 8192,
+          "prompt_ms": 11042.3,
+          "correct": true,
+          "cache_n": 0,
+          "swap_kib": 0,
+          "isolated": true
+        },
+        {
+          "name": "Cobalt",
+          "warmup": false,
+          "tokens": 32768,
+          "prompt_ms": 30462.1,
+          "correct": true,
+          "cache_n": 0,
+          "swap_kib": 0,
+          "isolated": true
+        },
+        {
+          "name": "Birch",
+          "warmup": false,
+          "tokens": 8192,
+          "prompt_ms": 11142.9,
+          "correct": true,
+          "cache_n": 0,
+          "swap_kib": 0,
+          "isolated": true
+        },
+        {
+          "name": "Dune",
+          "warmup": false,
+          "tokens": 32768,
+          "prompt_ms": 30622.1,
+          "correct": true,
+          "cache_n": 0,
+          "swap_kib": 0,
+          "isolated": true
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "label": "candidate",
+      "allocation": [
+        [
+          "0",
+          "26.41",
+          "3409",
+          "13824"
+        ],
+        [
+          "1",
+          "26.41",
+          "3409",
+          "13824"
+        ],
+        [
+          "2",
+          "11.96",
+          "670",
+          "1536"
+        ]
+      ],
+      "requests": [
+        {
+          "name": "Warm8K",
+          "warmup": true,
+          "tokens": 8192,
+          "prompt_ms": 13573.0,
+          "correct": true,
+          "cache_n": 0,
+          "swap_kib": 0,
+          "isolated": true
+        },
+        {
+          "name": "Warm32K",
+          "warmup": true,
+          "tokens": 32768,
+          "prompt_ms": 35202.4,
+          "correct": true,
+          "cache_n": 0,
+          "swap_kib": 0,
+          "isolated": true
+        },
+        {
+          "name": "Amber",
+          "warmup": false,
+          "tokens": 8192,
+          "prompt_ms": 10403.8,
+          "correct": true,
+          "cache_n": 0,
+          "swap_kib": 0,
+          "isolated": true
+        },
+        {
+          "name": "Cobalt",
+          "warmup": false,
+          "tokens": 32768,
+          "prompt_ms": 29416.5,
+          "correct": true,
+          "cache_n": 0,
+          "swap_kib": 0,
+          "isolated": true
+        },
+        {
+          "name": "Birch",
+          "warmup": false,
+          "tokens": 8192,
+          "prompt_ms": 16341.8,
+          "correct": true,
+          "cache_n": 0,
+          "swap_kib": 0,
+          "isolated": true
+        },
+        {
+          "name": "Dune",
+          "warmup": false,
+          "tokens": 32768,
+          "prompt_ms": 29350.4,
+          "correct": true,
+          "cache_n": 0,
+          "swap_kib": 0,
+          "isolated": true
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "label": "candidate",
+      "allocation": [
+        [
+          "0",
+          "26.41",
+          "3409",
+          "13824"
+        ],
+        [
+          "1",
+          "26.41",
+          "3409",
+          "13824"
+        ],
+        [
+          "2",
+          "11.96",
+          "670",
+          "1536"
+        ]
+      ],
+      "requests": [
+        {
+          "name": "Warm8K",
+          "warmup": true,
+          "tokens": 8192,
+          "prompt_ms": 17279.2,
+          "correct": true,
+          "cache_n": 0,
+          "swap_kib": 0,
+          "isolated": true
+        },
+        {
+          "name": "Warm32K",
+          "warmup": true,
+          "tokens": 32768,
+          "prompt_ms": 30592.4,
+          "correct": true,
+          "cache_n": 0,
+          "swap_kib": 0,
+          "isolated": true
+        },
+        {
+          "name": "Amber",
+          "warmup": false,
+          "tokens": 8192,
+          "prompt_ms": 10417.0,
+          "correct": true,
+          "cache_n": 0,
+          "swap_kib": 0,
+          "isolated": true
+        },
+        {
+          "name": "Cobalt",
+          "warmup": false,
+          "tokens": 32768,
+          "prompt_ms": 29114.6,
+          "correct": true,
+          "cache_n": 0,
+          "swap_kib": 0,
+          "isolated": true
+        },
+        {
+          "name": "Birch",
+          "warmup": false,
+          "tokens": 8192,
+          "prompt_ms": 12065.6,
+          "correct": true,
+          "cache_n": 0,
+          "swap_kib": 0,
+          "isolated": true
+        },
+        {
+          "name": "Dune",
+          "warmup": false,
+          "tokens": 32768,
+          "prompt_ms": 30590.3,
+          "correct": true,
+          "cache_n": 0,
+          "swap_kib": 0,
+          "isolated": true
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "label": "control",
+      "allocation": [
+        [
+          "0",
+          "26.41",
+          "3409",
+          "13824"
+        ],
+        [
+          "1",
+          "26.41",
+          "3409",
+          "13824"
+        ],
+        [
+          "2",
+          "11.96",
+          "670",
+          "1536"
+        ]
+      ],
+      "requests": [
+        {
+          "name": "Warm8K",
+          "warmup": true,
+          "tokens": 8192,
+          "prompt_ms": 19829.2,
+          "correct": true,
+          "cache_n": 0,
+          "swap_kib": 0,
+          "isolated": true
+        },
+        {
+          "name": "Warm32K",
+          "warmup": true,
+          "tokens": 32768,
+          "prompt_ms": 30353.4,
+          "correct": true,
+          "cache_n": 0,
+          "swap_kib": 0,
+          "isolated": true
+        },
+        {
+          "name": "Amber",
+          "warmup": false,
+          "tokens": 8192,
+          "prompt_ms": 11170.6,
+          "correct": true,
+          "cache_n": 0,
+          "swap_kib": 0,
+          "isolated": true
+        },
+        {
+          "name": "Cobalt",
+          "warmup": false,
+          "tokens": 32768,
+          "prompt_ms": 30809.6,
+          "correct": true,
+          "cache_n": 0,
+          "swap_kib": 0,
+          "isolated": true
+        },
+        {
+          "name": "Birch",
+          "warmup": false,
+          "tokens": 8192,
+          "prompt_ms": 10971.4,
+          "correct": true,
+          "cache_n": 0,
+          "swap_kib": 0,
+          "isolated": true
+        },
+        {
+          "name": "Dune",
+          "warmup": false,
+          "tokens": 32768,
+          "prompt_ms": 36388.2,
+          "correct": true,
+          "cache_n": 0,
+          "swap_kib": 0,
+          "isolated": true
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "2freshloadspervariant,2pairedblocks;wideintervals;largeoutliersretained",
+    "Historicalmatrix/crosschunknumericaldrift remains;cachecomparisonstrictwithinunchangedmatrixmode",
+    "Firstunfrozenbaseline differedfromoldreferenceunder3408vs3409residentexpertlayout;independentfixedlayoutbaseline resolvedcomparison",
+    "APIatstock300/300/304W;laterportedoperatorparityat240Wnotwholemodeltiming",
+    "CurrentupstreamK2portbuildandoperatorpassprepared,butno upstreamPRduefailedAPIgate"
+  ]
+}
