@@ -125,6 +125,7 @@ public:
 #if defined(STRATA_DS4_SCHEDULE_TEST)
     uint64_t benchmark_copy_wait_calls() const;
     uint64_t benchmark_peer_ar_calls() const;
+    uint64_t benchmark_compressed_prepared_calls() const;
     bool benchmark_peer_ar_mode(bool enabled);
     bool benchmark_peer_ar_inject_error();
 #endif

@@ -72,6 +72,7 @@ namespace {
 #if defined(STRATA_DS4_SCHEDULE_TEST)
 std::atomic<uint64_t> g_host_copy_wait_calls{0};
 std::atomic<uint64_t> g_peer_ar_calls{0};
+std::atomic<uint64_t> g_compressed_prepared_calls{0};
 #endif
 
 double now_ms() {
@@ -512,6 +513,8 @@ struct Chunk {
     size_t w16_elems = 0;
 #if defined(STRATA_USE_HIP)
     uint32_t* predecoded = nullptr;
+    uint16_t* compressed_prepared_input = nullptr;
+    size_t compressed_prepared_bytes = 0;
 #if defined(STRATA_DS4_PREDECODE_TEST)
     uint64_t predecode_calls = 0, predecode_rows = 0;
 #endif
@@ -3338,8 +3341,39 @@ struct Model::Impl {
                     } else
 #endif
                     {
-                    x3::set_gate_up(sa, c.x, D, c.row_tok + a, c.h16, FF, d.st);
-                    x3::set_down(sa, c.h16, FF, c.y, D, d.st);
+#if defined(STRATA_USE_HIP)
+                    const char* cp = std::getenv("DS4_EXL3_COMPRESSED_PREPARED");
+                    const bool prepared = cp && std::atoi(cp) == 1 && nrows >= 256 && D == 5120 &&
+                        (FF == 1152 || FF == 2304) && sa.lay.fmt == 0 && sa.lay.cb == 2 &&
+                        (sa.lay.K[0] == 3 || sa.lay.K[0] == 4) &&
+                        sa.lay.K[0] == sa.lay.K[1] && sa.lay.K[0] == sa.lay.K[2];
+                    if (prepared) {
+                        // Frozen shape rule trained on the27 captured training groups. The
+                        // existing decoded branch above remains the preferred hot-group path.
+                        if (nrows > c.C) { err = "compressed prepared group exceeds chunk capacity"; return false; }
+                        const size_t bytes = x3::prepared_set_input_bytes(sa, size_t(c.C));
+                        if (!bytes) { err = "invalid compressed prepared capacity"; return false; }
+                        if (!c.compressed_prepared_input) {
+                            if (!dalloc(d, c.compressed_prepared_input, bytes / sizeof(uint16_t), err)) return false;
+                            c.compressed_prepared_bytes = bytes;
+                            std::fprintf(stderr, "EXL3_COMPRESSED_PREPARED gpu=%d scratch_bytes=%zu\n", d.id, bytes);
+                        }
+                        if (bytes > c.compressed_prepared_bytes) { err = "compressed prepared allocation too small"; return false; }
+#if defined(STRATA_DS4_SCHEDULE_TEST)
+                        g_compressed_prepared_calls.fetch_add(1, std::memory_order_relaxed);
+#endif
+                        if (!x3::set_gate_up_compressed_prepared(sa, c.x, D, c.row_tok + a, c.h16, FF,
+                                c.compressed_prepared_input, size_t(nrows), d.st) ||
+                            !x3::set_down_compressed_prepared(sa, c.h16, FF, c.y, D,
+                                c.compressed_prepared_input, size_t(nrows), d.st)) {
+                            err = "compressed prepared projection failed"; return false;
+                        }
+                    } else
+#endif
+                    {
+                        x3::set_gate_up(sa, c.x, D, c.row_tok + a, c.h16, FF, d.st);
+                        x3::set_down(sa, c.h16, FF, c.y, D, d.st);
+                    }
                     }
                 }
                 if (dump_y != nullptr && (dump_y_layer < 0 || l.il == dump_y_layer)) {
@@ -8116,6 +8150,7 @@ const std::vector<int32_t>& Model::tokens() const { return p_->toks; }
 void Model::reset() { p_->reset(); }
 #if defined(STRATA_DS4_SCHEDULE_TEST)
 uint64_t Model::benchmark_copy_wait_calls() const { return g_host_copy_wait_calls.load(std::memory_order_relaxed); }
+uint64_t Model::benchmark_compressed_prepared_calls() const { return g_compressed_prepared_calls.load(std::memory_order_relaxed); }
 uint64_t Model::benchmark_peer_ar_calls() const { return g_peer_ar_calls.load(std::memory_order_relaxed); }
 bool Model::benchmark_peer_ar_inject_error() {
 #if defined(STRATA_USE_HIP)
