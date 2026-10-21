@@ -1,0 +1,2247 @@
+{
+  "status": "Completed amended timing checkpoint; 4K is not selected and numerical validation is pending.",
+  "source_commit": "8dfabf91799f438eec5686306cf17d209097aea5",
+  "hardware": "Ryzen 9950X, 256 GB RAM, two 32 GB R9700s and one 16 GB RX 9070 XT; TP2 on the R9700s, layer split 36/4.",
+  "model": "LibertAIDAI/DeepSeek-V4.1-Flash-1017-EXL3-3.5bpw",
+  "settings": {
+    "context": 262144,
+    "expert_storage": "RAM",
+    "engram_storage": "NVMe",
+    "matrix_rows": 16,
+    "whole_chunk_pruning": true,
+    "expert_profile": "absent",
+    "cache_bonus": 1,
+    "fresh_model_per_arm": true,
+    "warmup": "12 quality tasks, then excluded 8K and 32K warmups.",
+    "order": [
+      2048,
+      4096,
+      4096,
+      2048
+    ]
+  },
+  "input_sha256": {
+    "payloads.json": "57d3082f470e5361770f9557ef1698d9f0520e290fc0edf132fd03fc5fb0aaf3",
+    "quality-cases.json": "fc825d737aca22b586b1b4177800eaf9cdd17cda0be1ab1b01d0d5f8ab52a5a3"
+  },
+  "arms": [
+    {
+      "index": 0,
+      "chunk": 2048,
+      "allocation": [
+        [
+          "0",
+          "26.85",
+          "3469",
+          "13824"
+        ],
+        [
+          "1",
+          "26.85",
+          "3469",
+          "13824"
+        ],
+        [
+          "2",
+          "12.40",
+          "695",
+          "1536"
+        ]
+      ],
+      "samples": [
+        {
+          "name": "Warm8K",
+          "primer": true,
+          "prompt_tokens": 8192,
+          "timings": {
+            "cache_n": 0,
+            "prompt_n": 8192,
+            "prompt_ms": 15345.3,
+            "prompt_per_token_ms": 1.873,
+            "prompt_per_second": 533.8,
+            "predicted_n": 27,
+            "predicted_ms": 1555.8,
+            "predicted_per_token_ms": 57.622,
+            "predicted_per_second": 17.4,
+            "draft_n": 0,
+            "draft_n_accepted": 0
+          },
+          "correct": true,
+          "isolated": true,
+          "swap_kib": 0,
+          "prefill_metrics": {
+            "retained_rows": 4096,
+            "actual_pruning_plans": [
+              {
+                "n": 8192,
+                "offset": 0,
+                "layer": 20,
+                "keep": 2668,
+                "cut_chunk": 2,
+                "cut_row": 0,
+                "skipped_rows": 4096,
+                "whole_chunks": 1,
+                "retained_rows": 4096
+              }
+            ],
+            "per_gpu": [
+              {
+                "gpu": 0,
+                "tokens": 8192,
+                "chunk": 2048,
+                "expert_row_picks": 1376256,
+                "vram_row_picks": 1227124,
+                "unique_expert_uses": 22866,
+                "vram_unique_expert_uses": 9668,
+                "streamed_weight_bytes": 101876353536
+              },
+              {
+                "gpu": 1,
+                "tokens": 8192,
+                "chunk": 2048,
+                "expert_row_picks": 1376256,
+                "vram_row_picks": 1227124,
+                "unique_expert_uses": 22866,
+                "vram_unique_expert_uses": 9668,
+                "streamed_weight_bytes": 101876353536
+              },
+              {
+                "gpu": 2,
+                "tokens": 8192,
+                "chunk": 2048,
+                "expert_row_picks": 98304,
+                "vram_row_picks": 95490,
+                "unique_expert_uses": 1767,
+                "vram_unique_expert_uses": 1185,
+                "streamed_weight_bytes": 10324251648
+              }
+            ],
+            "logical_row_hit_fraction": 0.8969550238715278,
+            "total_streamed_weight_bytes": 214076958720
+          }
+        },
+        {
+          "name": "Warm32K",
+          "primer": true,
+          "prompt_tokens": 32768,
+          "timings": {
+            "cache_n": 0,
+            "prompt_n": 32768,
+            "prompt_ms": 41637.8,
+            "prompt_per_token_ms": 1.271,
+            "prompt_per_second": 787.0,
+            "predicted_n": 27,
+            "predicted_ms": 1448.0,
+            "predicted_per_token_ms": 53.63,
+            "predicted_per_second": 18.6,
+            "draft_n": 0,
+            "draft_n_accepted": 0
+          },
+          "correct": true,
+          "isolated": true,
+          "swap_kib": 0,
+          "prefill_metrics": {
+            "retained_rows": 4096,
+            "actual_pruning_plans": [
+              {
+                "n": 32768,
+                "offset": 0,
+                "layer": 20,
+                "keep": 2668,
+                "cut_chunk": 14,
+                "cut_row": 0,
+                "skipped_rows": 28672,
+                "whole_chunks": 1,
+                "retained_rows": 4096
+              }
+            ],
+            "per_gpu": [
+              {
+                "gpu": 0,
+                "tokens": 32768,
+                "chunk": 2048,
+                "expert_row_picks": 4325376,
+                "vram_row_picks": 3766317,
+                "unique_expert_uses": 69317,
+                "vram_unique_expert_uses": 28880,
+                "streamed_weight_bytes": 312599326464
+              },
+              {
+                "gpu": 1,
+                "tokens": 32768,
+                "chunk": 2048,
+                "expert_row_picks": 4325376,
+                "vram_row_picks": 3766317,
+                "unique_expert_uses": 69317,
+                "vram_unique_expert_uses": 28880,
+                "streamed_weight_bytes": 312599326464
+              },
+              {
+                "gpu": 2,
+                "tokens": 32768,
+                "chunk": 2048,
+                "expert_row_picks": 98304,
+                "vram_row_picks": 94772,
+                "unique_expert_uses": 1765,
+                "vram_unique_expert_uses": 1178,
+                "streamed_weight_bytes": 10412947968
+              }
+            ],
+            "logical_row_hit_fraction": 0.8728228533709491,
+            "total_streamed_weight_bytes": 635611600896
+          }
+        },
+        {
+          "name": "Amber",
+          "primer": false,
+          "prompt_tokens": 8192,
+          "timings": {
+            "cache_n": 0,
+            "prompt_n": 8192,
+            "prompt_ms": 14321.1,
+            "prompt_per_token_ms": 1.748,
+            "prompt_per_second": 572.0,
+            "predicted_n": 27,
+            "predicted_ms": 1292.0,
+            "predicted_per_token_ms": 47.852,
+            "predicted_per_second": 20.9,
+            "draft_n": 0,
+            "draft_n_accepted": 0
+          },
+          "correct": true,
+          "isolated": true,
+          "swap_kib": 0,
+          "prefill_metrics": {
+            "retained_rows": 4096,
+            "actual_pruning_plans": [
+              {
+                "n": 8192,
+                "offset": 0,
+                "layer": 20,
+                "keep": 2668,
+                "cut_chunk": 2,
+                "cut_row": 0,
+                "skipped_rows": 4096,
+                "whole_chunks": 1,
+                "retained_rows": 4096
+              }
+            ],
+            "per_gpu": [
+              {
+                "gpu": 0,
+                "tokens": 8192,
+                "chunk": 2048,
+                "expert_row_picks": 1376256,
+                "vram_row_picks": 1189816,
+                "unique_expert_uses": 23045,
+                "vram_unique_expert_uses": 9490,
+                "streamed_weight_bytes": 104727578880
+              },
+              {
+                "gpu": 1,
+                "tokens": 8192,
+                "chunk": 2048,
+                "expert_row_picks": 1376256,
+                "vram_row_picks": 1189816,
+                "unique_expert_uses": 23045,
+                "vram_unique_expert_uses": 9490,
+                "streamed_weight_bytes": 104727578880
+              },
+              {
+                "gpu": 2,
+                "tokens": 8192,
+                "chunk": 2048,
+                "expert_row_picks": 98304,
+                "vram_row_picks": 95383,
+                "unique_expert_uses": 1773,
+                "vram_unique_expert_uses": 1188,
+                "streamed_weight_bytes": 10377469440
+              }
+            ],
+            "logical_row_hit_fraction": 0.8715813530815972,
+            "total_streamed_weight_bytes": 219832627200
+          }
+        },
+        {
+          "name": "Cobalt",
+          "primer": false,
+          "prompt_tokens": 32768,
+          "timings": {
+            "cache_n": 0,
+            "prompt_n": 32768,
+            "prompt_ms": 41921.9,
+            "prompt_per_token_ms": 1.279,
+            "prompt_per_second": 781.6,
+            "predicted_n": 27,
+            "predicted_ms": 1210.6,
+            "predicted_per_token_ms": 44.837,
+            "predicted_per_second": 22.3,
+            "draft_n": 0,
+            "draft_n_accepted": 0
+          },
+          "correct": true,
+          "isolated": true,
+          "swap_kib": 0,
+          "prefill_metrics": {
+            "retained_rows": 4096,
+            "actual_pruning_plans": [
+              {
+                "n": 32768,
+                "offset": 0,
+                "layer": 20,
+                "keep": 2668,
+                "cut_chunk": 14,
+                "cut_row": 0,
+                "skipped_rows": 28672,
+                "whole_chunks": 1,
+                "retained_rows": 4096
+              }
+            ],
+            "per_gpu": [
+              {
+                "gpu": 0,
+                "tokens": 32768,
+                "chunk": 2048,
+                "expert_row_picks": 4325376,
+                "vram_row_picks": 3598063,
+                "unique_expert_uses": 69641,
+                "vram_unique_expert_uses": 27970,
+                "streamed_weight_bytes": 322512782592
+              },
+              {
+                "gpu": 1,
+                "tokens": 32768,
+                "chunk": 2048,
+                "expert_row_picks": 4325376,
+                "vram_row_picks": 3598063,
+                "unique_expert_uses": 69641,
+                "vram_unique_expert_uses": 27970,
+                "streamed_weight_bytes": 322512782592
+              },
+              {
+                "gpu": 2,
+                "tokens": 32768,
+                "chunk": 2048,
+                "expert_row_picks": 98304,
+                "vram_row_picks": 94939,
+                "unique_expert_uses": 1777,
+                "vram_unique_expert_uses": 1187,
+                "streamed_weight_bytes": 10466165760
+              }
+            ],
+            "logical_row_hit_fraction": 0.8348257559317129,
+            "total_streamed_weight_bytes": 655491730944
+          }
+        },
+        {
+          "name": "Birch",
+          "primer": false,
+          "prompt_tokens": 8192,
+          "timings": {
+            "cache_n": 0,
+            "prompt_n": 8192,
+            "prompt_ms": 14384.9,
+            "prompt_per_token_ms": 1.756,
+            "prompt_per_second": 569.5,
+            "predicted_n": 27,
+            "predicted_ms": 1096.0,
+            "predicted_per_token_ms": 40.593,
+            "predicted_per_second": 24.6,
+            "draft_n": 0,
+            "draft_n_accepted": 0
+          },
+          "correct": true,
+          "isolated": true,
+          "swap_kib": 0,
+          "prefill_metrics": {
+            "retained_rows": 4096,
+            "actual_pruning_plans": [
+              {
+                "n": 8192,
+                "offset": 0,
+                "layer": 20,
+                "keep": 2668,
+                "cut_chunk": 2,
+                "cut_row": 0,
+                "skipped_rows": 4096,
+                "whole_chunks": 1,
+                "retained_rows": 4096
+              }
+            ],
+            "per_gpu": [
+              {
+                "gpu": 0,
+                "tokens": 8192,
+                "chunk": 2048,
+                "expert_row_picks": 1376256,
+                "vram_row_picks": 1149660,
+                "unique_expert_uses": 23132,
+                "vram_unique_expert_uses": 9297,
+                "streamed_weight_bytes": 106848211200
+              },
+              {
+                "gpu": 1,
+                "tokens": 8192,
+                "chunk": 2048,
+                "expert_row_picks": 1376256,
+                "vram_row_picks": 1149660,
+                "unique_expert_uses": 23132,
+                "vram_unique_expert_uses": 9297,
+                "streamed_weight_bytes": 106848211200
+              },
+              {
+                "gpu": 2,
+                "tokens": 8192,
+                "chunk": 2048,
+                "expert_row_picks": 98304,
+                "vram_row_picks": 95319,
+                "unique_expert_uses": 1774,
+                "vram_unique_expert_uses": 1189,
+                "streamed_weight_bytes": 10377469440
+              }
+            ],
+            "logical_row_hit_fraction": 0.844305419921875,
+            "total_streamed_weight_bytes": 224073891840
+          }
+        },
+        {
+          "name": "Dune",
+          "primer": false,
+          "prompt_tokens": 32768,
+          "timings": {
+            "cache_n": 0,
+            "prompt_n": 32768,
+            "prompt_ms": 42164.2,
+            "prompt_per_token_ms": 1.287,
+            "prompt_per_second": 777.2,
+            "predicted_n": 27,
+            "predicted_ms": 1060.4,
+            "predicted_per_token_ms": 39.274,
+            "predicted_per_second": 25.5,
+            "draft_n": 0,
+            "draft_n_accepted": 0
+          },
+          "correct": true,
+          "isolated": true,
+          "swap_kib": 0,
+          "prefill_metrics": {
+            "retained_rows": 4096,
+            "actual_pruning_plans": [
+              {
+                "n": 32768,
+                "offset": 0,
+                "layer": 20,
+                "keep": 2668,
+                "cut_chunk": 14,
+                "cut_row": 0,
+                "skipped_rows": 28672,
+                "whole_chunks": 1,
+                "retained_rows": 4096
+              }
+            ],
+            "per_gpu": [
+              {
+                "gpu": 0,
+                "tokens": 32768,
+                "chunk": 2048,
+                "expert_row_picks": 4325376,
+                "vram_row_picks": 3465697,
+                "unique_expert_uses": 69943,
+                "vram_unique_expert_uses": 27327,
+                "streamed_weight_bytes": 329486886912
+              },
+              {
+                "gpu": 1,
+                "tokens": 32768,
+                "chunk": 2048,
+                "expert_row_picks": 4325376,
+                "vram_row_picks": 3465697,
+                "unique_expert_uses": 69943,
+                "vram_unique_expert_uses": 27327,
+                "streamed_weight_bytes": 329486886912
+              },
+              {
+                "gpu": 2,
+                "tokens": 32768,
+                "chunk": 2048,
+                "expert_row_picks": 98304,
+                "vram_row_picks": 94741,
+                "unique_expert_uses": 1768,
+                "vram_unique_expert_uses": 1176,
+                "streamed_weight_bytes": 10501644288
+              }
+            ],
+            "logical_row_hit_fraction": 0.8048588505497685,
+            "total_streamed_weight_bytes": 669475418112
+          }
+        }
+      ],
+      "quality": [
+        {
+          "id": "multiply",
+          "text": "391",
+          "passed": true
+        },
+        {
+          "id": "signed_arithmetic",
+          "text": "-24",
+          "passed": true
+        },
+        {
+          "id": "python_comprehension",
+          "text": "[0, 4, 16]",
+          "passed": true
+        },
+        {
+          "id": "python_count",
+          "text": "3",
+          "passed": true
+        },
+        {
+          "id": "sql_distinct",
+          "text": "2",
+          "passed": true
+        },
+        {
+          "id": "logic",
+          "text": "No",
+          "passed": true
+        },
+        {
+          "id": "state_machine",
+          "text": "12",
+          "passed": true
+        },
+        {
+          "id": "json_lookup",
+          "text": "11",
+          "passed": true
+        },
+        {
+          "id": "sort_key",
+          "text": "Sable",
+          "passed": false
+        },
+        {
+          "id": "sql_sum",
+          "text": "10",
+          "passed": true
+        },
+        {
+          "id": "intervals",
+          "text": "5",
+          "passed": true
+        },
+        {
+          "id": "text_fact",
+          "text": "Lima",
+          "passed": true
+        }
+      ],
+      "source_sha256": {
+        "requests.json": "824bc31e5f705552885c09aed1c5458a482523a1ef29e99c8af9754b5e50cfa9",
+        "quality-responses.json": "2f45cd1390b2c11b574323608e54db7daf3c70e9f4028e1a5cac400956d0c6e4",
+        "identity.json": "1d60720332dcff4d2fdc2d53482e4e65fc8ced0ec9a4509216cb91d8b4ae0e04",
+        "exit.json": "d24219f6de94b955cf36d25bd2aca88e2d35eef45b9317b7083f55ec8fe9653c"
+      }
+    },
+    {
+      "index": 1,
+      "chunk": 4096,
+      "allocation": [
+        [
+          "0",
+          "26.41",
+          "3409",
+          "13824"
+        ],
+        [
+          "1",
+          "26.41",
+          "3409",
+          "13824"
+        ],
+        [
+          "2",
+          "11.96",
+          "670",
+          "1536"
+        ]
+      ],
+      "samples": [
+        {
+          "name": "Warm8K",
+          "primer": true,
+          "prompt_tokens": 8192,
+          "timings": {
+            "cache_n": 0,
+            "prompt_n": 8192,
+            "prompt_ms": 15005.8,
+            "prompt_per_token_ms": 1.832,
+            "prompt_per_second": 545.9,
+            "predicted_n": 27,
+            "predicted_ms": 1548.6,
+            "predicted_per_token_ms": 57.356,
+            "predicted_per_second": 17.4,
+            "draft_n": 0,
+            "draft_n_accepted": 0
+          },
+          "correct": true,
+          "isolated": true,
+          "swap_kib": 0,
+          "prefill_metrics": {
+            "retained_rows": 4096,
+            "actual_pruning_plans": [
+              {
+                "n": 8192,
+                "offset": 0,
+                "layer": 20,
+                "keep": 2668,
+                "cut_chunk": 1,
+                "cut_row": 0,
+                "skipped_rows": 4096,
+                "whole_chunks": 1,
+                "retained_rows": 4096
+              }
+            ],
+            "per_gpu": [
+              {
+                "gpu": 0,
+                "tokens": 8192,
+                "chunk": 4096,
+                "expert_row_picks": 1376256,
+                "vram_row_picks": 1232254,
+                "unique_expert_uses": 13372,
+                "vram_unique_expert_uses": 5006,
+                "streamed_weight_bytes": 64668314112
+              },
+              {
+                "gpu": 1,
+                "tokens": 8192,
+                "chunk": 4096,
+                "expert_row_picks": 1376256,
+                "vram_row_picks": 1232254,
+                "unique_expert_uses": 13372,
+                "vram_unique_expert_uses": 5006,
+                "streamed_weight_bytes": 64668314112
+              },
+              {
+                "gpu": 2,
+                "tokens": 8192,
+                "chunk": 4096,
+                "expert_row_picks": 98304,
+                "vram_row_picks": 95191,
+                "unique_expert_uses": 1023,
+                "vram_unique_expert_uses": 622,
+                "streamed_weight_bytes": 7113444864
+              }
+            ],
+            "logical_row_hit_fraction": 0.9002312554253472,
+            "total_streamed_weight_bytes": 136450073088
+          }
+        },
+        {
+          "name": "Warm32K",
+          "primer": true,
+          "prompt_tokens": 32768,
+          "timings": {
+            "cache_n": 0,
+            "prompt_n": 32768,
+            "prompt_ms": 36931.1,
+            "prompt_per_token_ms": 1.127,
+            "prompt_per_second": 887.3,
+            "predicted_n": 27,
+            "predicted_ms": 1446.3,
+            "predicted_per_token_ms": 53.567,
+            "predicted_per_second": 18.7,
+            "draft_n": 0,
+            "draft_n_accepted": 0
+          },
+          "correct": true,
+          "isolated": true,
+          "swap_kib": 0,
+          "prefill_metrics": {
+            "retained_rows": 4096,
+            "actual_pruning_plans": [
+              {
+                "n": 32768,
+                "offset": 0,
+                "layer": 20,
+                "keep": 2668,
+                "cut_chunk": 7,
+                "cut_row": 0,
+                "skipped_rows": 28672,
+                "whole_chunks": 1,
+                "retained_rows": 4096
+              }
+            ],
+            "per_gpu": [
+              {
+                "gpu": 0,
+                "tokens": 32768,
+                "chunk": 4096,
+                "expert_row_picks": 4325376,
+                "vram_row_picks": 3791254,
+                "unique_expert_uses": 38699,
+                "vram_unique_expert_uses": 14893,
+                "streamed_weight_bytes": 183854848512
+              },
+              {
+                "gpu": 1,
+                "tokens": 32768,
+                "chunk": 4096,
+                "expert_row_picks": 4325376,
+                "vram_row_picks": 3791254,
+                "unique_expert_uses": 38699,
+                "vram_unique_expert_uses": 14893,
+                "streamed_weight_bytes": 183854848512
+              },
+              {
+                "gpu": 2,
+                "tokens": 32768,
+                "chunk": 4096,
+                "expert_row_picks": 98304,
+                "vram_row_picks": 94830,
+                "unique_expert_uses": 1029,
+                "vram_unique_expert_uses": 621,
+                "streamed_weight_bytes": 7237619712
+              }
+            ],
+            "logical_row_hit_fraction": 0.8784731264467592,
+            "total_streamed_weight_bytes": 374947316736
+          }
+        },
+        {
+          "name": "Amber",
+          "primer": false,
+          "prompt_tokens": 8192,
+          "timings": {
+            "cache_n": 0,
+            "prompt_n": 8192,
+            "prompt_ms": 13282.6,
+            "prompt_per_token_ms": 1.621,
+            "prompt_per_second": 616.7,
+            "predicted_n": 27,
+            "predicted_ms": 1272.0,
+            "predicted_per_token_ms": 47.111,
+            "predicted_per_second": 21.2,
+            "draft_n": 0,
+            "draft_n_accepted": 0
+          },
+          "correct": true,
+          "isolated": true,
+          "swap_kib": 0,
+          "prefill_metrics": {
+            "retained_rows": 4096,
+            "actual_pruning_plans": [
+              {
+                "n": 8192,
+                "offset": 0,
+                "layer": 20,
+                "keep": 2668,
+                "cut_chunk": 1,
+                "cut_row": 0,
+                "skipped_rows": 4096,
+                "whole_chunks": 1,
+                "retained_rows": 4096
+              }
+            ],
+            "per_gpu": [
+              {
+                "gpu": 0,
+                "tokens": 8192,
+                "chunk": 4096,
+                "expert_row_picks": 1376256,
+                "vram_row_picks": 1195430,
+                "unique_expert_uses": 13427,
+                "vram_unique_expert_uses": 4956,
+                "streamed_weight_bytes": 65503917312
+              },
+              {
+                "gpu": 1,
+                "tokens": 8192,
+                "chunk": 4096,
+                "expert_row_picks": 1376256,
+                "vram_row_picks": 1195430,
+                "unique_expert_uses": 13427,
+                "vram_unique_expert_uses": 4956,
+                "streamed_weight_bytes": 65503917312
+              },
+              {
+                "gpu": 2,
+                "tokens": 8192,
+                "chunk": 4096,
+                "expert_row_picks": 98304,
+                "vram_row_picks": 95247,
+                "unique_expert_uses": 1027,
+                "vram_unique_expert_uses": 620,
+                "streamed_weight_bytes": 7219880448
+              }
+            ],
+            "logical_row_hit_fraction": 0.8752963595920139,
+            "total_streamed_weight_bytes": 138227715072
+          }
+        },
+        {
+          "name": "Cobalt",
+          "primer": false,
+          "prompt_tokens": 32768,
+          "timings": {
+            "cache_n": 0,
+            "prompt_n": 32768,
+            "prompt_ms": 36767.7,
+            "prompt_per_token_ms": 1.122,
+            "prompt_per_second": 891.2,
+            "predicted_n": 27,
+            "predicted_ms": 1204.1,
+            "predicted_per_token_ms": 44.596,
+            "predicted_per_second": 22.4,
+            "draft_n": 0,
+            "draft_n_accepted": 0
+          },
+          "correct": true,
+          "isolated": true,
+          "swap_kib": 0,
+          "prefill_metrics": {
+            "retained_rows": 4096,
+            "actual_pruning_plans": [
+              {
+                "n": 32768,
+                "offset": 0,
+                "layer": 20,
+                "keep": 2668,
+                "cut_chunk": 7,
+                "cut_row": 0,
+                "skipped_rows": 28672,
+                "whole_chunks": 1,
+                "retained_rows": 4096
+              }
+            ],
+            "per_gpu": [
+              {
+                "gpu": 0,
+                "tokens": 32768,
+                "chunk": 4096,
+                "expert_row_picks": 4325376,
+                "vram_row_picks": 3612327,
+                "unique_expert_uses": 38846,
+                "vram_unique_expert_uses": 14430,
+                "streamed_weight_bytes": 188723945472
+              },
+              {
+                "gpu": 1,
+                "tokens": 32768,
+                "chunk": 4096,
+                "expert_row_picks": 4325376,
+                "vram_row_picks": 3612327,
+                "unique_expert_uses": 38846,
+                "vram_unique_expert_uses": 14430,
+                "streamed_weight_bytes": 188723945472
+              },
+              {
+                "gpu": 2,
+                "tokens": 32768,
+                "chunk": 4096,
+                "expert_row_picks": 98304,
+                "vram_row_picks": 94880,
+                "unique_expert_uses": 1022,
+                "vram_unique_expert_uses": 618,
+                "streamed_weight_bytes": 7166662656
+              }
+            ],
+            "logical_row_hit_fraction": 0.8380368833188657,
+            "total_streamed_weight_bytes": 384614553600
+          }
+        },
+        {
+          "name": "Birch",
+          "primer": false,
+          "prompt_tokens": 8192,
+          "timings": {
+            "cache_n": 0,
+            "prompt_n": 8192,
+            "prompt_ms": 13281.2,
+            "prompt_per_token_ms": 1.621,
+            "prompt_per_second": 616.8,
+            "predicted_n": 27,
+            "predicted_ms": 1116.5,
+            "predicted_per_token_ms": 41.352,
+            "predicted_per_second": 24.2,
+            "draft_n": 0,
+            "draft_n_accepted": 0
+          },
+          "correct": true,
+          "isolated": true,
+          "swap_kib": 0,
+          "prefill_metrics": {
+            "retained_rows": 4096,
+            "actual_pruning_plans": [
+              {
+                "n": 8192,
+                "offset": 0,
+                "layer": 20,
+                "keep": 2668,
+                "cut_chunk": 1,
+                "cut_row": 0,
+                "skipped_rows": 4096,
+                "whole_chunks": 1,
+                "retained_rows": 4096
+              }
+            ],
+            "per_gpu": [
+              {
+                "gpu": 0,
+                "tokens": 8192,
+                "chunk": 4096,
+                "expert_row_picks": 1376256,
+                "vram_row_picks": 1154926,
+                "unique_expert_uses": 13471,
+                "vram_unique_expert_uses": 4909,
+                "streamed_weight_bytes": 66155410944
+              },
+              {
+                "gpu": 1,
+                "tokens": 8192,
+                "chunk": 4096,
+                "expert_row_picks": 1376256,
+                "vram_row_picks": 1154926,
+                "unique_expert_uses": 13471,
+                "vram_unique_expert_uses": 4909,
+                "streamed_weight_bytes": 66155410944
+              },
+              {
+                "gpu": 2,
+                "tokens": 8192,
+                "chunk": 4096,
+                "expert_row_picks": 98304,
+                "vram_row_picks": 95212,
+                "unique_expert_uses": 1023,
+                "vram_unique_expert_uses": 621,
+                "streamed_weight_bytes": 7131184128
+              }
+            ],
+            "logical_row_hit_fraction": 0.8478040907118055,
+            "total_streamed_weight_bytes": 139442006016
+          }
+        },
+        {
+          "name": "Dune",
+          "primer": false,
+          "prompt_tokens": 32768,
+          "timings": {
+            "cache_n": 0,
+            "prompt_n": 32768,
+            "prompt_ms": 37107.1,
+            "prompt_per_token_ms": 1.132,
+            "prompt_per_second": 883.1,
+            "predicted_n": 27,
+            "predicted_ms": 1063.7,
+            "predicted_per_token_ms": 39.396,
+            "predicted_per_second": 25.4,
+            "draft_n": 0,
+            "draft_n_accepted": 0
+          },
+          "correct": true,
+          "isolated": true,
+          "swap_kib": 0,
+          "prefill_metrics": {
+            "retained_rows": 4096,
+            "actual_pruning_plans": [
+              {
+                "n": 32768,
+                "offset": 0,
+                "layer": 20,
+                "keep": 2668,
+                "cut_chunk": 7,
+                "cut_row": 0,
+                "skipped_rows": 28672,
+                "whole_chunks": 1,
+                "retained_rows": 4096
+              }
+            ],
+            "per_gpu": [
+              {
+                "gpu": 0,
+                "tokens": 32768,
+                "chunk": 4096,
+                "expert_row_picks": 4325376,
+                "vram_row_picks": 3465656,
+                "unique_expert_uses": 38954,
+                "vram_unique_expert_uses": 14176,
+                "streamed_weight_bytes": 191393988096
+              },
+              {
+                "gpu": 1,
+                "tokens": 32768,
+                "chunk": 4096,
+                "expert_row_picks": 4325376,
+                "vram_row_picks": 3465656,
+                "unique_expert_uses": 38954,
+                "vram_unique_expert_uses": 14176,
+                "streamed_weight_bytes": 191393988096
+              },
+              {
+                "gpu": 2,
+                "tokens": 32768,
+                "chunk": 4096,
+                "expert_row_picks": 98304,
+                "vram_row_picks": 94551,
+                "unique_expert_uses": 1041,
+                "vram_unique_expert_uses": 620,
+                "streamed_weight_bytes": 7468230144
+              }
+            ],
+            "logical_row_hit_fraction": 0.8048066315827547,
+            "total_streamed_weight_bytes": 390256206336
+          }
+        }
+      ],
+      "quality": [
+        {
+          "id": "multiply",
+          "text": "391",
+          "passed": true
+        },
+        {
+          "id": "signed_arithmetic",
+          "text": "-24",
+          "passed": true
+        },
+        {
+          "id": "python_comprehension",
+          "text": "[0, 4, 16]",
+          "passed": true
+        },
+        {
+          "id": "python_count",
+          "text": "3",
+          "passed": true
+        },
+        {
+          "id": "sql_distinct",
+          "text": "2",
+          "passed": true
+        },
+        {
+          "id": "logic",
+          "text": "No",
+          "passed": true
+        },
+        {
+          "id": "state_machine",
+          "text": "12",
+          "passed": true
+        },
+        {
+          "id": "json_lookup",
+          "text": "11",
+          "passed": true
+        },
+        {
+          "id": "sort_key",
+          "text": "Sable",
+          "passed": false
+        },
+        {
+          "id": "sql_sum",
+          "text": "10",
+          "passed": true
+        },
+        {
+          "id": "intervals",
+          "text": "5",
+          "passed": true
+        },
+        {
+          "id": "text_fact",
+          "text": "Lima",
+          "passed": true
+        }
+      ],
+      "source_sha256": {
+        "requests.json": "a0cce0d3cbf88875b210da23098fb52f3aa0bb7df2495f14042dec38396a04ae",
+        "quality-responses.json": "3663900e4377f489bc557e4e2e005ad13f539faaf59f6322708c4687467ef09d",
+        "identity.json": "152bf9b6a3e6f50eca83a282fb165cc001071ac208abd2019360085825d3da73",
+        "exit.json": "d24219f6de94b955cf36d25bd2aca88e2d35eef45b9317b7083f55ec8fe9653c"
+      }
+    },
+    {
+      "index": 2,
+      "chunk": 4096,
+      "allocation": [
+        [
+          "0",
+          "26.41",
+          "3409",
+          "13824"
+        ],
+        [
+          "1",
+          "26.41",
+          "3409",
+          "13824"
+        ],
+        [
+          "2",
+          "11.96",
+          "670",
+          "1536"
+        ]
+      ],
+      "samples": [
+        {
+          "name": "Warm8K",
+          "primer": true,
+          "prompt_tokens": 8192,
+          "timings": {
+            "cache_n": 0,
+            "prompt_n": 8192,
+            "prompt_ms": 15287.7,
+            "prompt_per_token_ms": 1.866,
+            "prompt_per_second": 535.9,
+            "predicted_n": 27,
+            "predicted_ms": 1741.9,
+            "predicted_per_token_ms": 64.515,
+            "predicted_per_second": 15.5,
+            "draft_n": 0,
+            "draft_n_accepted": 0
+          },
+          "correct": true,
+          "isolated": true,
+          "swap_kib": 0,
+          "prefill_metrics": {
+            "retained_rows": 4096,
+            "actual_pruning_plans": [
+              {
+                "n": 8192,
+                "offset": 0,
+                "layer": 20,
+                "keep": 2668,
+                "cut_chunk": 1,
+                "cut_row": 0,
+                "skipped_rows": 4096,
+                "whole_chunks": 1,
+                "retained_rows": 4096
+              }
+            ],
+            "per_gpu": [
+              {
+                "gpu": 0,
+                "tokens": 8192,
+                "chunk": 4096,
+                "expert_row_picks": 1376256,
+                "vram_row_picks": 1235099,
+                "unique_expert_uses": 13344,
+                "vram_unique_expert_uses": 5020,
+                "streamed_weight_bytes": 64357075968
+              },
+              {
+                "gpu": 1,
+                "tokens": 8192,
+                "chunk": 4096,
+                "expert_row_picks": 1376256,
+                "vram_row_picks": 1235099,
+                "unique_expert_uses": 13344,
+                "vram_unique_expert_uses": 5020,
+                "streamed_weight_bytes": 64357075968
+              },
+              {
+                "gpu": 2,
+                "tokens": 8192,
+                "chunk": 4096,
+                "expert_row_picks": 98304,
+                "vram_row_picks": 95289,
+                "unique_expert_uses": 1021,
+                "vram_unique_expert_uses": 622,
+                "streamed_weight_bytes": 7077966336
+              }
+            ],
+            "logical_row_hit_fraction": 0.9022271050347223,
+            "total_streamed_weight_bytes": 135792118272
+          }
+        },
+        {
+          "name": "Warm32K",
+          "primer": true,
+          "prompt_tokens": 32768,
+          "timings": {
+            "cache_n": 0,
+            "prompt_n": 32768,
+            "prompt_ms": 36857.7,
+            "prompt_per_token_ms": 1.125,
+            "prompt_per_second": 889.0,
+            "predicted_n": 27,
+            "predicted_ms": 1629.9,
+            "predicted_per_token_ms": 60.367,
+            "predicted_per_second": 16.6,
+            "draft_n": 0,
+            "draft_n_accepted": 0
+          },
+          "correct": true,
+          "isolated": true,
+          "swap_kib": 0,
+          "prefill_metrics": {
+            "retained_rows": 4096,
+            "actual_pruning_plans": [
+              {
+                "n": 32768,
+                "offset": 0,
+                "layer": 20,
+                "keep": 2668,
+                "cut_chunk": 7,
+                "cut_row": 0,
+                "skipped_rows": 28672,
+                "whole_chunks": 1,
+                "retained_rows": 4096
+              }
+            ],
+            "per_gpu": [
+              {
+                "gpu": 0,
+                "tokens": 32768,
+                "chunk": 4096,
+                "expert_row_picks": 4325376,
+                "vram_row_picks": 3774193,
+                "unique_expert_uses": 38683,
+                "vram_unique_expert_uses": 14850,
+                "streamed_weight_bytes": 183986363136
+              },
+              {
+                "gpu": 1,
+                "tokens": 32768,
+                "chunk": 4096,
+                "expert_row_picks": 4325376,
+                "vram_row_picks": 3774193,
+                "unique_expert_uses": 38683,
+                "vram_unique_expert_uses": 14850,
+                "streamed_weight_bytes": 183986363136
+              },
+              {
+                "gpu": 2,
+                "tokens": 32768,
+                "chunk": 4096,
+                "expert_row_picks": 98304,
+                "vram_row_picks": 95006,
+                "unique_expert_uses": 1024,
+                "vram_unique_expert_uses": 626,
+                "streamed_weight_bytes": 7060227072
+              }
+            ],
+            "logical_row_hit_fraction": 0.8746561686197917,
+            "total_streamed_weight_bytes": 375032953344
+          }
+        },
+        {
+          "name": "Amber",
+          "primer": false,
+          "prompt_tokens": 8192,
+          "timings": {
+            "cache_n": 0,
+            "prompt_n": 8192,
+            "prompt_ms": 13420.1,
+            "prompt_per_token_ms": 1.638,
+            "prompt_per_second": 610.4,
+            "predicted_n": 27,
+            "predicted_ms": 1478.5,
+            "predicted_per_token_ms": 54.759,
+            "predicted_per_second": 18.3,
+            "draft_n": 0,
+            "draft_n_accepted": 0
+          },
+          "correct": true,
+          "isolated": true,
+          "swap_kib": 0,
+          "prefill_metrics": {
+            "retained_rows": 4096,
+            "actual_pruning_plans": [
+              {
+                "n": 8192,
+                "offset": 0,
+                "layer": 20,
+                "keep": 2668,
+                "cut_chunk": 1,
+                "cut_row": 0,
+                "skipped_rows": 4096,
+                "whole_chunks": 1,
+                "retained_rows": 4096
+              }
+            ],
+            "per_gpu": [
+              {
+                "gpu": 0,
+                "tokens": 8192,
+                "chunk": 4096,
+                "expert_row_picks": 1376256,
+                "vram_row_picks": 1187129,
+                "unique_expert_uses": 13435,
+                "vram_unique_expert_uses": 4947,
+                "streamed_weight_bytes": 65628420096
+              },
+              {
+                "gpu": 1,
+                "tokens": 8192,
+                "chunk": 4096,
+                "expert_row_picks": 1376256,
+                "vram_row_picks": 1187129,
+                "unique_expert_uses": 13435,
+                "vram_unique_expert_uses": 4947,
+                "streamed_weight_bytes": 65628420096
+              },
+              {
+                "gpu": 2,
+                "tokens": 8192,
+                "chunk": 4096,
+                "expert_row_picks": 98304,
+                "vram_row_picks": 95332,
+                "unique_expert_uses": 1030,
+                "vram_unique_expert_uses": 620,
+                "streamed_weight_bytes": 7273098240
+              }
+            ],
+            "logical_row_hit_fraction": 0.8697245279947917,
+            "total_streamed_weight_bytes": 138529938432
+          }
+        },
+        {
+          "name": "Cobalt",
+          "primer": false,
+          "prompt_tokens": 32768,
+          "timings": {
+            "cache_n": 0,
+            "prompt_n": 32768,
+            "prompt_ms": 39404.9,
+            "prompt_per_token_ms": 1.203,
+            "prompt_per_second": 831.6,
+            "predicted_n": 27,
+            "predicted_ms": 1146.2,
+            "predicted_per_token_ms": 42.452,
+            "predicted_per_second": 23.6,
+            "draft_n": 0,
+            "draft_n_accepted": 0
+          },
+          "correct": true,
+          "isolated": true,
+          "swap_kib": 0,
+          "prefill_metrics": {
+            "retained_rows": 4096,
+            "actual_pruning_plans": [
+              {
+                "n": 32768,
+                "offset": 0,
+                "layer": 20,
+                "keep": 2668,
+                "cut_chunk": 7,
+                "cut_row": 0,
+                "skipped_rows": 28672,
+                "whole_chunks": 1,
+                "retained_rows": 4096
+              }
+            ],
+            "per_gpu": [
+              {
+                "gpu": 0,
+                "tokens": 32768,
+                "chunk": 4096,
+                "expert_row_picks": 4325376,
+                "vram_row_picks": 3579683,
+                "unique_expert_uses": 38942,
+                "vram_unique_expert_uses": 14400,
+                "streamed_weight_bytes": 189597940224
+              },
+              {
+                "gpu": 1,
+                "tokens": 32768,
+                "chunk": 4096,
+                "expert_row_picks": 4325376,
+                "vram_row_picks": 3579683,
+                "unique_expert_uses": 38942,
+                "vram_unique_expert_uses": 14400,
+                "streamed_weight_bytes": 189597940224
+              },
+              {
+                "gpu": 2,
+                "tokens": 32768,
+                "chunk": 4096,
+                "expert_row_picks": 98304,
+                "vram_row_picks": 94888,
+                "unique_expert_uses": 1018,
+                "vram_unique_expert_uses": 623,
+                "streamed_weight_bytes": 7007009280
+              }
+            ],
+            "logical_row_hit_fraction": 0.8306593153211805,
+            "total_streamed_weight_bytes": 386202889728
+          }
+        },
+        {
+          "name": "Birch",
+          "primer": false,
+          "prompt_tokens": 8192,
+          "timings": {
+            "cache_n": 0,
+            "prompt_n": 8192,
+            "prompt_ms": 13927.6,
+            "prompt_per_token_ms": 1.7,
+            "prompt_per_second": 588.2,
+            "predicted_n": 27,
+            "predicted_ms": 1053.4,
+            "predicted_per_token_ms": 39.015,
+            "predicted_per_second": 25.6,
+            "draft_n": 0,
+            "draft_n_accepted": 0
+          },
+          "correct": true,
+          "isolated": true,
+          "swap_kib": 0,
+          "prefill_metrics": {
+            "retained_rows": 4096,
+            "actual_pruning_plans": [
+              {
+                "n": 8192,
+                "offset": 0,
+                "layer": 20,
+                "keep": 2668,
+                "cut_chunk": 1,
+                "cut_row": 0,
+                "skipped_rows": 4096,
+                "whole_chunks": 1,
+                "retained_rows": 4096
+              }
+            ],
+            "per_gpu": [
+              {
+                "gpu": 0,
+                "tokens": 8192,
+                "chunk": 4096,
+                "expert_row_picks": 1376256,
+                "vram_row_picks": 1144103,
+                "unique_expert_uses": 13501,
+                "vram_unique_expert_uses": 4905,
+                "streamed_weight_bytes": 66428746752
+              },
+              {
+                "gpu": 1,
+                "tokens": 8192,
+                "chunk": 4096,
+                "expert_row_picks": 1376256,
+                "vram_row_picks": 1144103,
+                "unique_expert_uses": 13501,
+                "vram_unique_expert_uses": 4905,
+                "streamed_weight_bytes": 66428746752
+              },
+              {
+                "gpu": 2,
+                "tokens": 8192,
+                "chunk": 4096,
+                "expert_row_picks": 98304,
+                "vram_row_picks": 95110,
+                "unique_expert_uses": 1029,
+                "vram_unique_expert_uses": 624,
+                "streamed_weight_bytes": 7184401920
+              }
+            ],
+            "logical_row_hit_fraction": 0.8403951009114583,
+            "total_streamed_weight_bytes": 140041895424
+          }
+        },
+        {
+          "name": "Dune",
+          "primer": false,
+          "prompt_tokens": 32768,
+          "timings": {
+            "cache_n": 0,
+            "prompt_n": 32768,
+            "prompt_ms": 38704.6,
+            "prompt_per_token_ms": 1.181,
+            "prompt_per_second": 846.6,
+            "predicted_n": 27,
+            "predicted_ms": 1032.1,
+            "predicted_per_token_ms": 38.226,
+            "predicted_per_second": 26.2,
+            "draft_n": 0,
+            "draft_n_accepted": 0
+          },
+          "correct": true,
+          "isolated": true,
+          "swap_kib": 0,
+          "prefill_metrics": {
+            "retained_rows": 4096,
+            "actual_pruning_plans": [
+              {
+                "n": 32768,
+                "offset": 0,
+                "layer": 20,
+                "keep": 2668,
+                "cut_chunk": 7,
+                "cut_row": 0,
+                "skipped_rows": 28672,
+                "whole_chunks": 1,
+                "retained_rows": 4096
+              }
+            ],
+            "per_gpu": [
+              {
+                "gpu": 0,
+                "tokens": 32768,
+                "chunk": 4096,
+                "expert_row_picks": 4325376,
+                "vram_row_picks": 3437602,
+                "unique_expert_uses": 38997,
+                "vram_unique_expert_uses": 14128,
+                "streamed_weight_bytes": 192111836928
+              },
+              {
+                "gpu": 1,
+                "tokens": 32768,
+                "chunk": 4096,
+                "expert_row_picks": 4325376,
+                "vram_row_picks": 3437602,
+                "unique_expert_uses": 38997,
+                "vram_unique_expert_uses": 14128,
+                "streamed_weight_bytes": 192111836928
+              },
+              {
+                "gpu": 2,
+                "tokens": 32768,
+                "chunk": 4096,
+                "expert_row_picks": 98304,
+                "vram_row_picks": 94753,
+                "unique_expert_uses": 1040,
+                "vram_unique_expert_uses": 619,
+                "streamed_weight_bytes": 7468230144
+              }
+            ],
+            "logical_row_hit_fraction": 0.7985105161313657,
+            "total_streamed_weight_bytes": 391691904000
+          }
+        }
+      ],
+      "quality": [
+        {
+          "id": "multiply",
+          "text": "391",
+          "passed": true
+        },
+        {
+          "id": "signed_arithmetic",
+          "text": "-24",
+          "passed": true
+        },
+        {
+          "id": "python_comprehension",
+          "text": "[0, 4, 16]",
+          "passed": true
+        },
+        {
+          "id": "python_count",
+          "text": "3",
+          "passed": true
+        },
+        {
+          "id": "sql_distinct",
+          "text": "2",
+          "passed": true
+        },
+        {
+          "id": "logic",
+          "text": "No",
+          "passed": true
+        },
+        {
+          "id": "state_machine",
+          "text": "12",
+          "passed": true
+        },
+        {
+          "id": "json_lookup",
+          "text": "11",
+          "passed": true
+        },
+        {
+          "id": "sort_key",
+          "text": "Sable",
+          "passed": false
+        },
+        {
+          "id": "sql_sum",
+          "text": "10",
+          "passed": true
+        },
+        {
+          "id": "intervals",
+          "text": "5",
+          "passed": true
+        },
+        {
+          "id": "text_fact",
+          "text": "Lima",
+          "passed": true
+        }
+      ],
+      "source_sha256": {
+        "requests.json": "5027e0ed1efe9fc92b94ff8fce733c275326c0481913ad6e7b33f25dc3c845ec",
+        "quality-responses.json": "e71cf46fd5ca33d2377f5791bb5ce8f66bae614b0f7ee1393506dd45d40d2fa7",
+        "identity.json": "e76e90c14f49af474c18527a0af3665148ddcdde1846c8ea4d74599588393a48",
+        "exit.json": "d24219f6de94b955cf36d25bd2aca88e2d35eef45b9317b7083f55ec8fe9653c"
+      }
+    },
+    {
+      "index": 3,
+      "chunk": 2048,
+      "allocation": [
+        [
+          "0",
+          "26.85",
+          "3469",
+          "13824"
+        ],
+        [
+          "1",
+          "26.85",
+          "3469",
+          "13824"
+        ],
+        [
+          "2",
+          "12.40",
+          "695",
+          "1536"
+        ]
+      ],
+      "samples": [
+        {
+          "name": "Warm8K",
+          "primer": true,
+          "prompt_tokens": 8192,
+          "timings": {
+            "cache_n": 0,
+            "prompt_n": 8192,
+            "prompt_ms": 15137.0,
+            "prompt_per_token_ms": 1.848,
+            "prompt_per_second": 541.2,
+            "predicted_n": 27,
+            "predicted_ms": 1515.5,
+            "predicted_per_token_ms": 56.13,
+            "predicted_per_second": 17.8,
+            "draft_n": 0,
+            "draft_n_accepted": 0
+          },
+          "correct": true,
+          "isolated": true,
+          "swap_kib": 0,
+          "prefill_metrics": {
+            "retained_rows": 4096,
+            "actual_pruning_plans": [
+              {
+                "n": 8192,
+                "offset": 0,
+                "layer": 20,
+                "keep": 2668,
+                "cut_chunk": 2,
+                "cut_row": 0,
+                "skipped_rows": 4096,
+                "whole_chunks": 1,
+                "retained_rows": 4096
+              }
+            ],
+            "per_gpu": [
+              {
+                "gpu": 0,
+                "tokens": 8192,
+                "chunk": 2048,
+                "expert_row_picks": 1376256,
+                "vram_row_picks": 1244208,
+                "unique_expert_uses": 22831,
+                "vram_unique_expert_uses": 9914,
+                "streamed_weight_bytes": 99636244224
+              },
+              {
+                "gpu": 1,
+                "tokens": 8192,
+                "chunk": 2048,
+                "expert_row_picks": 1376256,
+                "vram_row_picks": 1244208,
+                "unique_expert_uses": 22831,
+                "vram_unique_expert_uses": 9914,
+                "streamed_weight_bytes": 99636244224
+              },
+              {
+                "gpu": 2,
+                "tokens": 8192,
+                "chunk": 2048,
+                "expert_row_picks": 98304,
+                "vram_row_picks": 95947,
+                "unique_expert_uses": 1761,
+                "vram_unique_expert_uses": 1212,
+                "streamed_weight_bytes": 9738855936
+              }
+            ],
+            "logical_row_hit_fraction": 0.9088507758246528,
+            "total_streamed_weight_bytes": 209011344384
+          }
+        },
+        {
+          "name": "Warm32K",
+          "primer": true,
+          "prompt_tokens": 32768,
+          "timings": {
+            "cache_n": 0,
+            "prompt_n": 32768,
+            "prompt_ms": 41408.4,
+            "prompt_per_token_ms": 1.264,
+            "prompt_per_second": 791.3,
+            "predicted_n": 27,
+            "predicted_ms": 1408.4,
+            "predicted_per_token_ms": 52.163,
+            "predicted_per_second": 19.2,
+            "draft_n": 0,
+            "draft_n_accepted": 0
+          },
+          "correct": true,
+          "isolated": true,
+          "swap_kib": 0,
+          "prefill_metrics": {
+            "retained_rows": 4096,
+            "actual_pruning_plans": [
+              {
+                "n": 32768,
+                "offset": 0,
+                "layer": 20,
+                "keep": 2668,
+                "cut_chunk": 14,
+                "cut_row": 0,
+                "skipped_rows": 28672,
+                "whole_chunks": 1,
+                "retained_rows": 4096
+              }
+            ],
+            "per_gpu": [
+              {
+                "gpu": 0,
+                "tokens": 32768,
+                "chunk": 2048,
+                "expert_row_picks": 4325376,
+                "vram_row_picks": 3824221,
+                "unique_expert_uses": 69216,
+                "vram_unique_expert_uses": 29690,
+                "streamed_weight_bytes": 305212887552
+              },
+              {
+                "gpu": 1,
+                "tokens": 32768,
+                "chunk": 2048,
+                "expert_row_picks": 4325376,
+                "vram_row_picks": 3824221,
+                "unique_expert_uses": 69216,
+                "vram_unique_expert_uses": 29690,
+                "streamed_weight_bytes": 305212887552
+              },
+              {
+                "gpu": 2,
+                "tokens": 32768,
+                "chunk": 2048,
+                "expert_row_picks": 98304,
+                "vram_row_picks": 95321,
+                "unique_expert_uses": 1764,
+                "vram_unique_expert_uses": 1203,
+                "streamed_weight_bytes": 9951727104
+              }
+            ],
+            "logical_row_hit_fraction": 0.8860365125868056,
+            "total_streamed_weight_bytes": 620377502208
+          }
+        },
+        {
+          "name": "Amber",
+          "primer": false,
+          "prompt_tokens": 8192,
+          "timings": {
+            "cache_n": 0,
+            "prompt_n": 8192,
+            "prompt_ms": 14275.3,
+            "prompt_per_token_ms": 1.743,
+            "prompt_per_second": 573.9,
+            "predicted_n": 27,
+            "predicted_ms": 1246.4,
+            "predicted_per_token_ms": 46.163,
+            "predicted_per_second": 21.7,
+            "draft_n": 0,
+            "draft_n_accepted": 0
+          },
+          "correct": true,
+          "isolated": true,
+          "swap_kib": 0,
+          "prefill_metrics": {
+            "retained_rows": 4096,
+            "actual_pruning_plans": [
+              {
+                "n": 8192,
+                "offset": 0,
+                "layer": 20,
+                "keep": 2668,
+                "cut_chunk": 2,
+                "cut_row": 0,
+                "skipped_rows": 4096,
+                "whole_chunks": 1,
+                "retained_rows": 4096
+              }
+            ],
+            "per_gpu": [
+              {
+                "gpu": 0,
+                "tokens": 8192,
+                "chunk": 2048,
+                "expert_row_picks": 1376256,
+                "vram_row_picks": 1205424,
+                "unique_expert_uses": 23057,
+                "vram_unique_expert_uses": 9635,
+                "streamed_weight_bytes": 103671949824
+              },
+              {
+                "gpu": 1,
+                "tokens": 8192,
+                "chunk": 2048,
+                "expert_row_picks": 1376256,
+                "vram_row_picks": 1205424,
+                "unique_expert_uses": 23057,
+                "vram_unique_expert_uses": 9635,
+                "streamed_weight_bytes": 103671949824
+              },
+              {
+                "gpu": 2,
+                "tokens": 8192,
+                "chunk": 2048,
+                "expert_row_picks": 98304,
+                "vram_row_picks": 95885,
+                "unique_expert_uses": 1755,
+                "vram_unique_expert_uses": 1208,
+                "streamed_weight_bytes": 9703377408
+              }
+            ],
+            "logical_row_hit_fraction": 0.8825066460503472,
+            "total_streamed_weight_bytes": 217047277056
+          }
+        },
+        {
+          "name": "Cobalt",
+          "primer": false,
+          "prompt_tokens": 32768,
+          "timings": {
+            "cache_n": 0,
+            "prompt_n": 32768,
+            "prompt_ms": 41908.4,
+            "prompt_per_token_ms": 1.279,
+            "prompt_per_second": 781.9,
+            "predicted_n": 27,
+            "predicted_ms": 1173.3,
+            "predicted_per_token_ms": 43.456,
+            "predicted_per_second": 23.0,
+            "draft_n": 0,
+            "draft_n_accepted": 0
+          },
+          "correct": true,
+          "isolated": true,
+          "swap_kib": 0,
+          "prefill_metrics": {
+            "retained_rows": 4096,
+            "actual_pruning_plans": [
+              {
+                "n": 32768,
+                "offset": 0,
+                "layer": 20,
+                "keep": 2668,
+                "cut_chunk": 14,
+                "cut_row": 0,
+                "skipped_rows": 28672,
+                "whole_chunks": 1,
+                "retained_rows": 4096
+              }
+            ],
+            "per_gpu": [
+              {
+                "gpu": 0,
+                "tokens": 32768,
+                "chunk": 2048,
+                "expert_row_picks": 4325376,
+                "vram_row_picks": 3657456,
+                "unique_expert_uses": 69656,
+                "vram_unique_expert_uses": 28586,
+                "streamed_weight_bytes": 317613058560
+              },
+              {
+                "gpu": 1,
+                "tokens": 32768,
+                "chunk": 2048,
+                "expert_row_picks": 4325376,
+                "vram_row_picks": 3657456,
+                "unique_expert_uses": 69656,
+                "vram_unique_expert_uses": 28586,
+                "streamed_weight_bytes": 317613058560
+              },
+              {
+                "gpu": 2,
+                "tokens": 32768,
+                "chunk": 2048,
+                "expert_row_picks": 98304,
+                "vram_row_picks": 95392,
+                "unique_expert_uses": 1763,
+                "vram_unique_expert_uses": 1205,
+                "streamed_weight_bytes": 9898509312
+              }
+            ],
+            "logical_row_hit_fraction": 0.8483543113425925,
+            "total_streamed_weight_bytes": 645124626432
+          }
+        },
+        {
+          "name": "Birch",
+          "primer": false,
+          "prompt_tokens": 8192,
+          "timings": {
+            "cache_n": 0,
+            "prompt_n": 8192,
+            "prompt_ms": 14374.1,
+            "prompt_per_token_ms": 1.755,
+            "prompt_per_second": 569.9,
+            "predicted_n": 27,
+            "predicted_ms": 1126.9,
+            "predicted_per_token_ms": 41.737,
+            "predicted_per_second": 24.0,
+            "draft_n": 0,
+            "draft_n_accepted": 0
+          },
+          "correct": true,
+          "isolated": true,
+          "swap_kib": 0,
+          "prefill_metrics": {
+            "retained_rows": 4096,
+            "actual_pruning_plans": [
+              {
+                "n": 8192,
+                "offset": 0,
+                "layer": 20,
+                "keep": 2668,
+                "cut_chunk": 2,
+                "cut_row": 0,
+                "skipped_rows": 4096,
+                "whole_chunks": 1,
+                "retained_rows": 4096
+              }
+            ],
+            "per_gpu": [
+              {
+                "gpu": 0,
+                "tokens": 8192,
+                "chunk": 2048,
+                "expert_row_picks": 1376256,
+                "vram_row_picks": 1164020,
+                "unique_expert_uses": 23172,
+                "vram_unique_expert_uses": 9441,
+                "streamed_weight_bytes": 105983891712
+              },
+              {
+                "gpu": 1,
+                "tokens": 8192,
+                "chunk": 2048,
+                "expert_row_picks": 1376256,
+                "vram_row_picks": 1164020,
+                "unique_expert_uses": 23172,
+                "vram_unique_expert_uses": 9441,
+                "streamed_weight_bytes": 105983891712
+              },
+              {
+                "gpu": 2,
+                "tokens": 8192,
+                "chunk": 2048,
+                "expert_row_picks": 98304,
+                "vram_row_picks": 95750,
+                "unique_expert_uses": 1785,
+                "vram_unique_expert_uses": 1221,
+                "streamed_weight_bytes": 10004944896
+              }
+            ],
+            "logical_row_hit_fraction": 0.8543362087673612,
+            "total_streamed_weight_bytes": 221972728320
+          }
+        },
+        {
+          "name": "Dune",
+          "primer": false,
+          "prompt_tokens": 32768,
+          "timings": {
+            "cache_n": 0,
+            "prompt_n": 32768,
+            "prompt_ms": 42476.2,
+            "prompt_per_token_ms": 1.296,
+            "prompt_per_second": 771.4,
+            "predicted_n": 27,
+            "predicted_ms": 1055.9,
+            "predicted_per_token_ms": 39.107,
+            "predicted_per_second": 25.6,
+            "draft_n": 0,
+            "draft_n_accepted": 0
+          },
+          "correct": true,
+          "isolated": true,
+          "swap_kib": 0,
+          "prefill_metrics": {
+            "retained_rows": 4096,
+            "actual_pruning_plans": [
+              {
+                "n": 32768,
+                "offset": 0,
+                "layer": 20,
+                "keep": 2668,
+                "cut_chunk": 14,
+                "cut_row": 0,
+                "skipped_rows": 28672,
+                "whole_chunks": 1,
+                "retained_rows": 4096
+              }
+            ],
+            "per_gpu": [
+              {
+                "gpu": 0,
+                "tokens": 32768,
+                "chunk": 2048,
+                "expert_row_picks": 4325376,
+                "vram_row_picks": 3513111,
+                "unique_expert_uses": 69874,
+                "vram_unique_expert_uses": 27805,
+                "streamed_weight_bytes": 325259382528
+              },
+              {
+                "gpu": 1,
+                "tokens": 32768,
+                "chunk": 2048,
+                "expert_row_picks": 4325376,
+                "vram_row_picks": 3513111,
+                "unique_expert_uses": 69874,
+                "vram_unique_expert_uses": 27805,
+                "streamed_weight_bytes": 325259382528
+              },
+              {
+                "gpu": 2,
+                "tokens": 32768,
+                "chunk": 2048,
+                "expert_row_picks": 98304,
+                "vram_row_picks": 95259,
+                "unique_expert_uses": 1760,
+                "vram_unique_expert_uses": 1201,
+                "streamed_weight_bytes": 9916248576
+              }
+            ],
+            "logical_row_hit_fraction": 0.8156941731770834,
+            "total_streamed_weight_bytes": 660435013632
+          }
+        }
+      ],
+      "quality": [
+        {
+          "id": "multiply",
+          "text": "391",
+          "passed": true
+        },
+        {
+          "id": "signed_arithmetic",
+          "text": "-24",
+          "passed": true
+        },
+        {
+          "id": "python_comprehension",
+          "text": "[0, 4, 16]",
+          "passed": true
+        },
+        {
+          "id": "python_count",
+          "text": "3",
+          "passed": true
+        },
+        {
+          "id": "sql_distinct",
+          "text": "2",
+          "passed": true
+        },
+        {
+          "id": "logic",
+          "text": "No",
+          "passed": true
+        },
+        {
+          "id": "state_machine",
+          "text": "12",
+          "passed": true
+        },
+        {
+          "id": "json_lookup",
+          "text": "11",
+          "passed": true
+        },
+        {
+          "id": "sort_key",
+          "text": "Sable",
+          "passed": false
+        },
+        {
+          "id": "sql_sum",
+          "text": "10",
+          "passed": true
+        },
+        {
+          "id": "intervals",
+          "text": "5",
+          "passed": true
+        },
+        {
+          "id": "text_fact",
+          "text": "Lima",
+          "passed": true
+        }
+      ],
+      "source_sha256": {
+        "requests.json": "a1f390534f8286415a0b2485dcad5cc4ea7d3e5c99b875896a454065311e6794",
+        "quality-responses.json": "722abd72171fa95be6b7738763eb9a7386116117a5ac1497e322d10719056931",
+        "identity.json": "71b7a5f8638bff457fc39a35c85577fd34aec7fba98482cce345bd8bf4543501",
+        "exit.json": "d24219f6de94b955cf36d25bd2aca88e2d35eef45b9317b7083f55ec8fe9653c"
+      }
+    }
+  ],
+  "aborted_quality_only_load": {
+    "scheduled_index": 3,
+    "chunk": 2048,
+    "timed_requests": 0,
+    "quality": [
+      {
+        "id": "multiply",
+        "text": "391",
+        "passed": true
+      },
+      {
+        "id": "signed_arithmetic",
+        "text": "-24",
+        "passed": true
+      },
+      {
+        "id": "python_comprehension",
+        "text": "[0, 4, 16]",
+        "passed": true
+      },
+      {
+        "id": "python_count",
+        "text": "3",
+        "passed": true
+      },
+      {
+        "id": "sql_distinct",
+        "text": "2",
+        "passed": true
+      },
+      {
+        "id": "logic",
+        "text": "No",
+        "passed": true
+      },
+      {
+        "id": "state_machine",
+        "text": "12",
+        "passed": true
+      },
+      {
+        "id": "json_lookup",
+        "text": "11",
+        "passed": true
+      },
+      {
+        "id": "sort_key",
+        "text": "Aspen",
+        "passed": true
+      },
+      {
+        "id": "sql_sum",
+        "text": "10",
+        "passed": true
+      },
+      {
+        "id": "intervals",
+        "text": "5",
+        "passed": true
+      },
+      {
+        "id": "text_fact",
+        "text": "Lima",
+        "passed": true
+      }
+    ],
+    "reason": "The exact text-repeat gate failed because the known sorting answer changed from wrong Sable to correct Aspen. The original failed run is preserved. The replacement final baseline followed a server restoration gap. No final timed outcome was seen before the amendment."
+  },
+  "results": [
+    {
+      "prompt_tokens": 8192,
+      "arm_mean_prefill_ms": [
+        14353.0,
+        13281.900000000001,
+        13673.85,
+        14324.7
+      ],
+      "arm_mean_streamed_expert_bytes": [
+        221953259520,
+        138834860544,
+        139285916928,
+        219510002688
+      ],
+      "arm_logical_row_hit_fraction": [
+        0.8579433865017361,
+        0.8615502251519097,
+        0.855059814453125,
+        0.8684214274088542
+      ],
+      "paired_latency_reductions_percent": [
+        7.462551382986127,
+        4.543550650275396
+      ],
+      "mean_paired_latency_reduction_percent": 6.003051016630762,
+      "student_t_95_interval_percent": [
+        -12.541659450547515,
+        24.54776148380904
+      ]
+    },
+    {
+      "prompt_tokens": 32768,
+      "arm_mean_prefill_ms": [
+        42043.05,
+        36937.399999999994,
+        39054.75,
+        42192.3
+      ],
+      "arm_mean_streamed_expert_bytes": [
+        662483574528,
+        387435379968,
+        388947396864,
+        652779820032
+      ],
+      "arm_logical_row_hit_fraction": [
+        0.8198423032407407,
+        0.8214217574508101,
+        0.8145849157262731,
+        0.832024242259838
+      ],
+      "paired_latency_reductions_percent": [
+        12.143862065192723,
+        7.436309468789338
+      ],
+      "mean_paired_latency_reduction_percent": 9.79008576699103,
+      "student_t_95_interval_percent": [
+        -20.11747778070386,
+        39.69764931468592
+      ]
+    }
+  ],
+  "limitations": [
+    "Two independent load pairs; the Student-t 95% intervals with one degree of freedom include zero. Both pairs favor 4K, but this does not establish a precise gain.",
+    "All 16 timed samples and eight excluded warmups are retained. The aborted quality-only baseline is included in the quality assessment.",
+    "Both 4K loads scored 11/12. Timed 2K loads scored 11/12; the aborted 2K load scored 12/12. The known sorting task is unstable; this does not prove quality equivalence.",
+    "Expert H2D payload bytes exclude peer reductions, activations, Engram, cache promotions and other PCIe traffic. Logical hits count the TP group once; physical bytes include all three GPUs.",
+    "Larger chunk workspaces change resident capacity. Allocation must match within a chunk label, not across labels.",
+    "Selected serving remains at 2K. Separate 4K long-prompt, pruned-prefix and cross-chunk numerical validation is pending."
+  ]
+}
