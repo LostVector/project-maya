@@ -1,0 +1,10 @@
+{
+  "status": "building_full_model_test",
+  "baseline": "Accepted peer-prefill build, all3 GPUs,TP2,split36/4,256K context,RAM experts/disk engrams",
+  "candidate": "Padded WMMA16 compressed path plus padded WMMA16 on existing predecode-eligible groups; no eligibility broadening or extra weight-cache allocation",
+  "source_technique": "Radiance8-byte LDS row padding; FP16 row stride128\u2192132",
+  "prior_gates": "33 CPU cases,33 tile equivalence and66 cached/compressed equivalence checks;12 synthetic shapes show34\u201356% compressed kernel gains and62\u201372% cached large-group gains including decode cost",
+  "quality": "Bit-exact equivalence relaxed by user for experiment only; baseline must still match independent accepted reference. Report finite,KL,NLL,relative L2,top1 and greedy divergence. No quality acceptance from reused fixtures.",
+  "timings": "8cold,24warm balanced runs; compare paired blocks and95% intervals. Decode different sequences not a speed claim.",
+  "activation": "Restore accepted serving; no automatic activation"
+}

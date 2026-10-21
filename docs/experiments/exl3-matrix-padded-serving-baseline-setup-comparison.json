@@ -1,0 +1,9 @@
+{
+  "profile_sha256": {
+    "maya-peer-prefill-20261020": "1002e2cffa1847f46c38874e01dc1720232d050fea85a6fb8edaa08895748b2b",
+    "maya-matrix-relaxed-20261020": "1002e2cffa1847f46c38874e01dc1720232d050fea85a6fb8edaa08895748b2b",
+    "maya-matrix-padded-serving-20261020": "1002e2cffa1847f46c38874e01dc1720232d050fea85a6fb8edaa08895748b2b"
+  },
+  "allocation_descriptions_identical": true,
+  "limitation": "Profiles and allocation descriptions match, but absolute timing baseline differs; matched accepted-executable performance check still required before activation."
+}

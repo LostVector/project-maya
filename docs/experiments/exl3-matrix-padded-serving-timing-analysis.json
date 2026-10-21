@@ -1,0 +1,76 @@
+{
+  "cold-code": {
+    "blocks": [
+      {
+        "block": 0,
+        "baseline_mean_ms": 14048.336500000001,
+        "candidate_mean_ms": 14021.177,
+        "gain_pct": 0.1933289396933336
+      },
+      {
+        "block": 1,
+        "baseline_mean_ms": 13872.337500000001,
+        "candidate_mean_ms": 13726.61,
+        "gain_pct": 1.0504898687766273
+      }
+    ],
+    "mean_block_gain_pct": 0.6219094042349804,
+    "ci95_pct": [
+      -4.823721724081173,
+      6.067540532551133
+    ],
+    "baseline_median_ms": 13947.313,
+    "candidate_median_ms": 13790.091,
+    "all_swap_zero": true
+  },
+  "warm-database": {
+    "blocks": [
+      {
+        "block": 0,
+        "baseline_mean_ms": 9523.601,
+        "candidate_mean_ms": 9016.4925,
+        "gain_pct": 5.324755835529022
+      },
+      {
+        "block": 1,
+        "baseline_mean_ms": 9534.447,
+        "candidate_mean_ms": 9025.297999999999,
+        "gain_pct": 5.340099955456266
+      },
+      {
+        "block": 2,
+        "baseline_mean_ms": 9537.3145,
+        "candidate_mean_ms": 9022.622,
+        "gain_pct": 5.396618723226554
+      },
+      {
+        "block": 3,
+        "baseline_mean_ms": 9525.8195,
+        "candidate_mean_ms": 9027.381000000001,
+        "gain_pct": 5.232499943968059
+      },
+      {
+        "block": 4,
+        "baseline_mean_ms": 9534.138500000001,
+        "candidate_mean_ms": 9038.363,
+        "gain_pct": 5.200003125610158
+      },
+      {
+        "block": 5,
+        "baseline_mean_ms": 9538.518,
+        "candidate_mean_ms": 9025.399000000001,
+        "gain_pct": 5.379441544273427
+      }
+    ],
+    "mean_block_gain_pct": 5.312236521343914,
+    "ci95_pct": [
+      5.228908116957169,
+      5.3955649257306595
+    ],
+    "baseline_median_ms": 9534.122,
+    "candidate_median_ms": 9024.521,
+    "all_swap_zero": true
+  },
+  "decode_pairs": [],
+  "scope": "Balanced isolated native run; cold2 blocks, warm6 blocks. Decode single pair is diagnostic only. Numerical and quality acceptance separate."
+}
