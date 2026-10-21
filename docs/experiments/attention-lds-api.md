@@ -74,14 +74,27 @@ repeat states and195 matches to independently accepted 4K references. All nine
 fixture responses are correct. Those frozen-profile checks hold the cap and
 pruning fixed; existing matrix/cross-cap numerical limitations remain.
 
-The separate twelve-task quality and fresh 8K/32K plus real cached-followup
-serving checks are in progress. The source flag remains default off. This
-checkpoint does not claim that the serving trial has passed.
+The experimental serving trial passed its baseline-relative gate: 11/12
+short tasks, with only the previously variable `sort_key` failing. The eleven
+historically consistent cases all pass. Saved historical control scores
+are 11/12, 12/12, 11/12 and 11/12; the 12/12 control is from an earlier
+quality-only load whose subsequent workflow was aborted, not a new timed
+control arm. These are limited smoke checks, not broad quality evidence.
+
+Both fresh 8K/32K production responses and the real conversation follow-up
+are correct. The follow-up reused 32794 tokens. An independent postactivation
+probe verified the loaded executable hash, live PID/parent, actual attention
+flag 1, chunk4096, context262144, zero model swap and HTTP health. The source
+flag remains default off; the local experimental serving configuration now
+enables it and preserves the previous attention-off 4K configuration.
+The included identity is a saved activation receipt, not a live probe made
+by the portable checker.
 
 ## Regrade
 
 ```sh
 python3 docs/experiments/attention-lds-api-checks/check.py
+python3 docs/experiments/attention-lds-api-checks/check_serving.py
 ```
 
 The checker independently grades saved responses against the included

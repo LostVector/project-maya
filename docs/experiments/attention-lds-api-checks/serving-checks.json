@@ -1,0 +1,93 @@
+{
+  "status": "Experimentalservingtrialpassed",
+  "files_sha256": {
+    "serving-quality-cases.json": "fc825d737aca22b586b1b4177800eaf9cdd17cda0be1ab1b01d0d5f8ab52a5a3",
+    "serving-quality-responses.json": "264ec2f86b23c48d731aa8eaaf87ebd63e963e5e74c1c4ffba7b70dc4c242b09",
+    "serving-smoke-payloads.json": "53f55f380fe0c5be19e8f2ac7d683cc8a0ac07c521d91d03b08c2be190095752",
+    "serving-smoke-responses.json": "476ecc414abb6b0a264adbfe465543948139cb5527022b5d95c3d60798117922",
+    "serving-config.json": "5ae30663cb00f81bef56d1ee98006da2e535fbe7f9405b47d609067a672d022b",
+    "serving-quality-control0.json": "2f45cd1390b2c11b574323608e54db7daf3c70e9f4028e1a5cac400956d0c6e4",
+    "serving-quality-control1.json": "2313571bd3cbb0848a8e2bd934f82c8dca94a3fbbd6a18187390b43b795c3081",
+    "serving-quality-control2.json": "722abd72171fa95be6b7738763eb9a7386116117a5ac1497e322d10719056931",
+    "serving-quality-control3.json": "d3503e0930f629354f96630a213562ddae8e9c48263af755ea11fa76104965b5"
+  },
+  "quality_controls": [
+    "serving-quality-control0.json",
+    "serving-quality-control1.json",
+    "serving-quality-control2.json",
+    "serving-quality-control3.json"
+  ],
+  "quality_analysis": {
+    "correct": 11,
+    "total": 12,
+    "observed_stable_baseline_regressions": [],
+    "variable_baseline_cases": [
+      "sort_key"
+    ],
+    "failed_cases": [
+      "sort_key"
+    ],
+    "baseline_scores": [
+      11,
+      12,
+      11,
+      11
+    ],
+    "scope": "Limited12task smoke; historical baseline has known variability. No broad quality claim."
+  },
+  "smoke_assessment": {
+    "all3_correct": true,
+    "fresh_prompt_tokens": [
+      8192,
+      32768
+    ],
+    "actual_followup_cache_tokens": 32794,
+    "scope": "Production API integration smoke only; no controlled timing or broad quality claim."
+  },
+  "live_identity_snapshot": {
+    "status": "Experimentalattentionlayoutactive;independent savedresponse andliveidentity reviewpassed",
+    "server_pid": 314608,
+    "engine_pid": 314610,
+    "config": "/home/rkuo/research/llm-weight-compression/_meta/maya-attention-lds-serving-20261021/serving-config.json",
+    "exe": "/home/rkuo/research/llm-weight-compression/_meta/maya-attention-lds-layout-20261021/checkpoint-maya-ds4",
+    "runtime_sha256": "d150e6d41274bbb1dac855f4acbfe681596c1c49beb7264c184f8234739c13c4",
+    "quality_score": 11,
+    "quality_total": 12,
+    "baseline_scores": [
+      11,
+      12,
+      11,
+      11
+    ],
+    "quality_failed": [
+      "sort_key"
+    ],
+    "stable_baseline_regressions": [],
+    "all3_smoke_correct": true,
+    "followup_cached_tokens": 32794,
+    "actual_chunk": 4096,
+    "actual_attention_flag": "1",
+    "health": {
+      "status": "ok",
+      "max_context": 262144,
+      "model": "deepseek-v4.1-flash-exl3-3.5bpw",
+      "images": false,
+      "api_key": false,
+      "defaults": {
+        "temperature": 1.0,
+        "top_p": 1.0,
+        "reasoning_effort": "high"
+      },
+      "version": "1.1.16",
+      "mcp_tools": false
+    },
+    "activity": {
+      "requests": 15,
+      "in_flight": 0,
+      "last_request_at": 1792586911
+    },
+    "rollback_config": "/home/rkuo/research/llm-weight-compression/_meta/maya-attention-lds-serving-20261021/rollback-attention-off.json",
+    "limits": "Limitedquality/integrationchecks;controlledspeedfromseparateABBA. Historicalmatrix/crosscap driftretained;no broadquality/sustaineddecode/globaloptimalityclaim."
+  },
+  "scope": "Limited12tasks plusfresh8K/32K andrealcachedfollowup. Identity is a saved postactivationliveprobe,not a live check performedbyportablechecker. Independent controlledspeed evidenceisseparateABBA."
+}
