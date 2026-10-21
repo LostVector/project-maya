@@ -1258,8 +1258,9 @@ __device__ __forceinline__ int hip_mma_row(int i, int hi) {
 #endif
 }
 
+constexpr int kHipMatrixStride = kCols + 4; // 8-byte LDS row padding, separate from output layout.
 template <int K, int Rows = 16> struct HipMmaSmem {
-    __half xb[Rows * kCols];
+    __half xb[Rows * kHipMatrixStride];
     float out[Rows * kCols];
 };
 // Read a tile word from the lanes holding its compressed words. No expanded
@@ -1289,7 +1290,7 @@ __device__ void hip_block_wmma(const uint32_t* tr, int ld, int tc0, int k0, int 
             if (row < nc) {
                 float v[4], scales[4];
                 chunk_load(x[j], suh, q, lane, v, scales);
-                chunk_store(v, scales, lane, sm.xb + row * kCols);
+                chunk_store(v, scales, lane, sm.xb + row * kHipMatrixStride);
             }
         }
         __syncthreads();
@@ -1313,7 +1314,7 @@ __device__ void hip_block_wmma(const uint32_t* tr, int ld, int tc0, int k0, int 
             for (int m = 0; m < Rows / 16; ++m) {
 #pragma unroll
                 for (int i = 0; i < kHipOperand; ++i)
-                    av[i] = m * 16 + col < nc ? __builtin_bit_cast(_Float16, __half_as_ushort(sm.xb[(m * 16 + col) * kCols + step * 16 + kh + i])) : (_Float16) 0;
+                    av[i] = m * 16 + col < nc ? __builtin_bit_cast(_Float16, __half_as_ushort(sm.xb[(m * 16 + col) * kHipMatrixStride + step * 16 + kh + i])) : (_Float16) 0;
                 acc[m] = hip_mma(av, bv, acc[m]);
             }
         }
@@ -1606,7 +1607,7 @@ __device__ void hip_block_decoded_matrix(const uint32_t* decoded, int output_blo
 #pragma unroll
   for(int j=0;j<Rows/kWarps;++j) {
    const int row=warp+j*kWarps;
-   if(row<nc){float v[4],scales[4];chunk_load(x[j],suh,k0+q*kCols,lane,v,scales);chunk_store(v,scales,lane,sm.xb+row*kCols);}
+   if(row<nc){float v[4],scales[4];chunk_load(x[j],suh,k0+q*kCols,lane,v,scales);chunk_store(v,scales,lane,sm.xb+row*kHipMatrixStride);}
   }
   __syncthreads();
 #pragma unroll
@@ -1626,7 +1627,7 @@ __device__ void hip_block_decoded_matrix(const uint32_t* decoded, int output_blo
    for(int m=0;m<Rows/16;++m) {
     HipOperand av;
 #pragma unroll
-    for(int i=0;i<kHipOperand;++i)av[i]=m*16+col<nc?__builtin_bit_cast(_Float16,__half_as_ushort(sm.xb[(m*16+col)*kCols+step*16+kh+i])):(_Float16)0;
+    for(int i=0;i<kHipOperand;++i)av[i]=m*16+col<nc?__builtin_bit_cast(_Float16,__half_as_ushort(sm.xb[(m*16+col)*kHipMatrixStride+step*16+kh+i])):(_Float16)0;
     acc[m]=hip_mma(av,bv,acc[m]);
    }
   }
