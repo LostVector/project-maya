@@ -585,6 +585,42 @@ void test_set(int K, int cb, int tail = 0) {
     const bool relaxed_matrix = std::getenv("DS4_EXL3_MATRIX_RELAXED") && std::atoi(std::getenv("DS4_EXL3_MATRIX_RELAXED")) != 0;
     if (!exact && !relaxed_matrix) ++g_fail;
     std::printf("SET_PARITY K=%d cb=%d rows=%d exact=%d\n", K, cb, rows, int(exact));
+    if (relaxed_matrix && !bench) {
+        test_env("DS4_EXL3_MATRIX_ROWS", "16", 1);
+        ex::set_gate_up(sa, d_x, E, d_rows, d_h, F, 0);
+        ex::set_down(sa, d_h, F, d_out, E, 0);CK(cudaDeviceSynchronize());
+        const auto hmatrix16=host_copy(d_h,(size_t)rows*F);
+        const auto ymatrix16=host_copy(d_out,(size_t)rows*E);
+        test_env("DS4_EXL3_MATRIX_ROWS", "32", 1);
+        ex::set_gate_up(sa, d_x, E, d_rows, d_h, F, 0);
+        ex::set_down(sa, d_h, F, d_out, E, 0);CK(cudaDeviceSynchronize());
+        const auto hmatrix32=host_copy(d_h,(size_t)rows*F);
+        const auto ymatrix32=host_copy(d_out,(size_t)rows*E);
+        const bool tile_exact=hmatrix16==hmatrix32 && std::memcmp(ymatrix16.data(),ymatrix32.data(),ymatrix16.size()*sizeof(float))==0;
+        if(!tile_exact)++g_fail;
+        std::printf("MATRIX_TILE_PARITY K=%d cb=%d rows=%d exact=%d\n",K,cb,rows,int(tile_exact));
+    }
+    if (bench && std::getenv("EXL3_MATRIX_BENCH")) {
+        for(int mode:{0,1,2,2,1,0,1,0,2,2,0,1}) {
+            test_env("DS4_EXL3_MATRIX_RELAXED",mode?"1":"0",1);
+            test_env("DS4_EXL3_MATRIX_ROWS",mode==2?"32":"16",1);
+            test_env("DS4_EXL3_FMA16","1",1);
+            auto run=[&]{ex::set_gate_up(sa,d_x,E,d_rows,d_h,F,0);ex::set_down(sa,d_h,F,d_out,E,0);};
+            cudaEvent_t begin,end;CK(cudaEventCreate(&begin));CK(cudaEventCreate(&end));
+            CK(cudaEventRecord(begin));for(int i=0;i<3;++i)run();CK(cudaEventRecord(end));CK(cudaEventSynchronize(end));
+            float calibration=0;CK(cudaEventElapsedTime(&calibration,begin,end));
+            const double estimate=std::max(.001,double(calibration)/3);
+            const int warm=std::min(20000,std::max(1,int(std::ceil(150/estimate))));
+            const int reps=std::min(20000,std::max(5,int(std::ceil(100/estimate))));
+            for(int i=0;i<warm;++i)run();
+            CK(cudaEventRecord(begin));for(int i=0;i<reps;++i)run();CK(cudaEventRecord(end));CK(cudaEventSynchronize(end));
+            float ms=0;CK(cudaEventElapsedTime(&ms,begin,end));
+            const auto out=host_copy(d_out,(size_t)rows*E);for(float v:out)if(!std::isfinite(v))++g_fail;
+            std::printf("MATRIX_BENCH K=%d cb=%d hot=%d rows=%d mode=%d warm=%d reps=%d mean_ms=%.6f\n",K,cb,tail,rows,mode,warm,reps,ms/reps);std::fflush(stdout);
+            CK(cudaEventDestroy(begin));CK(cudaEventDestroy(end));
+        }
+        cleanup();return;
+    }
     if (bench) {
         test_env("DS4_EXL3_FMA16", "1", 1);
         for (int mode : {0,1,2,2,1,0,1,0,2,2,0,1}) {
