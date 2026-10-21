@@ -1,0 +1,56 @@
+ds4: exact peer prefill all-reduce enabled on HIP0/HIP1 (160 MiB/rank)
+ds4: CUDA0 layers [0, 35] (tensor parallel 2, part 0): weights 3.02 GB, experts 26.41 GB (3409 of 13824 in VRAM), caches 0.24 GB, 1844 MiB free
+ds4: CUDA1 layers [0, 35] (tensor parallel 2, part 1): weights 3.02 GB, experts 26.41 GB (3409 of 13824 in VRAM), caches 0.24 GB, 1852 MiB free
+ds4: CUDA2 layers [36, 39] + head: weights 1.04 GB, experts 11.96 GB (670 of 1536 in VRAM), caches 0.10 GB, 2052 MiB free
+ds4: 11281 routed experts on the CPU lane (174.8 GB of RAM, 1 NUMA parts), 16 threads
+maya ds4 serve: GEN <max_new> [keys] <ids>; GENI <max_new> [keys] <pictures> <ids>; STOP, QUIT
+YOCO_PLAN n=8192 offset=0 layer=20 keep=2668 cut_chunk=1 cut_row=0 skipped_rows=4096 whole_chunks=1 retained_rows=4096
+EXL3_PREDECODE gpu=1 scratch_bytes=106168320
+EXL3_PREDECODE gpu=0 scratch_bytes=106168320
+ds4 prompt batches, CUDA0: 8108 experts copied, 8082 unpicked experts skipped
+DS4_PREFILL gpu=0 tokens=8192 chunk=4096 expert_row_picks=1376256 vram_row_picks=1285698 unique_expert_uses=13370 vram_unique_expert_uses=5262 streamed_weight_bytes=62550721536
+ds4 prompt batches, CUDA1: 8108 experts copied, 8082 unpicked experts skipped
+DS4_PREFILL gpu=1 tokens=8192 chunk=4096 expert_row_picks=1376256 vram_row_picks=1285698 unique_expert_uses=13370 vram_unique_expert_uses=5262 streamed_weight_bytes=62550721536
+ds4 prompt batches, CUDA2: 381 experts copied, 485 unpicked experts skipped
+DS4_PREFILL gpu=2 tokens=8192 chunk=4096 expert_row_picks=98304 vram_row_picks=96560 unique_expert_uses=1033 vram_unique_expert_uses=652 streamed_weight_bytes=6758659584
+maya ds4 serve: prompt 8192 tokens = 0 reused + 8192 read in 18514 ms (442.5 tok/s), 27 generated in 5082 ms (5.31 tok/s); CPU lane 0.1% of the experts
+YOCO_PLAN n=32768 offset=0 layer=20 keep=2668 cut_chunk=7 cut_row=0 skipped_rows=28672 whole_chunks=1 retained_rows=4096
+ds4 prompt batches, CUDA0: 22446 experts copied, 28394 unpicked experts skipped
+DS4_PREFILL gpu=0 tokens=32768 chunk=4096 expert_row_picks=4325376 vram_row_picks=4028709 unique_expert_uses=38735 vram_unique_expert_uses=16289 streamed_weight_bytes=172249016832
+ds4 prompt batches, CUDA1: 22446 experts copied, 28394 unpicked experts skipped
+DS4_PREFILL gpu=1 tokens=32768 chunk=4096 expert_row_picks=4325376 vram_row_picks=4028709 unique_expert_uses=38735 vram_unique_expert_uses=16289 streamed_weight_bytes=172249016832
+ds4 prompt batches, CUDA2: 378 experts copied, 488 unpicked experts skipped
+DS4_PREFILL gpu=2 tokens=32768 chunk=4096 expert_row_picks=98304 vram_row_picks=96516 unique_expert_uses=1024 vram_unique_expert_uses=646 streamed_weight_bytes=6705441792
+maya ds4 serve: prompt 32768 tokens = 0 reused + 32768 read in 36343 ms (901.6 tok/s), 27 generated in 1359 ms (19.86 tok/s); CPU lane 0.0% of the experts
+YOCO_PLAN n=8192 offset=0 layer=20 keep=2668 cut_chunk=1 cut_row=0 skipped_rows=4096 whole_chunks=1 retained_rows=4096
+ds4 prompt batches, CUDA0: 8235 experts copied, 7955 unpicked experts skipped
+DS4_PREFILL gpu=0 tokens=8192 chunk=4096 expert_row_picks=1376256 vram_row_picks=1264908 unique_expert_uses=13436 vram_unique_expert_uses=5201 streamed_weight_bytes=63526498560
+ds4 prompt batches, CUDA1: 8235 experts copied, 7955 unpicked experts skipped
+DS4_PREFILL gpu=1 tokens=8192 chunk=4096 expert_row_picks=1376256 vram_row_picks=1264908 unique_expert_uses=13436 vram_unique_expert_uses=5201 streamed_weight_bytes=63526498560
+ds4 prompt batches, CUDA2: 386 experts copied, 480 unpicked experts skipped
+DS4_PREFILL gpu=2 tokens=8192 chunk=4096 expert_row_picks=98304 vram_row_picks=96484 unique_expert_uses=1030 vram_unique_expert_uses=644 streamed_weight_bytes=6847355904
+maya ds4 serve: prompt 8192 tokens = 0 reused + 8192 read in 13400 ms (611.3 tok/s), 27 generated in 4113 ms (6.57 tok/s); CPU lane 0.0% of the experts
+YOCO_PLAN n=32768 offset=0 layer=20 keep=2668 cut_chunk=7 cut_row=0 skipped_rows=28672 whole_chunks=1 retained_rows=4096
+ds4 prompt batches, CUDA0: 23169 experts copied, 27671 unpicked experts skipped
+DS4_PREFILL gpu=0 tokens=32768 chunk=4096 expert_row_picks=4325376 vram_row_picks=3942600 unique_expert_uses=39037 vram_unique_expert_uses=15868 streamed_weight_bytes=178175202048
+ds4 prompt batches, CUDA1: 23169 experts copied, 27671 unpicked experts skipped
+DS4_PREFILL gpu=1 tokens=32768 chunk=4096 expert_row_picks=4325376 vram_row_picks=3942600 unique_expert_uses=39037 vram_unique_expert_uses=15868 streamed_weight_bytes=178175202048
+ds4 prompt batches, CUDA2: 383 experts copied, 483 unpicked experts skipped
+DS4_PREFILL gpu=2 tokens=32768 chunk=4096 expert_row_picks=98304 vram_row_picks=96436 unique_expert_uses=1026 vram_unique_expert_uses=643 streamed_weight_bytes=6794138112
+maya ds4 serve: prompt 32768 tokens = 0 reused + 32768 read in 38115 ms (859.7 tok/s), 27 generated in 1142 ms (23.64 tok/s); CPU lane 0.0% of the experts
+YOCO_PLAN n=8192 offset=0 layer=20 keep=2668 cut_chunk=1 cut_row=0 skipped_rows=4096 whole_chunks=1 retained_rows=4096
+ds4 prompt batches, CUDA0: 8398 experts copied, 7792 unpicked experts skipped
+DS4_PREFILL gpu=0 tokens=8192 chunk=4096 expert_row_picks=1376256 vram_row_picks=1241899 unique_expert_uses=13528 vram_unique_expert_uses=5130 streamed_weight_bytes=64850889216
+ds4 prompt batches, CUDA1: 8398 experts copied, 7792 unpicked experts skipped
+DS4_PREFILL gpu=1 tokens=8192 chunk=4096 expert_row_picks=1376256 vram_row_picks=1241899 unique_expert_uses=13528 vram_unique_expert_uses=5130 streamed_weight_bytes=64850889216
+ds4 prompt batches, CUDA2: 385 experts copied, 481 unpicked experts skipped
+DS4_PREFILL gpu=2 tokens=8192 chunk=4096 expert_row_picks=98304 vram_row_picks=96542 unique_expert_uses=1034 vram_unique_expert_uses=649 streamed_weight_bytes=6829616640
+maya ds4 serve: prompt 8192 tokens = 0 reused + 8192 read in 13900 ms (589.4 tok/s), 27 generated in 1071 ms (25.22 tok/s); CPU lane 0.0% of the experts
+YOCO_PLAN n=32768 offset=0 layer=20 keep=2668 cut_chunk=7 cut_row=0 skipped_rows=28672 whole_chunks=1 retained_rows=4096
+ds4 prompt batches, CUDA0: 23681 experts copied, 27159 unpicked experts skipped
+DS4_PREFILL gpu=0 tokens=32768 chunk=4096 expert_row_picks=4325376 vram_row_picks=3846780 unique_expert_uses=39025 vram_unique_expert_uses=15344 streamed_weight_bytes=182171357952
+ds4 prompt batches, CUDA1: 23681 experts copied, 27159 unpicked experts skipped
+DS4_PREFILL gpu=1 tokens=32768 chunk=4096 expert_row_picks=4325376 vram_row_picks=3846780 unique_expert_uses=39025 vram_unique_expert_uses=15344 streamed_weight_bytes=182171357952
+ds4 prompt batches, CUDA2: 391 experts copied, 475 unpicked experts skipped
+DS4_PREFILL gpu=2 tokens=32768 chunk=4096 expert_row_picks=98304 vram_row_picks=96321 unique_expert_uses=1032 vram_unique_expert_uses=641 streamed_weight_bytes=6936052224
+maya ds4 serve: prompt 32768 tokens = 0 reused + 32768 read in 36922 ms (887.5 tok/s), 27 generated in 1034 ms (26.11 tok/s); CPU lane 0.0% of the experts

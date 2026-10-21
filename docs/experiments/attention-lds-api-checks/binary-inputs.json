@@ -1,0 +1,6 @@
+{
+  "accepted_exe": "/home/rkuo/research/llm-weight-compression/_meta/maya-peer-steady-clock-20261021/checkpoint-maya-ds4",
+  "accepted_sha256": "c562d86815e8a8eed1cd1a5b9e933a5459ab105f636cd16c364da79ed7cfee4c",
+  "candidate_exe": "/home/rkuo/research/llm-weight-compression/_meta/maya-attention-lds-layout-20261021/checkpoint-maya-ds4",
+  "candidate_sha256": "d150e6d41274bbb1dac855f4acbfe681596c1c49beb7264c184f8234739c13c4"
+}

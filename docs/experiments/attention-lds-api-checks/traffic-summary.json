@@ -1,0 +1,10 @@
+{
+  "control": {
+    "logical_row_hit_percent": 90.12894807038484,
+    "mean_physical_streamed_expert_GB": 367.299685632
+  },
+  "candidate": {
+    "logical_row_hit_percent": 90.15747635452836,
+    "mean_physical_streamed_expert_GB": 366.83746406399996
+  }
+}

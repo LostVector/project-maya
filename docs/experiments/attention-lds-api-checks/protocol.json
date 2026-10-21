@@ -1,0 +1,52 @@
+{
+  "status": "frozen_before_measurements",
+  "caps": [
+    4096,
+    4096,
+    4096,
+    4096
+  ],
+  "arms": [
+    "control",
+    "candidate",
+    "candidate",
+    "control"
+  ],
+  "order": "ABBA;two fresh loads per variant",
+  "payload_sha256": "57d3082f470e5361770f9557ef1698d9f0520e290fc0edf132fd03fc5fb0aaf3",
+  "cases": [
+    {
+      "name": "Warm8K",
+      "primer": true,
+      "expected_prompt_tokens": 8192
+    },
+    {
+      "name": "Warm32K",
+      "primer": true,
+      "expected_prompt_tokens": 32768
+    },
+    {
+      "name": "Amber",
+      "primer": false,
+      "expected_prompt_tokens": 8192
+    },
+    {
+      "name": "Cobalt",
+      "primer": false,
+      "expected_prompt_tokens": 32768
+    },
+    {
+      "name": "Birch",
+      "primer": false,
+      "expected_prompt_tokens": 8192
+    },
+    {
+      "name": "Dune",
+      "primer": false,
+      "expected_prompt_tokens": 32768
+    }
+  ],
+  "acceptance": "Native exact parity gate; each of six requests per load correct, cache0, model swap0; two warmups excluded; compare within-prompt pooled latency and per-load results; no sustained decode claim",
+  "no_optional_stopping": "Retain all four frozen arms unless explicit failure; no arm dropped as outlier",
+  "performance_gate": "At least3% pooled32K latency reduction, both paired blocks improve32K, pooled8K no regression; all correctness/parity checks required. Quality12 and cache-reuse checks separately required before serving."
+}

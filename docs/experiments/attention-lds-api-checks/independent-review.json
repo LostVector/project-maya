@@ -1,0 +1,36 @@
+{
+  "status": "Independent saved-response,tracecounter,configuration and arithmetic review complete",
+  "all24_correct_cache0_isolated_swap0": true,
+  "timed_requests": 16,
+  "excluded_warmups": 8,
+  "results": {
+    "8192": {
+      "prefill_tokens_per_second": {
+        "control": 611.5338174393887,
+        "candidate": 724.1338922859675
+      },
+      "throughput_increase_percent": 18.41273068398035,
+      "short27token_decode_tokens_per_second": {
+        "control": 14.506769825918761,
+        "candidate": 19.31675907708818
+      }
+    },
+    "32768": {
+      "prefill_tokens_per_second": {
+        "control": 884.5285117243623,
+        "candidate": 1024.8855651836666
+      },
+      "throughput_increase_percent": 15.868007825511743,
+      "short27token_decode_tokens_per_second": {
+        "control": 24.763258661408294,
+        "candidate": 24.7269730063878
+      }
+    }
+  },
+  "limitations": "Two independentfresh loads pervariant;CI with2pairedblocks isverywide. Short27token decode samples includelarge8Kstalls onbothvariants;not evidenceofsustained decodegain/regression. Rawstalls retained.",
+  "source_phase_sha256": {
+    "protocol.json": "a3bcb93a5237a823a527d2c715b8092574ca0d6bdd746cd7e95128a82c670933",
+    "payloads.json": "57d3082f470e5361770f9557ef1698d9f0520e290fc0edf132fd03fc5fb0aaf3",
+    "analysis.json": "5a7b9726960912f5ed27cff991540c3a2bae13c418c9d058bbc76f96324d0b39"
+  }
+}

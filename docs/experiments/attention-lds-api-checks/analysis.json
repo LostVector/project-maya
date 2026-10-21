@@ -1,0 +1,452 @@
+{
+  "status": "measurements_complete",
+  "results": [
+    {
+      "index": 0,
+      "label": "control",
+      "identity": {
+        "server_pid": 307724,
+        "engine_pid": 307726,
+        "exe": "/home/rkuo/research/llm-weight-compression/_meta/maya-peer-steady-clock-20261021/checkpoint-maya-ds4",
+        "allocation": [
+          [
+            "0",
+            "26.41",
+            "3409",
+            "13824"
+          ],
+          [
+            "1",
+            "26.41",
+            "3409",
+            "13824"
+          ],
+          [
+            "2",
+            "11.96",
+            "670",
+            "1536"
+          ]
+        ],
+        "configured_chunk": 4096,
+        "profile": "absent_zero_initialization"
+      },
+      "lengths": {
+        "8192": {
+          "mean_prompt_ms": 13141.65,
+          "tokens_per_second": 623.3616022341182,
+          "samples": [
+            {
+              "name": "Amber",
+              "prompt_ms": 13096.8,
+              "hit": 0.9233384874131945,
+              "streamed_bytes": 133153841664
+            },
+            {
+              "name": "Birch",
+              "prompt_ms": 13186.5,
+              "hit": 0.9078274197048611,
+              "streamed_bytes": 136278646272
+            }
+          ],
+          "short_decode_tokens_per_second": 23.875845602865102
+        },
+        "32768": {
+          "mean_prompt_ms": 36572.95,
+          "tokens_per_second": 895.9627265506338,
+          "samples": [
+            {
+              "name": "Cobalt",
+              "prompt_ms": 36481.5,
+              "hit": 0.9108011881510417,
+              "streamed_bytes": 362904729600
+            },
+            {
+              "name": "Dune",
+              "prompt_ms": 36664.4,
+              "hit": 0.8899457013165509,
+              "streamed_bytes": 371870702592
+            }
+          ],
+          "short_decode_tokens_per_second": 24.715089935466157
+        }
+      },
+      "warmups": [
+        {
+          "cache_n": 0,
+          "prompt_n": 8192,
+          "prompt_ms": 34657.2,
+          "prompt_per_token_ms": 4.231,
+          "prompt_per_second": 236.4,
+          "predicted_n": 27,
+          "predicted_ms": 8719.2,
+          "predicted_per_token_ms": 322.933,
+          "predicted_per_second": 3.1,
+          "draft_n": 0,
+          "draft_n_accepted": 0
+        },
+        {
+          "cache_n": 0,
+          "prompt_n": 32768,
+          "prompt_ms": 37061.4,
+          "prompt_per_token_ms": 1.131,
+          "prompt_per_second": 884.2,
+          "predicted_n": 27,
+          "predicted_ms": 1332.5,
+          "predicted_per_token_ms": 49.352,
+          "predicted_per_second": 20.3,
+          "draft_n": 0,
+          "draft_n_accepted": 0
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "label": "candidate",
+      "identity": {
+        "server_pid": 309608,
+        "engine_pid": 309625,
+        "exe": "/home/rkuo/research/llm-weight-compression/_meta/maya-attention-lds-layout-20261021/checkpoint-maya-ds4",
+        "allocation": [
+          [
+            "0",
+            "26.41",
+            "3409",
+            "13824"
+          ],
+          [
+            "1",
+            "26.41",
+            "3409",
+            "13824"
+          ],
+          [
+            "2",
+            "11.96",
+            "670",
+            "1536"
+          ]
+        ],
+        "configured_chunk": 4096,
+        "profile": "absent_zero_initialization"
+      },
+      "lengths": {
+        "8192": {
+          "mean_prompt_ms": 11494.85,
+          "tokens_per_second": 712.6669769505475,
+          "samples": [
+            {
+              "name": "Amber",
+              "prompt_ms": 11771.0,
+              "hit": 0.9234781901041667,
+              "streamed_bytes": 133789585920
+            },
+            {
+              "name": "Birch",
+              "prompt_ms": 11218.7,
+              "hit": 0.9085313585069444,
+              "streamed_bytes": 136202903040
+            }
+          ],
+          "short_decode_tokens_per_second": 18.245708879578324
+        },
+        "32768": {
+          "mean_prompt_ms": 32392.7,
+          "tokens_per_second": 1011.5859437465848,
+          "samples": [
+            {
+              "name": "Cobalt",
+              "prompt_ms": 31013.5,
+              "hit": 0.9124283402054398,
+              "streamed_bytes": 362798584320
+            },
+            {
+              "name": "Dune",
+              "prompt_ms": 33771.9,
+              "hit": 0.8919765896267361,
+              "streamed_bytes": 370212307968
+            }
+          ],
+          "short_decode_tokens_per_second": 24.63166537426447
+        }
+      },
+      "warmups": [
+        {
+          "cache_n": 0,
+          "prompt_n": 8192,
+          "prompt_ms": 14206.3,
+          "prompt_per_token_ms": 1.734,
+          "prompt_per_second": 576.6,
+          "predicted_n": 27,
+          "predicted_ms": 1736.9,
+          "predicted_per_token_ms": 64.33,
+          "predicted_per_second": 15.5,
+          "draft_n": 0,
+          "draft_n_accepted": 0
+        },
+        {
+          "cache_n": 0,
+          "prompt_n": 32768,
+          "prompt_ms": 34350.4,
+          "prompt_per_token_ms": 1.048,
+          "prompt_per_second": 953.9,
+          "predicted_n": 27,
+          "predicted_ms": 1369.1,
+          "predicted_per_token_ms": 50.707,
+          "predicted_per_second": 19.7,
+          "draft_n": 0,
+          "draft_n_accepted": 0
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "label": "candidate",
+      "identity": {
+        "server_pid": 311038,
+        "engine_pid": 311040,
+        "exe": "/home/rkuo/research/llm-weight-compression/_meta/maya-attention-lds-layout-20261021/checkpoint-maya-ds4",
+        "allocation": [
+          [
+            "0",
+            "26.41",
+            "3409",
+            "13824"
+          ],
+          [
+            "1",
+            "26.41",
+            "3409",
+            "13824"
+          ],
+          [
+            "2",
+            "11.96",
+            "670",
+            "1536"
+          ]
+        ],
+        "configured_chunk": 4096,
+        "profile": "absent_zero_initialization"
+      },
+      "lengths": {
+        "8192": {
+          "mean_prompt_ms": 11130.8,
+          "tokens_per_second": 735.9758507923959,
+          "samples": [
+            {
+              "name": "Amber",
+              "prompt_ms": 11092.3,
+              "hit": 0.9236972384982639,
+              "streamed_bytes": 133997735424
+            },
+            {
+              "name": "Birch",
+              "prompt_ms": 11169.3,
+              "hit": 0.9075337727864583,
+              "streamed_bytes": 136118158848
+            }
+          ],
+          "short_decode_tokens_per_second": 20.521395454890932
+        },
+        "32768": {
+          "mean_prompt_ms": 31552.0,
+          "tokens_per_second": 1038.5395537525355,
+          "samples": [
+            {
+              "name": "Cobalt",
+              "prompt_ms": 31545.2,
+              "hit": 0.9120652940538194,
+              "streamed_bytes": 363375409152
+            },
+            {
+              "name": "Dune",
+              "prompt_ms": 31558.8,
+              "hit": 0.8898288302951389,
+              "streamed_bytes": 370963554816
+            }
+          ],
+          "short_decode_tokens_per_second": 24.82302105359934
+        }
+      },
+      "warmups": [
+        {
+          "cache_n": 0,
+          "prompt_n": 8192,
+          "prompt_ms": 14265.3,
+          "prompt_per_token_ms": 1.741,
+          "prompt_per_second": 574.3,
+          "predicted_n": 27,
+          "predicted_ms": 1729.4,
+          "predicted_per_token_ms": 64.052,
+          "predicted_per_second": 15.6,
+          "draft_n": 0,
+          "draft_n_accepted": 0
+        },
+        {
+          "cache_n": 0,
+          "prompt_n": 32768,
+          "prompt_ms": 34661.3,
+          "prompt_per_token_ms": 1.058,
+          "prompt_per_second": 945.4,
+          "predicted_n": 27,
+          "predicted_ms": 1331.7,
+          "predicted_per_token_ms": 49.322,
+          "predicted_per_second": 20.3,
+          "draft_n": 0,
+          "draft_n_accepted": 0
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "label": "control",
+      "identity": {
+        "server_pid": 312431,
+        "engine_pid": 312433,
+        "exe": "/home/rkuo/research/llm-weight-compression/_meta/maya-peer-steady-clock-20261021/checkpoint-maya-ds4",
+        "allocation": [
+          [
+            "0",
+            "26.41",
+            "3409",
+            "13824"
+          ],
+          [
+            "1",
+            "26.41",
+            "3409",
+            "13824"
+          ],
+          [
+            "2",
+            "11.96",
+            "670",
+            "1536"
+          ]
+        ],
+        "configured_chunk": 4096,
+        "profile": "absent_zero_initialization"
+      },
+      "lengths": {
+        "8192": {
+          "mean_prompt_ms": 13650.0,
+          "tokens_per_second": 600.1465201465202,
+          "samples": [
+            {
+              "name": "Amber",
+              "prompt_ms": 13400.4,
+              "hit": 0.9232530381944445,
+              "streamed_bytes": 133900353024
+            },
+            {
+              "name": "Birch",
+              "prompt_ms": 13899.6,
+              "hit": 0.9076883951822917,
+              "streamed_bytes": 136531395072
+            }
+          ],
+          "short_decode_tokens_per_second": 10.418475429762111
+        },
+        "32768": {
+          "mean_prompt_ms": 37518.5,
+          "tokens_per_second": 873.3824646507722,
+          "samples": [
+            {
+              "name": "Cobalt",
+              "prompt_ms": 38115.1,
+              "hit": 0.9130488642939815,
+              "streamed_bytes": 363144542208
+            },
+            {
+              "name": "Dune",
+              "prompt_ms": 36921.9,
+              "hit": 0.8913621690538195,
+              "streamed_bytes": 371278768128
+            }
+          ],
+          "short_decode_tokens_per_second": 24.811615511854438
+        }
+      },
+      "warmups": [
+        {
+          "cache_n": 0,
+          "prompt_n": 8192,
+          "prompt_ms": 18513.6,
+          "prompt_per_token_ms": 2.26,
+          "prompt_per_second": 442.5,
+          "predicted_n": 27,
+          "predicted_ms": 5081.7,
+          "predicted_per_token_ms": 188.211,
+          "predicted_per_second": 5.3,
+          "draft_n": 0,
+          "draft_n_accepted": 0
+        },
+        {
+          "cache_n": 0,
+          "prompt_n": 32768,
+          "prompt_ms": 36343.2,
+          "prompt_per_token_ms": 1.109,
+          "prompt_per_second": 901.6,
+          "predicted_n": 27,
+          "predicted_ms": 1359.3,
+          "predicted_per_token_ms": 50.344,
+          "predicted_per_second": 19.9,
+          "draft_n": 0,
+          "draft_n_accepted": 0
+        }
+      ]
+    }
+  ],
+  "limits": "Two fresh loads per variant; two timed prompts per length per load. Warmups excluded. Descriptive paired intervals with only2 blocks. This is not broad model quality or sustained decode evidence.",
+  "pooled": {
+    "8192": {
+      "mean_prompt_ms": {
+        "control": 13395.825,
+        "candidate": 11312.825
+      },
+      "tokens_per_second": {
+        "control": 611.5338174393887,
+        "candidate": 724.1338922859675
+      },
+      "latency_reduction_percent": 15.549620870681725
+    },
+    "32768": {
+      "mean_prompt_ms": {
+        "control": 37045.725,
+        "candidate": 31972.35
+      },
+      "tokens_per_second": {
+        "control": 884.5285117243623,
+        "candidate": 1024.8855651836666
+      },
+      "latency_reduction_percent": 13.694900018828083
+    }
+  },
+  "paired": {
+    "8192": {
+      "latency_reductions_percent": [
+        12.531150958973946,
+        18.45567765567766
+      ],
+      "mean_percent": 15.493414307325803,
+      "descriptive_t95_df1": [
+        -22.145710278781788,
+        53.13253889343339
+      ]
+    },
+    "32768": {
+      "latency_reductions_percent": [
+        11.429895592234141,
+        15.902821274837741
+      ],
+      "mean_percent": 13.66635843353594,
+      "descriptive_t95_df1": [
+        -14.75059631250101,
+        42.08331317957289
+      ]
+    }
+  },
+  "performance_gate_passed": true,
+  "restoration_complete": true
+}
