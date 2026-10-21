@@ -1164,6 +1164,9 @@ if(STRATA_BUILD_TESTS)
   add_test(NAME expert_parity COMMAND expert_parity --selftest
            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
+  add_executable(ds4_prefetch_history_test tests/ds4_prefetch_history_test.cpp)
+  add_test(NAME ds4_prefetch_history_test COMMAND ds4_prefetch_history_test)
+
   add_executable(pool_test src/kernels/cpu/pool_test.cpp)
   target_link_libraries(pool_test PRIVATE strata_kernels_cpu)
   add_test(NAME pool_test COMMAND pool_test --selftest WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})

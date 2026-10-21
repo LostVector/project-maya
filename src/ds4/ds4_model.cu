@@ -11,6 +11,7 @@
 //   h = post * moe + comb^T h;  pre = f_pre
 // and after the last layer logits = head(rmsnorm(sum_s pre[s] h[s])).
 #include "ds4_model.hpp"
+#include "ds4_prefetch_history.hpp"
 #include "ds4_engram_io.hpp"
 
 #include "ds4_gguf.cuh"
@@ -2901,10 +2902,23 @@ struct Model::Impl {
         int routed_layer = -1, routed_chunk = -1;
         std::vector<int> routed_bounds;
         size_t skipped = 0, copied = 0;
+        const bool speculative = std::getenv("DS4_SPEC_PREFETCH") && std::atoi(std::getenv("DS4_SPEC_PREFETCH")) != 0;
+        PrefetchHistory history;
+        size_t pending_batch = size_t(-1);
+        std::vector<uint8_t> predicted;
+        uint64_t spec_issued = 0, spec_used = 0, spec_wasted = 0, spec_repaired = 0;
+        uint64_t spec_issued_bytes = 0, spec_used_bytes = 0, spec_wasted_bytes = 0, spec_repaired_bytes = 0;
+
         const bool collect_prefill = std::getenv("DS4_PREFILL_STATS") != nullptr &&
                                      std::atoi(std::getenv("DS4_PREFILL_STATS")) != 0;
         PrefillCounts prefill;
         void report_prefill(int gpu, int tokens, int chunk, double streamed_bytes) const {
+            if (speculative)
+                std::fprintf(stderr, "DS4_SPEC_PREFETCH gpu=%d issued=%llu used=%llu wasted=%llu repaired=%llu pending=%d issued_bytes=%llu used_bytes=%llu wasted_bytes=%llu repaired_bytes=%llu\n",
+                             gpu, (unsigned long long)spec_issued, (unsigned long long)spec_used,
+                             (unsigned long long)spec_wasted, (unsigned long long)spec_repaired,
+                             int(pending_batch != size_t(-1)), (unsigned long long)spec_issued_bytes, (unsigned long long)spec_used_bytes,
+                             (unsigned long long)spec_wasted_bytes, (unsigned long long)spec_repaired_bytes);
             if (!collect_prefill) return;
             std::fprintf(stderr, "DS4_PREFILL gpu=%d tokens=%d chunk=%d expert_row_picks=%llu vram_row_picks=%llu "
                          "unique_expert_uses=%llu vram_unique_expert_uses=%llu streamed_weight_bytes=%llu\n",
@@ -2967,11 +2981,24 @@ struct Model::Impl {
             const Batch& bt = S.b[S.cp];
             // Wait for this layer's routing rather than staging every expert
             // speculatively. Copies still overlap compute within the layer.
-            if (skip_unpicked && (bt.il != S.routed_layer || bt.k != S.routed_chunk)) break;
+            bool speculative_copy = false;
+            if (skip_unpicked && (bt.il != S.routed_layer || bt.k != S.routed_chunk)) {
+                // One batch of the next layer, predicted strictly from its previous chunk.
+                // Limit to immutable packed-RAM sources: no pinned staging slot can be reused early.
+                const Layer& next = L[(size_t)bt.il];
+                if (!S.speculative || S.pending_batch != size_t(-1) || bt.il != S.routed_layer + 1 ||
+                    bt.k != S.routed_chunk || bt.j0 != 0 || !next.packed_host || c.stage != nullptr) break;
+                auto prediction = S.history.predict(bt.il, bt.k, next.n_slots + bt.j0, bt.n);
+                if (prediction.empty() || std::none_of(prediction.begin(), prediction.end(), [](uint8_t x){return x != 0;})) break;
+                S.pending_batch = S.cp;
+                S.predicted = std::move(prediction);
+                speculative_copy = true;
+            }
             const int half = (int) (S.cp % P);
             const Layer& l0 = L[(size_t) bt.il];
             // Preserve the original virtual slots, batches and accumulation order.
             const auto picked = [&](int i) {
+                if (speculative_copy) return S.predicted[(size_t)i] != 0;
                 if (!skip_unpicked || bt.il != S.routed_layer || bt.k != S.routed_chunk) return true;
                 const size_t v = (size_t) l0.n_slots + bt.j0 + i;
                 return S.routed_bounds[v + 1] > S.routed_bounds[v];
@@ -3016,6 +3043,7 @@ struct Model::Impl {
             for (int i = 0; i < bt.n; ++i) {
                 if (!picked(i)) { ++S.skipped; continue; }
                 if (skip_unpicked) ++S.copied;
+                if (speculative_copy) { ++S.spec_issued; S.spec_issued_bytes += unit(member(l0, mi)); }
                 uint8_t* dst = c.ring + ((size_t) half * (c.ring_n / P) + i) * c.ring_stride;
                 if (!stream_expert(l0, mi, l0.host_list[(size_t) (bt.j0 + i)], dst, c.cs, err,
                                    sb != nullptr ? sb + (size_t) i * c.stage_stride : nullptr))
@@ -3768,6 +3796,16 @@ struct Model::Impl {
             std::fprintf(stderr, "ds4: Windows' commit has room for the GPU's experts (%.1f GB beside %.0f GB for the other "
                                  "programs)\n", room0 / 1e9, commit_margin() / 1e9);
         }
+#if defined(STRATA_DS4_HOST_LAYOUT_TEST)
+        if (std::getenv("DS4_TEST_FIXED_LAYER_SLOTS")) {
+            for (Layer& l : L) {
+                const int slots = l.nm > 1 ? 94 : 165;
+                if (l.n_vram < slots) { err = "fixed test layout does not fit"; return false; }
+                l.n_vram = slots;
+                std::fprintf(stderr, "FIXED_TEST_LAYOUT layer=%d slots=%d\n", l.il, slots);
+            }
+        }
+#endif
         for (Layer& l : L) {
             // the hottest experts of the profile first, then by index
             std::vector<int> order((size_t) l.n_exp);
@@ -6378,6 +6416,30 @@ struct Model::Impl {
         const int di = l.dev, P = Chunk::kParts;
 #if defined(STRATA_USE_HIP)
         if (std::getenv("DS4_SKIP_UNPICKED") != nullptr && std::atoi(std::getenv("DS4_SKIP_UNPICKED")) != 0) {
+            // Repair false negatives before the first guessed batch is consumed. Copy-engine
+            // ordering keeps its original copies ahead of repairs; filled is republished afterwards.
+            if (S.pending_batch != size_t(-1)) {
+                const Batch& pending = S.b[S.pending_batch];
+                if (pending.il == L0.il && pending.k == wp.k) {
+                    const int half = int(S.pending_batch % P);
+                    for (int i = 0; i < pending.n; ++i) {
+                        const int v = L0.n_slots + pending.j0 + i;
+                        const bool actual = b[(size_t)v+1] > b[(size_t)v];
+                        if (S.predicted[(size_t)i]) {
+                            if (actual) { ++S.spec_used; S.spec_used_bytes += unit(member(L0, mi)); }
+                            else { ++S.spec_wasted; S.spec_wasted_bytes += unit(member(L0, mi)); }
+                        } else if (actual) {
+                            uint8_t* dst = c.ring + ((size_t)half * (c.ring_n / P) + i) * c.ring_stride;
+                            if (!stream_expert(L0, mi, L0.host_list[(size_t)(pending.j0+i)], dst, c.cs, err)) return false;
+                            c.stream_bytes += (double)unit(member(L0, mi));
+                            ++S.spec_repaired; S.spec_repaired_bytes += unit(member(L0, mi)); ++S.copied; --S.skipped;
+                        }
+                    }
+                    CK(cudaEventRecord(c.filled[half], c.cs));
+                    S.pending_batch = size_t(-1); S.predicted.clear();
+                }
+            }
+            if (S.speculative) S.history.remember(L0.il, wp.k, b);
             S.routed_layer = L0.il;
             S.routed_chunk = wp.k;
             S.routed_bounds = b;
