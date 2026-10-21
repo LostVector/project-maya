@@ -1,0 +1,62 @@
+{
+  "scope": "StaticobjectISAonly;no stallcounters or speedinference",
+  "kernels": [
+    {
+      "name": "G8-swizzle1-global0",
+      "bytes": 10448,
+      "resources": {
+        "vgpr_count": 88,
+        "sgpr_count": 33,
+        "group_segment_fixed_size": 19040,
+        "private_segment_fixed_size": 0,
+        "vgpr_spill_count": 0,
+        "sgpr_spill_count": 0
+      },
+      "instructions": {
+        "s_wait_kmcnt": 6,
+        "s_wait_alu": 142,
+        "global_load_b128": 6,
+        "ds_store_2addr_b32": 1,
+        "global_load_b32": 1,
+        "s_wait_loadcnt": 5,
+        "ds_store_b64": 1,
+        "s_wait_loadcnt_dscnt": 17,
+        "global_inv": 6,
+        "s_wait_dscnt": 36,
+        "flat_load_d16_i8": 4,
+        "flat_load_b128": 10,
+        "ds_store_b128": 8,
+        "ds_store_b32": 5,
+        "global_store_b64": 8
+      }
+    },
+    {
+      "name": "G8-swizzle1-global1",
+      "bytes": 10496,
+      "resources": {
+        "vgpr_count": 88,
+        "sgpr_count": 33,
+        "group_segment_fixed_size": 19040,
+        "private_segment_fixed_size": 0,
+        "vgpr_spill_count": 0,
+        "sgpr_spill_count": 0
+      },
+      "instructions": {
+        "s_wait_kmcnt": 6,
+        "s_wait_alu": 142,
+        "global_load_b128": 16,
+        "ds_store_2addr_b32": 1,
+        "global_load_b32": 1,
+        "s_wait_loadcnt": 17,
+        "ds_store_b64": 1,
+        "s_wait_loadcnt_dscnt": 5,
+        "global_inv": 6,
+        "s_wait_dscnt": 36,
+        "global_load_d16_i8": 4,
+        "ds_store_b128": 8,
+        "ds_store_b32": 5,
+        "global_store_b64": 8
+      }
+    }
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "results": [
+    {
+      "gpu": 1,
+      "comparisons": 72,
+      "all_exact": true,
+      "isolated": true,
+      "before": {
+        "requests": 0,
+        "in_flight": 0,
+        "last_request_at": null
+      },
+      "after": {
+        "requests": 0,
+        "in_flight": 0,
+        "last_request_at": null
+      },
+      "G8_primary": {
+        "steady512": {
+          "generic_median_ms": 3.58782339,
+          "global_median_ms": 3.5386234500000002,
+          "latency_reduction_percent": 1.3713032848029827
+        },
+        "early512": {
+          "generic_median_ms": 0.704645008,
+          "global_median_ms": 0.6819240154999999,
+          "latency_reduction_percent": 3.22445944298807
+        }
+      }
+    },
+    {
+      "gpu": 0,
+      "comparisons": 72,
+      "all_exact": true,
+      "isolated": true,
+      "before": {
+        "requests": 0,
+        "in_flight": 0,
+        "last_request_at": null
+      },
+      "after": {
+        "requests": 0,
+        "in_flight": 0,
+        "last_request_at": null
+      },
+      "G8_primary": {
+        "steady512": {
+          "generic_median_ms": 6.23443532,
+          "global_median_ms": 5.995372295,
+          "latency_reduction_percent": 3.8345577863818536
+        },
+        "early512": {
+          "generic_median_ms": 1.07679349,
+          "global_median_ms": 1.035472515,
+          "latency_reduction_percent": 3.8374094367899736
+        }
+      }
+    },
+    {
+      "gpu": 2,
+      "comparisons": 72,
+      "all_exact": true,
+      "isolated": true,
+      "before": {
+        "requests": 0,
+        "in_flight": 0,
+        "last_request_at": null
+      },
+      "after": {
+        "requests": 0,
+        "in_flight": 0,
+        "last_request_at": null
+      },
+      "G8_primary": {
+        "steady512": {
+          "generic_median_ms": 3.636094455,
+          "global_median_ms": 3.576174495,
+          "latency_reduction_percent": 1.6479208871376771
+        },
+        "early512": {
+          "generic_median_ms": 0.6583029925,
+          "global_median_ms": 0.632281989,
+          "latency_reduction_percent": 3.952739664934768
+        }
+      }
+    }
+  ],
+  "all3_passed": true
+}

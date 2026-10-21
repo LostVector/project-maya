@@ -1,0 +1,896 @@
+{
+  "scope": "SingleGPU isolated syntheticoperatorscreen;8timedpairs/group/case. Not wholemodel throughput or fullmodel logit validation.",
+  "parity": {
+    "exit_code": 0,
+    "comparisons": 72,
+    "all_exact_finite_guards": true,
+    "isolated": true,
+    "before": {
+      "requests": 0,
+      "in_flight": 0,
+      "last_request_at": null
+    },
+    "after": {
+      "requests": 0,
+      "in_flight": 0,
+      "last_request_at": null
+    },
+    "binary_sha256": "69a29f400e2b2b61f0c5301bddae321288d328cfbeb44be3ea43a487434419b7"
+  },
+  "results": [
+    {
+      "case": "steady512",
+      "comparisons": [
+        {
+          "group": 8,
+          "median_gpu_ms": {
+            "generic": 3.570364475,
+            "global": 3.5337845100000003
+          },
+          "median_wall_ms": {
+            "generic": 3.8103285,
+            "global": 3.7711605
+          },
+          "median_latency_reduction_percent": 1.0245442798945459,
+          "paired_latency_reductions_percent": [
+            0.2266010427844689,
+            1.7904011410988963,
+            0.7232564647070228,
+            0.7233371984249115,
+            0.9468548421610157,
+            1.0722957459690208,
+            1.6684073556086365,
+            1.929912259806943
+          ],
+          "paired_improving": 8
+        },
+        {
+          "group": 4,
+          "median_gpu_ms": {
+            "generic": 4.280109404999999,
+            "global": 4.23526812
+          },
+          "median_wall_ms": {
+            "generic": 4.5335935,
+            "global": 4.4781595
+          },
+          "median_latency_reduction_percent": 1.0476667943958629,
+          "paired_latency_reductions_percent": [
+            2.2615394963368396,
+            0.7352494278143884,
+            0.7091487113294881,
+            2.057185003499118,
+            1.653317922444364,
+            2.349697502998238,
+            0.43724229231331124,
+            1.1297790551457854
+          ],
+          "paired_improving": 8
+        },
+        {
+          "group": 2,
+          "median_gpu_ms": {
+            "generic": 6.112080335,
+            "global": 6.086319919999999
+          },
+          "median_wall_ms": {
+            "generic": 6.347689000000001,
+            "global": 6.3216605
+          },
+          "median_latency_reduction_percent": 0.42146721882052596,
+          "paired_latency_reductions_percent": [
+            2.3283010422479156,
+            1.704310516215124,
+            -0.03218759414702621,
+            0.6359313169046699,
+            0.8366767705011102,
+            1.1456420685808433,
+            -0.022907060775478882,
+            0.2979666834576955
+          ],
+          "paired_improving": 6
+        },
+        {
+          "group": 1,
+          "median_gpu_ms": {
+            "generic": 10.082447550000001,
+            "global": 9.841627599999999
+          },
+          "median_wall_ms": {
+            "generic": 10.318093999999999,
+            "global": 10.0916685
+          },
+          "median_latency_reduction_percent": 2.388506846236982,
+          "paired_latency_reductions_percent": [
+            3.4251625876483116,
+            2.2195162668760537,
+            2.707324108362641,
+            1.9220239657363303,
+            2.6493429208761077,
+            2.0917260585888275,
+            2.8369826738237625,
+            2.4485679527271653
+          ],
+          "paired_improving": 8
+        }
+      ]
+    },
+    {
+      "case": "early512",
+      "comparisons": [
+        {
+          "group": 8,
+          "median_gpu_ms": {
+            "generic": 0.7009249930000001,
+            "global": 0.6762045025
+          },
+          "median_wall_ms": {
+            "generic": 0.718486,
+            "global": 0.69421
+          },
+          "median_latency_reduction_percent": 3.5268382133436305,
+          "paired_latency_reductions_percent": [
+            24.825212796385877,
+            3.3859562795509612,
+            3.2928924637976142,
+            3.90871232567499,
+            3.2285052063345865,
+            2.710774023208462,
+            3.678090899779707,
+            3.830089015243987
+          ],
+          "paired_improving": 8
+        },
+        {
+          "group": 4,
+          "median_gpu_ms": {
+            "generic": 0.7898454965,
+            "global": 0.7405450044999999
+          },
+          "median_wall_ms": {
+            "generic": 0.8076939999999999,
+            "global": 0.7585105
+          },
+          "median_latency_reduction_percent": 6.241789339619297,
+          "paired_latency_reductions_percent": [
+            5.7284500212887,
+            6.174599948403414,
+            5.660724551865448,
+            6.071335655771515,
+            6.008398195742892,
+            6.474237110523129,
+            5.875371132247819,
+            6.686663435538254
+          ],
+          "paired_improving": 8
+        },
+        {
+          "group": 2,
+          "median_gpu_ms": {
+            "generic": 1.011906985,
+            "global": 0.9410859945
+          },
+          "median_wall_ms": {
+            "generic": 1.029901,
+            "global": 0.9587025
+          },
+          "median_latency_reduction_percent": 6.998764861772355,
+          "paired_latency_reductions_percent": [
+            7.5243540646143465,
+            6.434711449293385,
+            7.064238340006557,
+            6.968470011047179,
+            7.014078521347722,
+            6.882707503333663,
+            7.213917270000659,
+            7.564762761027777
+          ],
+          "paired_improving": 8
+        },
+        {
+          "group": 1,
+          "median_gpu_ms": {
+            "generic": 1.532809975,
+            "global": 1.3846089849999998
+          },
+          "median_wall_ms": {
+            "generic": 1.7707795,
+            "global": 1.62262
+          },
+          "median_latency_reduction_percent": 9.668582043250339,
+          "paired_latency_reductions_percent": [
+            9.451381928464508,
+            9.882344568306367,
+            9.9554441991073,
+            8.703516870633376,
+            10.705228403086341,
+            9.68805615413524,
+            11.47190653216309,
+            8.060891339653509
+          ],
+          "paired_improving": 8
+        }
+      ]
+    },
+    {
+      "case": "ragged73",
+      "comparisons": [
+        {
+          "group": 8,
+          "median_gpu_ms": {
+            "generic": 0.25044199850000004,
+            "global": 0.24464150499999998
+          },
+          "median_wall_ms": {
+            "generic": 0.269742,
+            "global": 0.2626835
+          },
+          "median_latency_reduction_percent": 2.3161025445977867,
+          "paired_latency_reductions_percent": [
+            2.2022142865412264,
+            2.1418295098709406,
+            2.3041326605022117,
+            2.3318989640904175,
+            2.300301079060063,
+            2.3531503805589327,
+            2.2976792222267783,
+            2.4064114319247487
+          ],
+          "paired_improving": 8
+        },
+        {
+          "group": 4,
+          "median_gpu_ms": {
+            "generic": 0.27828151,
+            "global": 0.2707419995
+          },
+          "median_wall_ms": {
+            "generic": 0.2970785,
+            "global": 0.286774
+          },
+          "median_latency_reduction_percent": 2.709310618589078,
+          "paired_latency_reductions_percent": [
+            2.9293105207468417,
+            2.868474531660248,
+            3.196316550055811,
+            2.917980002006104,
+            2.2995015654726614,
+            3.1081489669915086,
+            2.6562093748333293,
+            3.661983763516097
+          ],
+          "paired_improving": 8
+        },
+        {
+          "group": 2,
+          "median_gpu_ms": {
+            "generic": 0.36348199849999996,
+            "global": 0.352082506
+          },
+          "median_wall_ms": {
+            "generic": 0.380706,
+            "global": 0.369114
+          },
+          "median_latency_reduction_percent": 3.1361917638405234,
+          "paired_latency_reductions_percent": [
+            3.1915796078723413,
+            3.2018960471007274,
+            3.1421516903352376,
+            3.130212128357268,
+            3.1948053286677602,
+            3.1064803784976447,
+            3.381451911166422,
+            3.1695222000427847
+          ],
+          "paired_improving": 8
+        },
+        {
+          "group": 1,
+          "median_gpu_ms": {
+            "generic": 0.5652039945,
+            "global": 0.538103491
+          },
+          "median_wall_ms": {
+            "generic": 0.5822545,
+            "global": 0.5544525
+          },
+          "median_latency_reduction_percent": 4.794818112347931,
+          "paired_latency_reductions_percent": [
+            5.166903012420243,
+            5.91950807067787,
+            5.46136989379955,
+            5.294709042796231,
+            5.940385750251387,
+            3.4765015362147045,
+            4.86736666415405,
+            4.430821082697878
+          ],
+          "paired_improving": 8
+        }
+      ]
+    },
+    {
+      "case": "window_only",
+      "comparisons": [
+        {
+          "group": 8,
+          "median_gpu_ms": {
+            "generic": 0.05370049925,
+            "global": 0.0523600001
+          },
+          "median_wall_ms": {
+            "generic": 0.070913,
+            "global": 0.069461
+          },
+          "median_latency_reduction_percent": 2.496250814651413,
+          "paired_latency_reductions_percent": [
+            2.1295178420297822,
+            1.8726560380983637,
+            2.8339521368344056,
+            2.6079181568466447,
+            2.6806962123825717,
+            2.800295417087284,
+            3.016923366881774,
+            2.069477253607943
+          ],
+          "paired_improving": 8
+        },
+        {
+          "group": 4,
+          "median_gpu_ms": {
+            "generic": 0.06876049935,
+            "global": 0.06624050070000001
+          },
+          "median_wall_ms": {
+            "generic": 0.0858665,
+            "global": 0.083607
+          },
+          "median_latency_reduction_percent": 3.6648928873725395,
+          "paired_latency_reductions_percent": [
+            2.139211798960705,
+            3.9943690727704317,
+            4.159340283504553,
+            3.574938588738319,
+            4.201213615683564,
+            3.9691767098474107,
+            3.7536014372178794,
+            3.638065758189446
+          ],
+          "paired_improving": 8
+        },
+        {
+          "group": 2,
+          "median_gpu_ms": {
+            "generic": 0.0769810006,
+            "global": 0.0727605
+          },
+          "median_wall_ms": {
+            "generic": 0.094152,
+            "global": 0.08955350000000001
+          },
+          "median_latency_reduction_percent": 5.482522397870726,
+          "paired_latency_reductions_percent": [
+            5.247674283520598,
+            8.135909112878315,
+            3.3696963006148994,
+            6.2010620057074135,
+            6.085614226294966,
+            4.506029481132079,
+            6.531637051688133,
+            4.296990417958013
+          ],
+          "paired_improving": 8
+        },
+        {
+          "group": 1,
+          "median_gpu_ms": {
+            "generic": 0.10200049750000001,
+            "global": 0.09294050185
+          },
+          "median_wall_ms": {
+            "generic": 0.119434,
+            "global": 0.1103025
+          },
+          "median_latency_reduction_percent": 8.88230535346165,
+          "paired_latency_reductions_percent": [
+            8.992240151213693,
+            7.571407534444663,
+            8.018973829913323,
+            8.847813878250378,
+            9.023350288863874,
+            9.445111989873556,
+            9.484297482015458,
+            8.682937945941227
+          ],
+          "paired_improving": 8
+        }
+      ]
+    },
+    {
+      "case": "explicit7",
+      "comparisons": [
+        {
+          "group": 8,
+          "median_gpu_ms": {
+            "generic": 0.05882050094999999,
+            "global": 0.05832049995
+          },
+          "median_wall_ms": {
+            "generic": 0.0759575,
+            "global": 0.075041
+          },
+          "median_latency_reduction_percent": 0.8500454636131249,
+          "paired_latency_reductions_percent": [
+            1.5000013395904288,
+            0.8844578831776917,
+            1.155003640601393,
+            0.8157968785342917,
+            1.1438699229675886,
+            0.4757813819558421,
+            0.9514745291728022,
+            0.9543293877483428
+          ],
+          "paired_improving": 8
+        },
+        {
+          "group": 4,
+          "median_gpu_ms": {
+            "generic": 0.0422210004,
+            "global": 0.0423204992
+          },
+          "median_wall_ms": {
+            "generic": 0.059397000000000005,
+            "global": 0.059161000000000005
+          },
+          "median_latency_reduction_percent": -0.23566187219004053,
+          "paired_latency_reductions_percent": [
+            -0.2886479090261851,
+            -0.7628348384030481,
+            0.2872704785650271,
+            -0.28065516726989426,
+            -0.6647680673587786,
+            0.09198137052777167,
+            0.09687979916882528,
+            0.7540112940949473
+          ],
+          "paired_improving": 4
+        },
+        {
+          "group": 2,
+          "median_gpu_ms": {
+            "generic": 0.0351600014,
+            "global": 0.035220500099999996
+          },
+          "median_wall_ms": {
+            "generic": 0.0522035,
+            "global": 0.052258
+          },
+          "median_latency_reduction_percent": -0.17206683046375737,
+          "paired_latency_reductions_percent": [
+            -0.2288240735411451,
+            0.0,
+            0.22417310956566183,
+            -0.3409065360278962,
+            -0.7963600365499257,
+            -0.5688270535734397,
+            0.6736180928026525,
+            -0.6836180295654692
+          ],
+          "paired_improving": 2
+        },
+        {
+          "group": 1,
+          "median_gpu_ms": {
+            "generic": 0.0317200013,
+            "global": 0.0312399995
+          },
+          "median_wall_ms": {
+            "generic": 0.0485565,
+            "global": 0.0491475
+          },
+          "median_latency_reduction_percent": 1.5132464701380743,
+          "paired_latency_reductions_percent": [
+            0.5127269685215707,
+            1.270548209273381,
+            1.8891656349732333,
+            0.7556615310673309,
+            1.6424463496415243,
+            0.38240701565712687,
+            1.5132464701380743,
+            1.5100932546304846
+          ],
+          "paired_improving": 8
+        }
+      ]
+    },
+    {
+      "case": "single",
+      "comparisons": [
+        {
+          "group": 8,
+          "median_gpu_ms": {
+            "generic": 0.1599010005,
+            "global": 0.158760995
+          },
+          "median_wall_ms": {
+            "generic": 0.177484,
+            "global": 0.175946
+          },
+          "median_latency_reduction_percent": 0.7129445697245718,
+          "paired_latency_reductions_percent": [
+            0.8451346111512881,
+            0.6989385044562146,
+            0.8747436860835456,
+            0.4764288117328097,
+            0.7006969382029937,
+            0.6517858659854436,
+            0.8502066128618813,
+            0.5004967405077942
+          ],
+          "paired_improving": 8
+        },
+        {
+          "group": 4,
+          "median_gpu_ms": {
+            "generic": 0.1113405005,
+            "global": 0.1116004995
+          },
+          "median_wall_ms": {
+            "generic": 0.129118,
+            "global": 0.1294385
+          },
+          "median_latency_reduction_percent": -0.2335170030962841,
+          "paired_latency_reductions_percent": [
+            -0.4656109854461299,
+            -0.3230381966866869,
+            -0.4318025167837414,
+            -0.07188738418957286,
+            -0.5763733997252718,
+            0.03585661655954864,
+            -0.10779547241228649,
+            -0.17960039672773043
+          ],
+          "paired_improving": 1
+        },
+        {
+          "group": 2,
+          "median_gpu_ms": {
+            "generic": 0.09092050045,
+            "global": 0.0908810012
+          },
+          "median_wall_ms": {
+            "generic": 0.1079885,
+            "global": 0.107963
+          },
+          "median_latency_reduction_percent": 0.04344372259775797,
+          "paired_latency_reductions_percent": [
+            -0.1753630057961697,
+            -0.13302275228366245,
+            0.08681165006880764,
+            -0.21964990027725229,
+            0.04400776961103192,
+            -0.26501263609575165,
+            -0.08814843535260852,
+            0.04397730808632927
+          ],
+          "paired_improving": 3
+        },
+        {
+          "group": 1,
+          "median_gpu_ms": {
+            "generic": 0.07852,
+            "global": 0.07762049885
+          },
+          "median_wall_ms": {
+            "generic": 0.096231,
+            "global": 0.0942625
+          },
+          "median_latency_reduction_percent": 1.145569472745811,
+          "paired_latency_reductions_percent": [
+            1.4683398572590156,
+            1.2702889782922222,
+            1.7280096246623744,
+            0.5626545451717258,
+            1.2781211705449658,
+            1.1727914932025185,
+            1.1704015537442714,
+            1.1207373917473284
+          ],
+          "paired_improving": 8
+        }
+      ]
+    },
+    {
+      "case": "ragged511",
+      "comparisons": [
+        {
+          "group": 8,
+          "median_gpu_ms": {
+            "generic": 0.2203209995,
+            "global": 0.22012200199999998
+          },
+          "median_wall_ms": {
+            "generic": 0.23993599999999998,
+            "global": 0.235813
+          },
+          "median_latency_reduction_percent": 0.0903216218388736,
+          "paired_latency_reductions_percent": [
+            1.2522318829174761,
+            1.052934309527609,
+            0.7617946241297524,
+            1.9202284101498601,
+            1.2065086468997066,
+            0.7486759858941983,
+            -0.12810208298110748,
+            -0.49080384557269596
+          ],
+          "paired_improving": 6
+        },
+        {
+          "group": 4,
+          "median_gpu_ms": {
+            "generic": 0.205901004,
+            "global": 0.2041215005
+          },
+          "median_wall_ms": {
+            "generic": 0.22344,
+            "global": 0.22142650000000003
+          },
+          "median_latency_reduction_percent": 0.8642519781010938,
+          "paired_latency_reductions_percent": [
+            2.2444193837379722,
+            0.7784767243809387,
+            0.46697962515704905,
+            0.36773319005883875,
+            2.200884428215899,
+            0.43428837457751834,
+            0.8010757327413853,
+            0.8094010878276658
+          ],
+          "paired_improving": 8
+        },
+        {
+          "group": 2,
+          "median_gpu_ms": {
+            "generic": 0.26044149699999997,
+            "global": 0.257801488
+          },
+          "median_wall_ms": {
+            "generic": 0.2778075,
+            "global": 0.2754275
+          },
+          "median_latency_reduction_percent": 1.013666804410951,
+          "paired_latency_reductions_percent": [
+            0.9525850964868243,
+            0.9083494348946952,
+            0.948298945860615,
+            1.6923171390685776,
+            1.074654539933062,
+            1.1170971406300745,
+            1.018046729450417,
+            1.4394429017626553
+          ],
+          "paired_improving": 8
+        },
+        {
+          "group": 1,
+          "median_gpu_ms": {
+            "generic": 0.371062487,
+            "global": 0.36122199850000003
+          },
+          "median_wall_ms": {
+            "generic": 0.387193,
+            "global": 0.3789625
+          },
+          "median_latency_reduction_percent": 2.651976107733023,
+          "paired_latency_reductions_percent": [
+            2.6250338819062358,
+            2.4657957562838395,
+            2.5532981476673378,
+            2.5723902664043896,
+            2.977057687541773,
+            2.0878953533152833,
+            2.636093417497576,
+            2.198754504656364
+          ],
+          "paired_improving": 8
+        }
+      ]
+    },
+    {
+      "case": "one_head",
+      "comparisons": [
+        {
+          "group": 8,
+          "median_gpu_ms": {
+            "generic": 0.03404049945,
+            "global": 0.0335599985
+          },
+          "median_wall_ms": {
+            "generic": 0.051461999999999994,
+            "global": 0.050435
+          },
+          "median_latency_reduction_percent": 1.4115566979437943,
+          "paired_latency_reductions_percent": [
+            1.995304066722281,
+            1.1735212420497243,
+            1.639345759588462,
+            1.6499482271112642,
+            1.754393782702024,
+            1.529406850172732,
+            1.8764180607422243,
+            0.9411726996537584
+          ],
+          "paired_improving": 8
+        },
+        {
+          "group": 4,
+          "median_gpu_ms": {
+            "generic": 0.0338799991,
+            "global": 0.0335609987
+          },
+          "median_wall_ms": {
+            "generic": 0.050885,
+            "global": 0.0503695
+          },
+          "median_latency_reduction_percent": 0.9415596472079124,
+          "paired_latency_reductions_percent": [
+            1.8764180607422243,
+            1.2986948396937814,
+            1.301768696824035,
+            0.8225291572218407,
+            1.1779845342786532,
+            0.5910153559512632,
+            0.7071000313801812,
+            0.9415596472079124
+          ],
+          "paired_improving": 8
+        },
+        {
+          "group": 2,
+          "median_gpu_ms": {
+            "generic": 0.0339999981,
+            "global": 0.0335799996
+          },
+          "median_wall_ms": {
+            "generic": 0.0513765,
+            "global": 0.051255999999999996
+          },
+          "median_latency_reduction_percent": 1.2352897749132397,
+          "paired_latency_reductions_percent": [
+            1.289657450443682,
+            1.2970200800151765,
+            1.1792540856396028,
+            1.529406850172732,
+            0.7029403333996043,
+            0.8264471884239177,
+            1.0600733309193644,
+            1.5276207268423603
+          ],
+          "paired_improving": 8
+        },
+        {
+          "group": 1,
+          "median_gpu_ms": {
+            "generic": 0.0339804981,
+            "global": 0.0336800013
+          },
+          "median_wall_ms": {
+            "generic": 0.051792000000000005,
+            "global": 0.0511555
+          },
+          "median_latency_reduction_percent": 0.884321351369477,
+          "paired_latency_reductions_percent": [
+            1.0625764745076482,
+            -0.2393587428009658,
+            0.9451933628534803,
+            0.5925473965101014,
+            1.1764685951555887,
+            0.8215968623261904,
+            1.4113493991056547,
+            -0.11429911432869755
+          ],
+          "paired_improving": 6
+        }
+      ]
+    },
+    {
+      "case": "scale_edges",
+      "comparisons": [
+        {
+          "group": 8,
+          "median_gpu_ms": {
+            "generic": 0.3089819995,
+            "global": 0.30470199899999995
+          },
+          "median_wall_ms": {
+            "generic": 0.325737,
+            "global": 0.32082849999999996
+          },
+          "median_latency_reduction_percent": 1.3851941235819676,
+          "paired_latency_reductions_percent": [
+            1.4656610590057961,
+            1.0422010567720297,
+            1.462514570614848,
+            1.3721612919465498,
+            1.383816063748644,
+            1.1522375404712903,
+            1.5639086844751238,
+            1.254729800374521
+          ],
+          "paired_improving": 8
+        },
+        {
+          "group": 4,
+          "median_gpu_ms": {
+            "generic": 0.352101997,
+            "global": 0.3480830045
+          },
+          "median_wall_ms": {
+            "generic": 0.369089,
+            "global": 0.3658075
+          },
+          "median_latency_reduction_percent": 1.1414284878367154,
+          "paired_latency_reductions_percent": [
+            1.115513027294024,
+            0.9088531020285506,
+            1.2537274324437853,
+            1.1700249166299748,
+            1.067890822607409,
+            1.5993557205324471,
+            0.8970351611243044,
+            1.118104372118356
+          ],
+          "paired_improving": 8
+        },
+        {
+          "group": 2,
+          "median_gpu_ms": {
+            "generic": 0.4439429935,
+            "global": 0.4403429925
+          },
+          "median_wall_ms": {
+            "generic": 0.4612275,
+            "global": 0.4580555
+          },
+          "median_latency_reduction_percent": 0.8109151518797431,
+          "paired_latency_reductions_percent": [
+            1.283639161361616,
+            0.91930680855421,
+            1.2026129969939126,
+            0.9360001443784793,
+            0.9300984422617842,
+            0.4160664970148331,
+            0.6466583656475122,
+            1.1455844381352165
+          ],
+          "paired_improving": 8
+        },
+        {
+          "group": 1,
+          "median_gpu_ms": {
+            "generic": 0.694704473,
+            "global": 0.6778045
+          },
+          "median_wall_ms": {
+            "generic": 0.7112674999999999,
+            "global": 0.6957125
+          },
+          "median_latency_reduction_percent": 2.432685214623631,
+          "paired_latency_reductions_percent": [
+            1.4918636089667703,
+            3.037227849499491,
+            2.062712028298197,
+            2.568063851258362,
+            2.1197570196443305,
+            2.825549294087848,
+            2.032576485149884,
+            2.367458616739704
+          ],
+          "paired_improving": 8
+        }
+      ]
+    }
+  ],
+  "primary_consistent_positive": true
+}
