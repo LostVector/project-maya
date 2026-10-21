@@ -30,6 +30,7 @@
 #include <map>
 #include <mutex>
 #include <utility>
+#include <type_traits>
 
 #if !defined(STRATA_USE_HIP)
 namespace strata::kernels::exl3::legacy {   // exl3_legacy.cu: v1.1.8's decode kernels
@@ -1311,14 +1312,38 @@ __global__ void __launch_bounds__(kThreads) hip_decode_set_kernel(SetArgs a, int
         for (int i = 0; i < 4; ++i) dst[at + i * 32] = value[i];
     }
 }
-template <class Input>
+template <bool gate_up>
+__global__ void __launch_bounds__(kThreads) hip_prepare_set_input_kernel(SetArgs a, const float* x, int ldx,
+        const int* idx, const uint16_t* h, int ldh, uint16_t* staged, size_t capacity) {
+    const int e = blockIdx.z, part = gate_up ? int(blockIdx.y) : 2;
+    const int ncols = gate_up ? a.n_embd : a.n_ff;
+    const size_t work = size_t(blockIdx.x) * kWarps + (threadIdx.x >> 5);
+    const int r = int(work / (ncols / kCols)), q = int(work % (ncols / kCols));
+    const int start = a.bounds[e], end = a.bounds[e + 1];
+    if (r >= end - start) return; // whole-warp branch; no CTA barriers
+    const int row = start - a.row0 + r, lane = threadIdx.x & 31;
+    const uint8_t* blob = a.wbase + size_t(e) * a.stride;
+    const auto* suh = reinterpret_cast<const uint16_t*>(blob + a.lay.suh[part]);
+    float v[4], sc[4];
+    if constexpr (gate_up) {
+        Xin in; in.f = x + size_t(idx[row]) * ldx;
+        chunk_load(in, suh, q * kCols, lane, v, sc);
+    } else {
+        XinHalf in; in.h = h + size_t(row) * ldh;
+        chunk_load(in, suh, q * kCols, lane, v, sc);
+    }
+    auto* dst = reinterpret_cast<__half*>(staged +
+        ((gate_up ? size_t(part) * capacity : 0) + size_t(row)) * ncols + q * kCols);
+    chunk_store(v, sc, lane, dst);
+}
+template <class Input, bool prepared = false>
 __device__ void hip_block_decoded16(const uint32_t* __restrict__ decoded, int output_block, int k0, int k1, const Input (&x)[2],
                            const uint16_t* __restrict__ suh, int nc, HipDecodedSmem& sm) {
     const int lane = threadIdx.x & 31, warp = threadIdx.x >> 5, g = lane >> 2, t = lane & 3;
 
     const int nq = (k1 - k0) / kCols;
     float xv[2][4], xs4[2][4];
-    for (int j = 0; j < 2; ++j)
+    if constexpr (!prepared) for (int j = 0; j < 2; ++j)
         if (warp + j * 8 < nc) chunk_load(x[j], suh, k0, lane, xv[j], xs4[j]);
     float acc[16][2];
 #pragma unroll
@@ -1326,10 +1351,15 @@ __device__ void hip_block_decoded16(const uint32_t* __restrict__ decoded, int ou
 
     for (int q = 0; q < nq; ++q) {
         __half* xq = sm.xb + (q & 1) * (16 * kCols);
-        for (int j = 0; j < 2; ++j)
-            if (warp + j * 8 < nc) chunk_store(xv[j], xs4[j], lane, xq + (warp + j * 8) * kCols);
+        for (int j = 0; j < 2; ++j) if (warp + j * 8 < nc) {
+            if constexpr (prepared) {
+                auto* dst = reinterpret_cast<uint2*>(xq + (warp + j * 8) * kCols + lane * 4);
+                const auto* src = reinterpret_cast<const uint2*>(x[j].h + k0 + q * kCols + lane * 4);
+                *dst = *src; // exact already-rounded FP16 bits, no second rotation/conversion
+            } else chunk_store(xv[j], xs4[j], lane, xq + (warp + j * 8) * kCols);
+        }
         __syncthreads();
-        if (q + 1 < nq) {
+        if constexpr (!prepared) if (q + 1 < nq) {
             for (int j = 0; j < 2; ++j)
                 if (warp + j * 8 < nc) chunk_load(x[j], suh, k0 + (q + 1) * kCols, lane, xv[j], xs4[j]);
         }
@@ -1378,10 +1408,10 @@ __device__ void hip_block_decoded16(const uint32_t* __restrict__ decoded, int ou
     __syncthreads();
 }
 
-template <bool gate_up>
+template <bool gate_up, bool prepared = false>
 __global__ void __launch_bounds__(kThreads) hip_set_decoded_kernel(SetArgs a, const uint32_t* decoded, const float* x, int ldx,
                                                           const int* idx, uint16_t* h, int ldh,
-                                                          float* y, int ldy) {
+                                                          float* y, int ldy, const uint16_t* staged, size_t capacity) {
     __shared__ __align__(16) HipDecodedSmem sm;
     __shared__ float gate[16 * kCols];
     const int e = blockIdx.z, g = blockIdx.y, warp = threadIdx.x >> 5;
@@ -1391,10 +1421,13 @@ __global__ void __launch_bounds__(kThreads) hip_set_decoded_kernel(SetArgs a, co
     if (nc <= 0) return;
     const uint8_t* blob = a.wbase + (size_t) e * a.stride;
     if constexpr (gate_up) {
-        Xin in[2];
-        for (int j = 0; j < 2; ++j)
-            if (warp + j * 8 < nc) in[j].f = x + (size_t) idx[row + warp + j * 8] * ldx;
-        hip_block_decoded16(decoded + ((size_t) e * 3 + 0) * ((size_t) a.n_embd * a.n_ff / 2),
+        using Input = std::conditional_t<prepared, XinHalf, Xin>;
+        Input in[2];
+        for (int j = 0; j < 2; ++j) if (warp + j * 8 < nc) {
+            if constexpr (prepared) in[j].h = staged + size_t(row + warp + j * 8) * a.n_embd;
+            else in[j].f = x + (size_t) idx[row + warp + j * 8] * ldx;
+        }
+        hip_block_decoded16<Input, prepared>(decoded + ((size_t) e * 3 + 0) * ((size_t) a.n_embd * a.n_ff / 2),
                               g, 0, a.n_embd, in, (const uint16_t*) (blob + a.lay.suh[0]), nc, sm);
         for (int j = 0; j < 2; ++j) {
             const int c = warp + j * 8;
@@ -1402,7 +1435,9 @@ __global__ void __launch_bounds__(kThreads) hip_set_decoded_kernel(SetArgs a, co
                                   gate + c * kCols);
         }
         __syncthreads();
-        hip_block_decoded16(decoded + ((size_t) e * 3 + 1) * ((size_t) a.n_embd * a.n_ff / 2),
+        if constexpr (prepared) for (int j = 0; j < 2; ++j)
+            if (warp + j * 8 < nc) in[j].h = staged + (capacity + size_t(row + warp + j * 8)) * a.n_embd;
+        hip_block_decoded16<Input, prepared>(decoded + ((size_t) e * 3 + 1) * ((size_t) a.n_embd * a.n_ff / 2),
                               g, 0, a.n_embd, in, (const uint16_t*) (blob + a.lay.suh[1]), nc, sm);
         for (int j = 0; j < 2; ++j) {
             const int r = warp + j * 8;
@@ -1422,8 +1457,11 @@ __global__ void __launch_bounds__(kThreads) hip_set_decoded_kernel(SetArgs a, co
     } else {
         XinHalf in[2];
         for (int j = 0; j < 2; ++j)
-            if (warp + j * 8 < nc) in[j].h = h + (size_t) (row + warp + j * 8) * ldh;
-        hip_block_decoded16(decoded + ((size_t) e * 3 + 2) * ((size_t) a.n_embd * a.n_ff / 2),
+            if (warp + j * 8 < nc) {
+                if constexpr (prepared) in[j].h = staged + size_t(row + warp + j * 8) * a.n_ff;
+                else in[j].h = h + (size_t) (row + warp + j * 8) * ldh;
+            }
+        hip_block_decoded16<XinHalf, prepared>(decoded + ((size_t) e * 3 + 2) * ((size_t) a.n_embd * a.n_ff / 2),
                               g, 0, a.n_ff, in, (const uint16_t*) (blob + a.lay.suh[2]), nc, sm);
         for (int j = 0; j < 2; ++j) {
             const int c = warp + j * 8;
@@ -2035,7 +2073,7 @@ bool set_gate_up_decoded(const SetArgs& a, const uint32_t* decoded, const float*
     if (!decoded || !decoded_set_bytes(a) || !a.wbase || !a.bounds || !x || !idx || !h || a.max_rows <= 0 || ldx < a.n_embd || ldh < a.n_ff) return false;
     const int before = g_launch_errors.load();
     hip_set_decoded_kernel<true><<<dim3((a.max_rows + 15) / 16, a.n_ff / kCols, a.n_exp), kThreads, 0, stream>>>
-        (a, decoded, x, ldx, idx, h, ldh, nullptr, 0);
+        (a, decoded, x, ldx, idx, h, ldh, nullptr, 0, nullptr, 0);
     launch_check("set_gate_up_decoded"); return g_launch_errors.load() == before;
 #else
     (void) a; (void) decoded; (void) x; (void) ldx; (void) idx; (void) h; (void) ldh; (void) stream; return false;
@@ -2047,7 +2085,7 @@ bool set_down_decoded(const SetArgs& a, const uint32_t* decoded, const uint16_t*
     if (!decoded || !decoded_set_bytes(a) || !a.wbase || !a.bounds || !h || !y || a.max_rows <= 0 || ldh < a.n_ff || ldy < a.n_embd) return false;
     const int before = g_launch_errors.load();
     hip_set_decoded_kernel<false><<<dim3((a.max_rows + 15) / 16, a.n_embd / kCols, a.n_exp), kThreads, 0, stream>>>
-        (a, decoded, nullptr, 0, nullptr, const_cast<uint16_t*>(h), ldh, y, ldy);
+        (a, decoded, nullptr, 0, nullptr, const_cast<uint16_t*>(h), ldh, y, ldy, nullptr, 0);
     launch_check("set_down_decoded"); return g_launch_errors.load() == before;
 #else
     (void) a; (void) decoded; (void) h; (void) ldh; (void) y; (void) ldy; (void) stream; return false;
@@ -2124,6 +2162,47 @@ void set_down(const SetArgs& sa, const uint16_t* h16, int ldh, float* y, int ldy
         return;
     }
     launch_check("HIP set_down");
+#endif
+}
+
+size_t prepared_set_input_bytes(const SetArgs& a, size_t capacity) {
+    if (!decoded_set_bytes(a) || !capacity) return 0;
+    const size_t width = std::max(size_t(a.n_embd) * 2, size_t(a.n_ff));
+    if (capacity > SIZE_MAX / sizeof(uint16_t) / width) return 0;
+    return capacity * width * sizeof(uint16_t);
+}
+bool set_gate_up_prepared(const SetArgs& a, const uint32_t* decoded, const float* x, int ldx,
+        const int* idx, uint16_t* h, int ldh, uint16_t* staged, size_t capacity, cudaStream_t stream) {
+#if defined(STRATA_USE_HIP)
+    if (!decoded || !prepared_set_input_bytes(a, capacity) || capacity < size_t(a.max_rows) ||
+        !a.wbase || !a.bounds || !x || !idx || !h || !staged || a.max_rows <= 0 || ldx < a.n_embd || ldh < a.n_ff) return false;
+    const int before = g_launch_errors.load();
+    const size_t warps = size_t(a.max_rows) * (a.n_embd / kCols);
+    hip_prepare_set_input_kernel<true><<<dim3((warps+kWarps-1)/kWarps, 2, a.n_exp), kThreads, 0, stream>>>
+        (a, x, ldx, idx, nullptr, 0, staged, capacity);
+    launch_check("prepare_gate_up_input");
+    hip_set_decoded_kernel<true, true><<<dim3((a.max_rows+15)/16,a.n_ff/kCols,a.n_exp),kThreads,0,stream>>>
+        (a,decoded,x,ldx,idx,h,ldh,nullptr,0,staged,capacity);
+    launch_check("set_gate_up_prepared");return g_launch_errors.load()==before;
+#else
+    (void)a;(void)decoded;(void)x;(void)ldx;(void)idx;(void)h;(void)ldh;(void)staged;(void)capacity;(void)stream;return false;
+#endif
+}
+bool set_down_prepared(const SetArgs& a, const uint32_t* decoded, const uint16_t* h, int ldh,
+        float* y, int ldy, uint16_t* staged, size_t capacity, cudaStream_t stream) {
+#if defined(STRATA_USE_HIP)
+    if (!decoded || !prepared_set_input_bytes(a, capacity) || capacity < size_t(a.max_rows) ||
+        !a.wbase || !a.bounds || !h || !y || !staged || a.max_rows <= 0 || ldh < a.n_ff || ldy < a.n_embd) return false;
+    const int before = g_launch_errors.load();
+    const size_t warps = size_t(a.max_rows) * (a.n_ff / kCols);
+    hip_prepare_set_input_kernel<false><<<dim3((warps+kWarps-1)/kWarps,1,a.n_exp),kThreads,0,stream>>>
+        (a,nullptr,0,nullptr,h,ldh,staged,capacity);
+    launch_check("prepare_down_input");
+    hip_set_decoded_kernel<false,true><<<dim3((a.max_rows+15)/16,a.n_embd/kCols,a.n_exp),kThreads,0,stream>>>
+        (a,decoded,nullptr,0,nullptr,const_cast<uint16_t*>(h),ldh,y,ldy,staged,capacity);
+    launch_check("set_down_prepared");return g_launch_errors.load()==before;
+#else
+    (void)a;(void)decoded;(void)h;(void)ldh;(void)y;(void)ldy;(void)staged;(void)capacity;(void)stream;return false;
 #endif
 }
 

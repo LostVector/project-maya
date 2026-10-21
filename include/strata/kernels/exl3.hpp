@@ -166,6 +166,16 @@ bool set_gate_up_decoded(const SetArgs& a, const uint32_t* decoded, const float*
 bool set_down_decoded(const SetArgs& a, const uint32_t* decoded, const uint16_t* h16, int ldh,
                       float* y, int ldy, cudaStream_t s);
 
+// Experimental HIP input reuse. Bounds must obey 0 <= bounds[e]-row0 <= capacity,
+// every expert's row count <= max_rows, and the local row intervals must not overlap.
+// Scratch is prepared_set_input_bytes(a, capacity) bytes, 16-byte aligned, owned by one
+// ordered stream; gate/up and down reuse it at disjoint stream-ordered lifetimes.
+size_t prepared_set_input_bytes(const SetArgs& a, size_t capacity);
+bool set_gate_up_prepared(const SetArgs& a, const uint32_t* decoded, const float* x, int ldx,
+    const int* row_idx, uint16_t* h16, int ldh, uint16_t* staged, size_t capacity, cudaStream_t s);
+bool set_down_prepared(const SetArgs& a, const uint32_t* decoded, const uint16_t* h16, int ldh,
+    float* y, int ldy, uint16_t* staged, size_t capacity, cudaStream_t s);
+
 /// Y[r] = beta Y[r] + (X[r] W) for r < rows: one matrix over FP16 rows (ldx), F32 output rows (ldy).
 void gemm_rows(const Mat& m, const uint16_t* x16, int ldx, int rows, float* y, int ldy, float beta, cudaStream_t s);
 
