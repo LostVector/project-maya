@@ -1,0 +1,8 @@
+YOCO_PLAN n=32768 offset=0 layer=20 keep=2668 cut_chunk=7 cut_row=0 skipped_rows=28672 whole_chunks=1 retained_rows=4096
+ds4 prompt batches, CUDA0: 23697 experts copied, 27143 unpicked experts skipped
+DS4_PREFILL gpu=0 tokens=32768 chunk=4096 expert_row_picks=4325376 vram_row_picks=3825300 unique_expert_uses=38930 vram_unique_expert_uses=15233 streamed_weight_bytes=182291399424
+ds4 prompt batches, CUDA1: 23697 experts copied, 27143 unpicked experts skipped
+DS4_PREFILL gpu=1 tokens=32768 chunk=4096 expert_row_picks=4325376 vram_row_picks=3825300 unique_expert_uses=38930 vram_unique_expert_uses=15233 streamed_weight_bytes=182291399424
+ds4 prompt batches, CUDA2: 389 experts copied, 477 unpicked experts skipped
+DS4_PREFILL gpu=2 tokens=32768 chunk=4096 expert_row_picks=98304 vram_row_picks=96424 unique_expert_uses=1037 vram_unique_expert_uses=648 streamed_weight_bytes=6900573696
+maya ds4 serve: prompt 32768 tokens = 0 reused + 32768 read in 30540 ms (1073.0 tok/s), 27 generated in 1307 ms (20.66 tok/s); CPU lane 0.0% of the experts

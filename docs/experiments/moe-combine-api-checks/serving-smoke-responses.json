@@ -1,0 +1,152 @@
+[
+  {
+    "id": "study_8k",
+    "response": {
+      "id": "chatcmpl-183d3ccb2be54171b0bf5e29",
+      "object": "chat.completion",
+      "created": 1792593830,
+      "model": "deepseek-v4.1-flash-exl3-3.5bpw",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "{\"region\":\"Lima\",\"codes\":[959232,481329,469193,231455,954798,167933]}"
+          },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 8192,
+        "completion_tokens": 27,
+        "total_tokens": 8219,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 8192,
+        "prompt_ms": 12932.9,
+        "prompt_per_token_ms": 1.579,
+        "prompt_per_second": 633.4,
+        "predicted_n": 27,
+        "predicted_ms": 1714.8,
+        "predicted_per_token_ms": 63.511,
+        "predicted_per_second": 15.7,
+        "draft_n": 0,
+        "draft_n_accepted": 0
+      }
+    },
+    "before": {
+      "requests": 12,
+      "in_flight": 0,
+      "last_request_at": 1792593830
+    },
+    "after": {
+      "requests": 13,
+      "in_flight": 0,
+      "last_request_at": 1792593844
+    }
+  },
+  {
+    "id": "study_32k",
+    "response": {
+      "id": "chatcmpl-17e68f230f8843649cb091b5",
+      "object": "chat.completion",
+      "created": 1792593844,
+      "model": "deepseek-v4.1-flash-exl3-3.5bpw",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "{\"region\":\"Kyoto\",\"codes\":[573434,756268,683001,459330,582363,259332]}"
+          },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 32768,
+        "completion_tokens": 27,
+        "total_tokens": 32795,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 32768,
+        "prompt_ms": 30378.3,
+        "prompt_per_token_ms": 0.927,
+        "prompt_per_second": 1078.7,
+        "predicted_n": 27,
+        "predicted_ms": 1605.9,
+        "predicted_per_token_ms": 59.478,
+        "predicted_per_second": 16.8,
+        "draft_n": 0,
+        "draft_n_accepted": 0
+      }
+    },
+    "before": {
+      "requests": 13,
+      "in_flight": 0,
+      "last_request_at": 1792593844
+    },
+    "after": {
+      "requests": 14,
+      "in_flight": 0,
+      "last_request_at": 1792593876
+    }
+  },
+  {
+    "id": "real_conversation_followup",
+    "response": {
+      "id": "chatcmpl-ef53bbd3e2ce4ceba729cacf",
+      "object": "chat.completion",
+      "created": 1792593876,
+      "model": "deepseek-v4.1-flash-exl3-3.5bpw",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "{\"region\":\"Kyoto\",\"codes\":[573434,756268,683001,459330,582363,259332]}"
+          },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 32832,
+        "completion_tokens": 27,
+        "total_tokens": 32859,
+        "prompt_tokens_details": {
+          "cached_tokens": 32794
+        }
+      },
+      "timings": {
+        "cache_n": 32794,
+        "prompt_n": 38,
+        "prompt_ms": 1270.9,
+        "prompt_per_token_ms": 33.445,
+        "prompt_per_second": 29.9,
+        "predicted_n": 27,
+        "predicted_ms": 1215.4,
+        "predicted_per_token_ms": 45.015,
+        "predicted_per_second": 22.2,
+        "draft_n": 0,
+        "draft_n_accepted": 0
+      }
+    },
+    "before": {
+      "requests": 14,
+      "in_flight": 0,
+      "last_request_at": 1792593876
+    },
+    "after": {
+      "requests": 15,
+      "in_flight": 0,
+      "last_request_at": 1792593879
+    }
+  }
+]

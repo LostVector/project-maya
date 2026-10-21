@@ -1,0 +1,12 @@
+{
+  "healthy": true,
+  "engine_pid": 346799,
+  "exe": "/home/rkuo/research/llm-weight-compression/_meta/maya-attention-lds-layout-20261021/checkpoint-maya-ds4",
+  "sha256": "d150e6d41274bbb1dac855f4acbfe681596c1c49beb7264c184f8234739c13c4",
+  "swizzle": 1,
+  "combine_mode": 0,
+  "VmSwap_kB": 0,
+  "max_context": 262144,
+  "API_performance_gate_passed": true,
+  "candidate_promoted": false
+}

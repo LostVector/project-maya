@@ -1,0 +1,98 @@
+{
+  "status": "Experimentalservingtrialpassed",
+  "files_sha256": {
+    "serving-quality-cases.json": "fc825d737aca22b586b1b4177800eaf9cdd17cda0be1ab1b01d0d5f8ab52a5a3",
+    "serving-quality-responses.json": "b2f9e91b47d515854e0893c6d3ccb6312d987fe33e485d9d410e56a76dfa7853",
+    "serving-smoke-payloads.json": "53f55f380fe0c5be19e8f2ac7d683cc8a0ac07c521d91d03b08c2be190095752",
+    "serving-smoke-responses.json": "5b17caf6b022f9cc19629043ba18c3c7d5ed78b9f31634d002ec2d07e4e33325",
+    "serving-config.json": "87c3b81190b73e7875c62b75fd267677c3dbafe747ba4b328f66a64f0e7ceaa3",
+    "serving-quality-control0.json": "2f45cd1390b2c11b574323608e54db7daf3c70e9f4028e1a5cac400956d0c6e4",
+    "serving-quality-control1.json": "2313571bd3cbb0848a8e2bd934f82c8dca94a3fbbd6a18187390b43b795c3081",
+    "serving-quality-control2.json": "722abd72171fa95be6b7738763eb9a7386116117a5ac1497e322d10719056931",
+    "serving-quality-control3.json": "d3503e0930f629354f96630a213562ddae8e9c48263af755ea11fa76104965b5",
+    "serving-quality-control4.json": "264ec2f86b23c48d731aa8eaaf87ebd63e963e5e74c1c4ffba7b70dc4c242b09"
+  },
+  "quality_controls": [
+    "serving-quality-control0.json",
+    "serving-quality-control1.json",
+    "serving-quality-control2.json",
+    "serving-quality-control3.json",
+    "serving-quality-control4.json"
+  ],
+  "quality_analysis": {
+    "correct": 11,
+    "total": 12,
+    "observed_stable_baseline_regressions": [],
+    "variable_baseline_cases": [
+      "sort_key"
+    ],
+    "failed_cases": [
+      "sort_key"
+    ],
+    "baseline_scores": [
+      11,
+      12,
+      11,
+      11,
+      11
+    ],
+    "scope": "Limited12task smoke; historical baseline has known variability. No broad quality claim."
+  },
+  "smoke_assessment": {
+    "all3_correct": true,
+    "fresh_prompt_tokens": [
+      8192,
+      32768
+    ],
+    "actual_followup_cache_tokens": 32794,
+    "scope": "Production API integration smoke only; no controlled timing or broad quality claim."
+  },
+  "live_identity_snapshot": {
+    "status": "Experimentalcombineactive;independent savedresponse andliveidentity reviewpassed",
+    "server_pid": 351902,
+    "engine_pid": 351905,
+    "config": "/home/rkuo/research/llm-weight-compression/_meta/maya-moe-combine-serving-20261021/serving-config.json",
+    "exe": "/home/rkuo/research/llm-weight-compression/_meta/maya-moe-combine-20261021/checkpoint-maya-ds4",
+    "runtime_sha256": "8bf14b4ab3400e77f03b77cd80eecffa62fcdd791d71bf1c71405d2d5226da61",
+    "quality_score": 11,
+    "quality_total": 12,
+    "baseline_scores": [
+      11,
+      12,
+      11,
+      11,
+      11
+    ],
+    "quality_failed": [
+      "sort_key"
+    ],
+    "stable_baseline_regressions": [],
+    "all3_smoke_correct": true,
+    "followup_cached_tokens": 32794,
+    "actual_chunk": 4096,
+    "actual_attention_flag": "1",
+    "actual_combine_mode": "2",
+    "health": {
+      "status": "ok",
+      "max_context": 262144,
+      "model": "deepseek-v4.1-flash-exl3-3.5bpw",
+      "images": false,
+      "api_key": false,
+      "defaults": {
+        "temperature": 1.0,
+        "top_p": 1.0,
+        "reasoning_effort": "high"
+      },
+      "version": "1.1.16",
+      "mcp_tools": false
+    },
+    "activity": {
+      "requests": 0,
+      "in_flight": 0,
+      "last_request_at": null
+    },
+    "rollback_config": "/home/rkuo/research/llm-weight-compression/_meta/maya-moe-combine-serving-20261021/rollback-selected.json",
+    "limits": "Limitedquality/integrationchecks;controlledspeedfromseparateABBA. Historicalmatrix/crosscap driftretained;no broadquality/sustaineddecode/globaloptimalityclaim."
+  },
+  "scope": "Limited12tasks plusfresh8K/32K andrealcachedfollowup. Identity is a saved postactivationliveprobe,not a live check performedbyportablechecker. Independent controlledspeed evidenceisseparateABBA."
+}

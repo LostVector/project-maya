@@ -1,0 +1,21 @@
+{
+  "status": "frozen_before_API_measurements",
+  "caps": [
+    4096,
+    4096,
+    4096,
+    4096
+  ],
+  "arms": [
+    "control",
+    "candidate",
+    "candidate",
+    "control"
+  ],
+  "treatment": "selectedb49baseline vsnewcombine-mode2;LDSswizzle1 throughout;matrix/pruning/cache/TP settingsunchanged",
+  "payload_sha256": "57d3082f470e5361770f9557ef1698d9f0520e290fc0edf132fd03fc5fb0aaf3",
+  "warmups": "Twoexcluded8K/32Kwarmups eachfreshload,thenAmber8K/Cobalt32K/Birch8K/Dune32K;retainallresults",
+  "performance_gate": "Atleast1% pooled32Klatency reduction,bothpaired32Kblocks improve,pooled8K no regression;all24requests correct/cache0/isolated/swap0/allocsame. Small-gainexperimental gate,not broadinference.",
+  "prerequisites": "Native195candidate/repeat/independentreference parity,3answers,10exactnativeperf logits andpromisingfrozenprofile screen",
+  "scope": "Twofreshloads/variant;descriptivepairedCI remainslimited;no optionalstopping/outlierremoval or sustaineddecodeclaim;limitedquality+realcachedfollowup beforepromotion."
+}

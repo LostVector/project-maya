@@ -1,0 +1,27 @@
+{
+  "server_pid": 344867,
+  "engine_pid": 344870,
+  "exe": "/home/rkuo/research/llm-weight-compression/_meta/maya-attention-lds-layout-20261021/checkpoint-maya-ds4",
+  "allocation": [
+    [
+      "0",
+      "26.41",
+      "3409",
+      "13824"
+    ],
+    [
+      "1",
+      "26.41",
+      "3409",
+      "13824"
+    ],
+    [
+      "2",
+      "11.96",
+      "670",
+      "1536"
+    ]
+  ],
+  "configured_chunk": 4096,
+  "profile": "absent_zero_initialization"
+}

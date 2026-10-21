@@ -1,0 +1,63 @@
+{
+  "exe": "/home/rkuo/research/llm-weight-compression/_meta/maya-moe-combine-20261021/checkpoint-maya-ds4",
+  "args": [
+    "--pack",
+    "/home/rkuo/models/DeepSeek-V4.1-Flash-1017-EXL3-3.5bpw/maya-ds4",
+    "--max-context",
+    "262144",
+    "--tp",
+    "2",
+    "--dspark",
+    "none",
+    "--reserve-mib",
+    "2048",
+    "--mmap-experts",
+    "off",
+    "--vision",
+    "off",
+    "--prefill-chunk",
+    "4096",
+    "--threads",
+    "on"
+  ],
+  "cwd": "/home/rkuo/dev/project-maya",
+  "tokenizer": "/home/rkuo/models/DeepSeek-V4.1-Flash-1017-EXL3-3.5bpw/maya-ds4/tokenizer",
+  "backend": "hip",
+  "model_name": "deepseek-v4.1-flash-exl3-3.5bpw",
+  "gpu": [
+    0,
+    1,
+    2
+  ],
+  "sampling": {
+    "temperature": 1.0,
+    "top_p": 1.0
+  },
+  "reasoning_effort": "high",
+  "lib_dirs": [
+    "/home/rkuo/dev/project-maya/.venv/lib/python3.12/site-packages/_rocm_sdk_devel/lib"
+  ],
+  "port": 8081,
+  "log": "/home/rkuo/research/llm-weight-compression/_meta/maya-moe-combine-api-20261021/arm1-candidate/engine.log",
+  "env": {
+    "DS4_FLOW_STATS": "1",
+    "DS4_SPLIT": "36,4",
+    "DS4_SKIP_UNPICKED": "1",
+    "DS4_EXL3_FMA16": "1",
+    "DS4_EXL3_PACKED_HOST": "1",
+    "DS4_EXL3_PREDECODE": "1",
+    "DS4_HIP_HOST_COPY_WAIT": "1",
+    "DS4_HIP_PEER_AR": "1",
+    "DS4_EXL3_MATRIX_RELAXED": "1",
+    "DS4_EXL3_MATRIX_DECODED": "1",
+    "DS4_EXL3_MATRIX_ROWS": "16",
+    "DS4_YOCO": "1",
+    "DS4_YOCO_MULTIGPU": "1",
+    "DS4_YOCO_WHOLE_CHUNKS": "1",
+    "DS4_YOCO_STATS": "1",
+    "DS4_PREFILL_STATS": "1",
+    "DS4_CACHE_BONUS": "1",
+    "DS4_HIP_ATTN_SWIZZLE": "1",
+    "DS4_MOE_COMBINE_MODE": "2"
+  }
+}

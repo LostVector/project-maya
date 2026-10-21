@@ -1,0 +1,36 @@
+{
+  "status": "Independent saved-response,tracecounter,configuration and arithmetic review complete",
+  "all24_correct_cache0_isolated_swap0": true,
+  "timed_requests": 16,
+  "excluded_warmups": 8,
+  "results": {
+    "8192": {
+      "prefill_tokens_per_second": {
+        "control": 726.7936396684537,
+        "candidate": 739.5888113719003
+      },
+      "throughput_increase_percent": 1.7604958278506055,
+      "short27token_decode_tokens_per_second": {
+        "control": 19.462264830966628,
+        "candidate": 19.546803735611377
+      }
+    },
+    "32768": {
+      "prefill_tokens_per_second": {
+        "control": 1058.0442261711605,
+        "candidate": 1076.5614296767326
+      },
+      "throughput_increase_percent": 1.75013511227049,
+      "short27token_decode_tokens_per_second": {
+        "control": 19.944966666051084,
+        "candidate": 20.001111172842936
+      }
+    }
+  },
+  "limitations": "Two independent fresh loads per variant; descriptive intervals have only two paired blocks. Short 27-token decode samples do not establish sustained decode performance.",
+  "source_phase_sha256": {
+    "protocol.json": "98d81d9255456c3945b21cdd1b27be1f1557db61a4925051299554d9d14043d6",
+    "payloads.json": "57d3082f470e5361770f9557ef1698d9f0520e290fc0edf132fd03fc5fb0aaf3",
+    "analysis.json": "f92fce9cd34e21b783d496f5b28a07e962c82887dc3e76512953d0265c5e3639"
+  }
+}
