@@ -1,0 +1,11 @@
+{
+  "hypothesis": "Replace scalar FP16 LDS operand assembly with two aligned64-bit loads; retain exact bits and eight-byte padded row layout",
+  "source": "libr4d r4d_gemm_bf16_nt_m64.hip fragU uses two64-bit fragment reads; this adaptation is LDS FP16, not its global BF16 implementation",
+  "evidence": "Unpadded decoded matrix16 gate/up ISA has128 scalar ds_load_u16 instructions for16 static WMMA instructions",
+  "gates": [
+    "Verify emitted wide LDS loads rather than assuming source form",
+    "CPU reference and66 cached/compressed exact checks",
+    "Four-mode cost-inclusive timing screen",
+    "Positive result requires controlled comparison"
+  ]
+}

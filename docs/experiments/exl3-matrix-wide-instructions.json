@@ -1,0 +1,23 @@
+{
+  "scope": "Static decoded matrix16 gate/up, not runtime instruction counts",
+  "selected_instructions": {
+    "s_wait_kmcnt": 7,
+    "global_load_b32": 2,
+    "s_wait_loadcnt": 12,
+    "s_wait_alu": 136,
+    "s_wait_loadcnt_dscnt": 20,
+    "v_wmma_f32_16x16x16_f16": 16,
+    "global_inv": 7,
+    "global_load_b128": 20,
+    "global_load_b64": 6,
+    "ds_bpermute_b32": 140,
+    "s_wait_dscnt": 111,
+    "ds_store_b64": 4,
+    "ds_load_2addr_b64": 16,
+    "ds_store_b32": 16,
+    "ds_load_b128": 4,
+    "ds_store_b128": 2,
+    "global_load_d16_b16": 4,
+    "global_store_b16": 4
+  }
+}
