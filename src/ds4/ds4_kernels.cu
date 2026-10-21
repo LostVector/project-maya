@@ -1668,9 +1668,20 @@ __global__ void __launch_bounds__(kThreads) ar_peer_kernel(float* x, int n4, Pee
         __threadfence_system();
         const auto begin = clock64();
         ready = 1;
-        while (int(*reinterpret_cast<const volatile unsigned*>(a.flags + fi) - seq) < 0) {
-            if (clock64() - begin >= a.timeout_ticks) {
-                atomicOr(a.error, 1u);
+        unsigned observed;
+        while (int((observed = *reinterpret_cast<const volatile unsigned*>(a.flags + fi)) - seq) < 0) {
+            const auto elapsed = clock64() - begin;
+            if (elapsed >= a.timeout_ticks) {
+                if ((atomicOr(a.error, 1u) & 1u) == 0 && a.failure != nullptr) {
+                    a.failure->sequence = seq;
+                    a.failure->observed = observed;
+                    a.failure->block = blockIdx.x;
+                    a.failure->n4 = unsigned(n4);
+                    a.failure->rank = unsigned(mi);
+                    a.failure->elapsed_ticks = elapsed;
+                    a.failure->timeout_ticks = a.timeout_ticks;
+                    a.failure->captured = 1;
+                }
                 ready = 0;
                 break;
             }

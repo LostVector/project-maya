@@ -295,6 +295,11 @@ void allreduce(float* x, int n, const ArGroup& a, int mi, unsigned seq, unsigned
 
 #if defined(STRATA_USE_HIP)
 constexpr int kPeerArBlocks = 64, kPeerArFlagStride = 32;
+// Optional diagnostic written only by the first block to set the timeout bit.
+struct PeerArFailure {
+    unsigned captured = 0, sequence = 0, observed = 0, block = 0, n4 = 0, rank = 0;
+    uint64_t elapsed_ticks = 0, timeout_ticks = 0;
+};
 /// Experimental exact two-rank push/reduce. All payload/flag buffers are fine-grained device memory,
 /// and both devices must have peer access enabled. Each rank owns two `stride`-float receive slots
 /// and 2*kPeerArBlocks*kPeerArFlagStride flags; `peer_*` points to the other rank's allocations.
@@ -309,6 +314,7 @@ struct PeerAr {
     unsigned* flags = nullptr;
     unsigned* peer_flags = nullptr;
     unsigned* error = nullptr;
+    PeerArFailure* failure = nullptr; // optional first-timeout record; read only after stream synchronization
     size_t stride = 0;
     uint64_t timeout_ticks = 0;
 };
