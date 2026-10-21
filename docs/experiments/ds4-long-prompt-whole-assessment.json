@@ -1,0 +1,23 @@
+{
+  "prior_baseline_exact_steps": {
+    "early_8k": 65,
+    "middle_8k": 65,
+    "cached_prefix_8k": 65,
+    "aligned_cut_4448": 65
+  },
+  "independent_candidate_generations": 4,
+  "whole_plan_count": 8,
+  "all_actual_cut_rows_zero": true,
+  "candidate_exact_steps": {
+    "early_8k": 65,
+    "middle_8k": 65,
+    "cached_prefix_8k": 65,
+    "aligned_cut_4448": 65
+  },
+  "quality": {
+    "baseline_correct": 4,
+    "candidate_correct": 4,
+    "regressions": []
+  },
+  "scope": "Four FMA-kernel inputs; no general or matrix-combined parity/performance claim"
+}

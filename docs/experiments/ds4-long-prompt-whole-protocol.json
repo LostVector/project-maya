@@ -1,0 +1,9 @@
+{
+  "status": "whole_chunk_fidelity_experiment_build_started",
+  "base": "8e39d6d",
+  "flag": "DS4_YOCO_WHOLE_CHUNKS=1, defaultoff",
+  "hypothesis": "Retaining the full cut chunk preserves original GEMM shapes, reducing numerical drift; one pre-recorded aligned case already matched65snapshots. Not a universal parity claim.",
+  "tradeoff": "Retains up to per-1 extra rows of second-half compute. No speed promise; controlled timing must use selected strategy after fidelity review.",
+  "inputs": "Same frozen4-case retrieval suite asPR31,chunk1024,64steps. Force independent candidate free generation to exercise and verify that branch.",
+  "acceptance": "Strict baseline repeats,finite outputs,actual whole-chunk plan andcounter,correct expected4answers; report exact-step counts without masking any failures. Serving pruning staysoff."
+}

@@ -76,7 +76,13 @@ int main(int argc,char** argv) {
             if(!m.feed(input.data(),int(input.size()),1,err)){std::fprintf(stderr,"case=%s trial=%d %s\n",id.c_str(),trial,err.c_str());return 1;}
             const double ms=std::chrono::duration<double,std::milli>(Clock::now()-start).count();
             const auto plans=m.benchmark_prompt_skip_calls()-before;
-            const bool eligible=mode==1&&input.size()>=3692;
+            int expected_skip=input.size()>=3692?int(input.size())-2668:0;
+            const char* whole=std::getenv("DS4_YOCO_WHOLE_CHUNKS");
+            if(expected_skip>0&&whole&&std::atoi(whole)!=0){
+                const int nc=(int(input.size())+chunk-1)/chunk,per=(int(input.size())+nc-1)/nc;
+                expected_skip=(expected_skip/per)*per;
+            }
+            const bool eligible=mode==1&&expected_skip>0;
             if(plans!=uint64_t(eligible)){std::fprintf(stderr,"skip-plan counter mismatch case=%s expected=%d got=%llu\n",id.c_str(),int(eligible),(unsigned long long)plans);return 1;}
             std::vector<int> trial_decisions;
             std::ofstream decisions(root+"/"+id+"-trial"+std::to_string(trial)+"-argmax.txt");
@@ -97,7 +103,8 @@ int main(int argc,char** argv) {
             bool same=true;
             for(size_t i=0;i<stop;++i)same=same&&trial_decisions[i]==reference_tokens[i];
             std::vector<int> free_tokens;std::string free_source;
-            if(trial!=1 || same){
+            const char* force_free=std::getenv("DS4_YOCO_TEST_FORCE_FREE");
+            if(trial!=1 || (same && !(force_free && std::atoi(force_free)!=0))){
                 free_tokens.assign(trial_decisions.begin(),trial_decisions.begin()+stop);
                 free_source=trial==1?"matching_decisions_through_EOS":"baseline_greedy_path";
             } else {

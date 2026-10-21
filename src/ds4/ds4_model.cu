@@ -7199,8 +7199,13 @@ struct Model::Impl {
         const int keep = yl <= 0 ? 0
                          : keep_env > 0 ? std::max(keep_env, g.win)
                          : yoco_mode() == 2 ? g.win : (g.nl - yl) * (g.win - 1) + g.win;
-        const int a = yl > 0 && n - keep >= kYocoMin ? n - keep : 0;
+        int a = yl > 0 && n - keep >= kYocoMin ? n - keep : 0;
         const int nc = (n + chunk - 1) / chunk, per = (n + nc - 1) / nc;
+        const char* whole_opt = std::getenv("DS4_YOCO_WHOLE_CHUNKS");
+        const bool whole_chunks = yoco_mode() == 1 && whole_opt && std::atoi(whole_opt) != 0;
+        // Retain the complete cut chunk: unchanged GEMM shapes may preserve
+        // numerical fidelity, at the cost of computing up to per-1 extra rows.
+        if (a > 0 && whole_chunks) a = (a / per) * per;
         Run run;
         for (int x = 0; x < n; x += per) {
             run.p0.push_back(pos + x);
@@ -7212,8 +7217,8 @@ struct Model::Impl {
             g_prompt_skip_calls.fetch_add(1, std::memory_order_relaxed);
 #endif
             if (std::getenv("DS4_YOCO_STATS"))
-                std::fprintf(stderr,"YOCO_PLAN n=%d offset=%lld layer=%d keep=%d cut_chunk=%d cut_row=%d skipped_rows=%d\n",
-                             n,(long long)pos,yl,keep,a/per,a%per,a);
+                std::fprintf(stderr,"YOCO_PLAN n=%d offset=%lld layer=%d keep=%d cut_chunk=%d cut_row=%d skipped_rows=%d whole_chunks=%d retained_rows=%d\n",
+                             n,(long long)pos,yl,keep,a/per,a%per,a,int(whole_chunks),n-a);
             run.yoco = yl;
             run.cut_k = a / per;
             run.cut_r = a - run.cut_k * per;

@@ -1,0 +1,8 @@
+{
+  "status": "whole_chunk_FMA_four_cases260snapshots_exact",
+  "quality": "4/4 baseline and4/4 independently generated candidate answers correct;6 nonce codes+region each. Forced free-generation branch executed4times.",
+  "numerics": "All65 snapshots in each of4cases exact. Unmodified/default-off baseline also65/65exact vs previous experiment. Same allocation/profile;8 actual whole-chunk plans havecut_row0 andretain>=2668rows.",
+  "scope": "FMA kernels,chunk1024,contexts4448/8192 plus257prefix. Does not establish general or matrix-combined parity.",
+  "tradeoff": "Whole-chunk mode computes up to per-1 extra suffix rows. Controlled latency comparison remains required; do not substitute diagnostic warm timings.",
+  "serving": "Flag defaultoff; sourceAPI32k/matrix and controlled performance pending."
+}
