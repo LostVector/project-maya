@@ -599,13 +599,29 @@ void test_set(int K, int cb, int tail = 0) {
         const bool tile_exact=hmatrix16==hmatrix32 && std::memcmp(ymatrix16.data(),ymatrix32.data(),ymatrix16.size()*sizeof(float))==0;
         if(!tile_exact)++g_fail;
         std::printf("MATRIX_TILE_PARITY K=%d cb=%d rows=%d exact=%d\n",K,cb,rows,int(tile_exact));
+        test_env("DS4_EXL3_MATRIX_DECODED","1",1);
+        for(int tile_rows:{16,32}) {
+            test_env("DS4_EXL3_MATRIX_ROWS",tile_rows==16?"16":"32",1);
+            if(!ex::set_gate_up_decoded(sa,decoded,d_x,E,d_rows,d_h,F,0)||!ex::set_down_decoded(sa,decoded,d_h,F,d_out,E,0))++g_fail;
+            CK(cudaDeviceSynchronize());
+            const auto hd=host_copy(d_h,(size_t)rows*F);const auto yd=host_copy(d_out,(size_t)rows*E);
+            const bool decoded_exact=hd==hmatrix16 && std::memcmp(yd.data(),ymatrix16.data(),yd.size()*sizeof(float))==0;
+            if(!decoded_exact)++g_fail;
+            std::printf("MATRIX_DECODED_PARITY K=%d cb=%d rows=%d tile=%d exact=%d\n",K,cb,rows,tile_rows,int(decoded_exact));
+        }
+        test_env("DS4_EXL3_MATRIX_DECODED","0",1);
     }
     if (bench && std::getenv("EXL3_MATRIX_BENCH")) {
-        for(int mode:{0,1,2,2,1,0,1,0,2,2,0,1}) {
+        for(int mode:{0,1,2,3,3,2,1,0,1,0,3,2,2,3,0,1}) {
             test_env("DS4_EXL3_MATRIX_RELAXED",mode?"1":"0",1);
-            test_env("DS4_EXL3_MATRIX_ROWS",mode==2?"32":"16",1);
+            test_env("DS4_EXL3_MATRIX_ROWS",mode==3?"32":"16",1);
+            test_env("DS4_EXL3_MATRIX_DECODED",mode>=2?"1":"0",1);
             test_env("DS4_EXL3_FMA16","1",1);
-            auto run=[&]{ex::set_gate_up(sa,d_x,E,d_rows,d_h,F,0);ex::set_down(sa,d_h,F,d_out,E,0);};
+            auto run=[&]{
+                if(mode>=2) {
+                    if(!ex::decode_set(sa,decoded,0)||!ex::set_gate_up_decoded(sa,decoded,d_x,E,d_rows,d_h,F,0)||!ex::set_down_decoded(sa,decoded,d_h,F,d_out,E,0))++g_fail;
+                } else {ex::set_gate_up(sa,d_x,E,d_rows,d_h,F,0);ex::set_down(sa,d_h,F,d_out,E,0);}
+            };
             cudaEvent_t begin,end;CK(cudaEventCreate(&begin));CK(cudaEventCreate(&end));
             CK(cudaEventRecord(begin));for(int i=0;i<3;++i)run();CK(cudaEventRecord(end));CK(cudaEventSynchronize(end));
             float calibration=0;CK(cudaEventElapsedTime(&calibration,begin,end));

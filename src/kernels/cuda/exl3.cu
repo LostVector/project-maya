@@ -1595,6 +1595,103 @@ __global__ void __launch_bounds__(kThreads) hip_set_decoded_kernel(SetArgs a, co
         }
     }
 }
+template <int Rows, class Input>
+__device__ void hip_block_decoded_matrix(const uint32_t* decoded, int output_block, int k0, int k1,
+ const Input (&x)[Rows / kWarps], const uint16_t* suh, int nc, HipMmaSmem<1, Rows>& sm) {
+ const int lane=threadIdx.x&31, warp=threadIdx.x>>5, col=lane&15;
+ const int kh=kHipOperand==8?(lane>>4)*8:0;
+ const int nq=(k1-k0)/kCols;
+ HipF8 acc[Rows/16]={};
+ for(int q=0;q<nq;++q) {
+#pragma unroll
+  for(int j=0;j<Rows/kWarps;++j) {
+   const int row=warp+j*kWarps;
+   if(row<nc){float v[4],scales[4];chunk_load(x[j],suh,k0+q*kCols,lane,v,scales);chunk_store(v,scales,lane,sm.xb+row*kCols);}
+  }
+  __syncthreads();
+#pragma unroll
+  for(int step=0;step<8;++step) {
+   HipOperand bv;
+#pragma unroll
+   for(int pair=0;pair<kHipOperand/2;++pair) {
+    const int k=kh+pair*2;
+    const int flane=(col&7)*4+(k&7)/2;
+    const int fragment=(col/8)*2+k/8;
+    const size_t at=((((size_t)output_block*nq+q)*8+step)*8+warp)*128+flane+fragment*32;
+    const uint32_t bits=decoded[at];
+    bv[pair*2]=__builtin_bit_cast(_Float16,(uint16_t)bits);
+    bv[pair*2+1]=__builtin_bit_cast(_Float16,(uint16_t)(bits>>16));
+   }
+#pragma unroll
+   for(int m=0;m<Rows/16;++m) {
+    HipOperand av;
+#pragma unroll
+    for(int i=0;i<kHipOperand;++i)av[i]=m*16+col<nc?__builtin_bit_cast(_Float16,__half_as_ushort(sm.xb[(m*16+col)*kCols+step*16+kh+i])):(_Float16)0;
+    acc[m]=hip_mma(av,bv,acc[m]);
+   }
+  }
+  __syncthreads();
+ }
+#pragma unroll
+ for(int m=0;m<Rows/16;++m)
+#pragma unroll
+  for(int i=0;i<8;++i){const int row=m*16+hip_mma_row(i,lane>>4);if(row<nc)sm.out[row*kCols+warp*16+col]=acc[m][i];}
+ __syncthreads();
+}
+template <bool gate_up, int Rows>
+__global__ void __launch_bounds__(kThreads) hip_set_decoded_matrix_kernel(SetArgs a, const uint32_t* decoded, const float* x, int ldx,
+                                                          const int* idx, uint16_t* h, int ldh,
+                                                          float* y, int ldy) {
+    __shared__ __align__(16) HipMmaSmem<1, Rows> sm;
+    __shared__ float gate[Rows * kCols];
+    const int e = blockIdx.z, g = blockIdx.y, warp = threadIdx.x >> 5;
+    const int start = a.bounds[e], end = a.bounds[e + 1];
+    const int row = start - a.row0 + (int) blockIdx.x * Rows;
+    const int nc = min(Rows, end - start - (int) blockIdx.x * Rows);
+    if (nc <= 0) return;
+    const uint8_t* blob = a.wbase + (size_t) e * a.stride;
+    if constexpr (gate_up) {
+        Xin in[Rows / kWarps];
+        for (int j = 0; j < Rows / kWarps; ++j)
+            if (warp + j * 8 < nc) in[j].f = x + (size_t) idx[row + warp + j * 8] * ldx;
+        hip_block_decoded_matrix<Rows>(decoded + ((size_t) e * 3 + 0) * ((size_t) a.n_embd * a.n_ff / 2),
+                              g, 0, a.n_embd, in, (const uint16_t*) (blob + a.lay.suh[0]), nc, sm);
+        for (int j = 0; j < Rows / kWarps; ++j) {
+            const int c = warp + j * 8;
+            if (c < nc) block_out(sm.out + c * kCols, (const uint16_t*) (blob + a.lay.svh[0]) + g * kCols,
+                                  gate + c * kCols);
+        }
+        __syncthreads();
+        hip_block_decoded_matrix<Rows>(decoded + ((size_t) e * 3 + 1) * ((size_t) a.n_embd * a.n_ff / 2),
+                              g, 0, a.n_embd, in, (const uint16_t*) (blob + a.lay.suh[1]), nc, sm);
+        for (int j = 0; j < Rows / kWarps; ++j) {
+            const int r = warp + j * 8;
+            if (r < nc) {
+                const int lane = threadIdx.x & 31;
+                float v[4];
+                for (int i = 0; i < 4; ++i) v[i] = sm.out[r * kCols + lane * 4 + i];
+                had128(v, lane);
+                for (int i = 0; i < 4; ++i) {
+                    const int c = lane * 4 + i;
+                    const float up = v[i] * h2f(((const uint16_t*) (blob + a.lay.svh[1]))[g * kCols + c]);
+                    h[(size_t) (row + r) * ldh + g * kCols + c] =
+                        __half_as_ushort(__float2half_rn(swiglu(gate[r * kCols + c], up, a.limit)));
+                }
+            }
+        }
+    } else {
+        XinHalf in[Rows / kWarps];
+        for (int j = 0; j < Rows / kWarps; ++j)
+            if (warp + j * 8 < nc) in[j].h = h + (size_t) (row + warp + j * 8) * ldh;
+        hip_block_decoded_matrix<Rows>(decoded + ((size_t) e * 3 + 2) * ((size_t) a.n_embd * a.n_ff / 2),
+                              g, 0, a.n_ff, in, (const uint16_t*) (blob + a.lay.suh[2]), nc, sm);
+        for (int j = 0; j < Rows / kWarps; ++j) {
+            const int c = warp + j * 8;
+            if (c < nc) block_out(sm.out + c * kCols, (const uint16_t*) (blob + a.lay.svh[2]) + g * kCols,
+                                  y + (size_t) (row + c) * ldy + g * kCols);
+        }
+    }
+}
 inline bool hip_fma16_enabled() {
     const char* value = std::getenv("DS4_EXL3_FMA16");
     return value != nullptr && std::atoi(value) != 0;
@@ -2219,6 +2316,14 @@ bool set_gate_up_decoded(const SetArgs& a, const uint32_t* decoded, const float*
 #if defined(STRATA_USE_HIP)
     if (!decoded || !decoded_set_bytes(a) || !a.wbase || !a.bounds || !x || !idx || !h || a.max_rows <= 0 || ldx < a.n_embd || ldh < a.n_ff) return false;
     const int before = g_launch_errors.load();
+    const char* decoded_matrix=std::getenv("DS4_EXL3_MATRIX_DECODED");
+    if(hip_matrix_relaxed_enabled() && decoded_matrix && std::atoi(decoded_matrix)!=0) {
+        const char* rows=std::getenv("DS4_EXL3_MATRIX_ROWS");
+        if(rows && std::atoi(rows)==32)
+            hip_set_decoded_matrix_kernel<true,32><<<dim3((a.max_rows+31)/32,a.n_ff/kCols,a.n_exp),kThreads,0,stream>>>(a, decoded, x, ldx, idx, h, ldh, nullptr, 0);
+        else hip_set_decoded_matrix_kernel<true,16><<<dim3((a.max_rows+15)/16,a.n_ff/kCols,a.n_exp),kThreads,0,stream>>>(a, decoded, x, ldx, idx, h, ldh, nullptr, 0);
+        launch_check("set_decoded_matrix");return g_launch_errors.load()==before;
+    }
     hip_set_decoded_kernel<true><<<dim3((a.max_rows + 15) / 16, a.n_ff / kCols, a.n_exp), kThreads, 0, stream>>>
         (a, decoded, x, ldx, idx, h, ldh, nullptr, 0);
     launch_check("set_gate_up_decoded"); return g_launch_errors.load() == before;
@@ -2231,6 +2336,14 @@ bool set_down_decoded(const SetArgs& a, const uint32_t* decoded, const uint16_t*
 #if defined(STRATA_USE_HIP)
     if (!decoded || !decoded_set_bytes(a) || !a.wbase || !a.bounds || !h || !y || a.max_rows <= 0 || ldh < a.n_ff || ldy < a.n_embd) return false;
     const int before = g_launch_errors.load();
+    const char* decoded_matrix=std::getenv("DS4_EXL3_MATRIX_DECODED");
+    if(hip_matrix_relaxed_enabled() && decoded_matrix && std::atoi(decoded_matrix)!=0) {
+        const char* rows=std::getenv("DS4_EXL3_MATRIX_ROWS");
+        if(rows && std::atoi(rows)==32)
+            hip_set_decoded_matrix_kernel<false,32><<<dim3((a.max_rows+31)/32,a.n_embd/kCols,a.n_exp),kThreads,0,stream>>>(a, decoded, nullptr, 0, nullptr, const_cast<uint16_t*>(h), ldh, y, ldy);
+        else hip_set_decoded_matrix_kernel<false,16><<<dim3((a.max_rows+15)/16,a.n_embd/kCols,a.n_exp),kThreads,0,stream>>>(a, decoded, nullptr, 0, nullptr, const_cast<uint16_t*>(h), ldh, y, ldy);
+        launch_check("set_decoded_matrix");return g_launch_errors.load()==before;
+    }
     hip_set_decoded_kernel<false><<<dim3((a.max_rows + 15) / 16, a.n_embd / kCols, a.n_exp), kThreads, 0, stream>>>
         (a, decoded, nullptr, 0, nullptr, const_cast<uint16_t*>(h), ldh, y, ldy);
     launch_check("set_down_decoded"); return g_launch_errors.load() == before;
