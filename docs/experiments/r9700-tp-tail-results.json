@@ -1,0 +1,560 @@
+{
+  "protocol": "36/4 ->38/2 ->36/4 freshload ABA, excludedwarm32K eachload,then8Kand32K;3warmups+6timedrequests;all240W,4Kchunk,samebinary andselectedoptimizations;no experimentalcache orspeculativeprefetch",
+  "comparisons": [
+    {
+      "case": "Amber",
+      "prompt_tokens": 8192,
+      "baseline_ms": [
+        11136.0,
+        11144.8
+      ],
+      "baseline_mean_ms": 11140.4,
+      "candidate_ms": 9871.4,
+      "baseline_tokens_per_second": 735.3416394384403,
+      "candidate_tokens_per_second": 829.8721559251981,
+      "latency_reduction_pct": 11.390973394133066,
+      "throughput_increase_pct": 12.85531940758149,
+      "candidate_faster_than_each_baseline": true
+    },
+    {
+      "case": "Cobalt",
+      "prompt_tokens": 32768,
+      "baseline_ms": [
+        30846.3,
+        30812.8
+      ],
+      "baseline_mean_ms": 30829.55,
+      "candidate_ms": 29388.6,
+      "baseline_tokens_per_second": 1062.8763637484167,
+      "candidate_tokens_per_second": 1114.9901662549426,
+      "latency_reduction_pct": 4.6739248545632375,
+      "throughput_increase_pct": 4.903091675003246,
+      "candidate_faster_than_each_baseline": true
+    }
+  ],
+  "all_nine_answers_correct": true,
+  "zero_swap": true,
+  "no_prompt_cache_reuse": true,
+  "limitations": [
+    "Onecandidate load,twosynthetic timedprompts;not statistically powered quality/performance study.",
+    "API answerchecks only;changinglayerTPdegree canchange floating-point reduction order. No bit-exact topology parity claim.",
+    "Expert payload counters measure submitted weights,excludeEngram/activations/collectives/PCIeprotocoloverhead.",
+    "36/4 remainsselectedserving;38/2 candidate requires broaderquality/usage validation before promotion."
+  ],
+  "selected_baseline_restored": true,
+  "measurements": [
+    {
+      "layout": "36-4",
+      "name": "Warm32K",
+      "warmup": true,
+      "correct": true,
+      "prefill_counters": [
+        {
+          "gpu": 0,
+          "tokens": 32768,
+          "chunk": 4096,
+          "expert_row_picks": 4325376,
+          "vram_row_picks": 4066817,
+          "unique_expert_uses": 38715,
+          "vram_unique_expert_uses": 16674,
+          "streamed_weight_bytes": 168871779072
+        },
+        {
+          "gpu": 1,
+          "tokens": 32768,
+          "chunk": 4096,
+          "expert_row_picks": 4325376,
+          "vram_row_picks": 4066817,
+          "unique_expert_uses": 38715,
+          "vram_unique_expert_uses": 16674,
+          "streamed_weight_bytes": 168871779072
+        },
+        {
+          "gpu": 2,
+          "tokens": 32768,
+          "chunk": 4096,
+          "expert_row_picks": 98304,
+          "vram_row_picks": 96733,
+          "unique_expert_uses": 1037,
+          "vram_unique_expert_uses": 655,
+          "streamed_weight_bytes": 6776398848
+        }
+      ],
+      "power_caps": {
+        "0000:03:00.0": 240000000,
+        "0000:07:00.0": 240000000,
+        "0000:0f:00.0": 240000000
+      },
+      "swap_kib": 0,
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 32768,
+        "prompt_ms": 44671.9,
+        "prompt_per_token_ms": 1.363,
+        "prompt_per_second": 733.5,
+        "predicted_n": 27,
+        "predicted_ms": 1743.8,
+        "predicted_per_token_ms": 64.585,
+        "predicted_per_second": 15.5,
+        "draft_n": 0,
+        "draft_n_accepted": 0
+      }
+    },
+    {
+      "layout": "36-4",
+      "name": "Amber",
+      "warmup": false,
+      "correct": true,
+      "prefill_counters": [
+        {
+          "gpu": 0,
+          "tokens": 8192,
+          "chunk": 4096,
+          "expert_row_picks": 1376256,
+          "vram_row_picks": 1278388,
+          "unique_expert_uses": 13402,
+          "vram_unique_expert_uses": 5251,
+          "streamed_weight_bytes": 62906234112
+        },
+        {
+          "gpu": 1,
+          "tokens": 8192,
+          "chunk": 4096,
+          "expert_row_picks": 1376256,
+          "vram_row_picks": 1278388,
+          "unique_expert_uses": 13402,
+          "vram_unique_expert_uses": 5251,
+          "streamed_weight_bytes": 62906234112
+        },
+        {
+          "gpu": 2,
+          "tokens": 8192,
+          "chunk": 4096,
+          "expert_row_picks": 98304,
+          "vram_row_picks": 96786,
+          "unique_expert_uses": 1017,
+          "vram_unique_expert_uses": 654,
+          "streamed_weight_bytes": 6439352832
+        }
+      ],
+      "power_caps": {
+        "0000:03:00.0": 240000000,
+        "0000:07:00.0": 240000000,
+        "0000:0f:00.0": 240000000
+      },
+      "swap_kib": 0,
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 8192,
+        "prompt_ms": 11136.0,
+        "prompt_per_token_ms": 1.359,
+        "prompt_per_second": 735.6,
+        "predicted_n": 27,
+        "predicted_ms": 1573.8,
+        "predicted_per_token_ms": 58.289,
+        "predicted_per_second": 17.2,
+        "draft_n": 0,
+        "draft_n_accepted": 0
+      }
+    },
+    {
+      "layout": "36-4",
+      "name": "Cobalt",
+      "warmup": false,
+      "correct": true,
+      "prefill_counters": [
+        {
+          "gpu": 0,
+          "tokens": 32768,
+          "chunk": 4096,
+          "expert_row_picks": 4325376,
+          "vram_row_picks": 3981343,
+          "unique_expert_uses": 38892,
+          "vram_unique_expert_uses": 16041,
+          "streamed_weight_bytes": 175619619072
+        },
+        {
+          "gpu": 1,
+          "tokens": 32768,
+          "chunk": 4096,
+          "expert_row_picks": 4325376,
+          "vram_row_picks": 3981343,
+          "unique_expert_uses": 38892,
+          "vram_unique_expert_uses": 16041,
+          "streamed_weight_bytes": 175619619072
+        },
+        {
+          "gpu": 2,
+          "tokens": 32768,
+          "chunk": 4096,
+          "expert_row_picks": 98304,
+          "vram_row_picks": 96636,
+          "unique_expert_uses": 1031,
+          "vram_unique_expert_uses": 653,
+          "streamed_weight_bytes": 6705441792
+        }
+      ],
+      "power_caps": {
+        "0000:03:00.0": 240000000,
+        "0000:07:00.0": 240000000,
+        "0000:0f:00.0": 240000000
+      },
+      "swap_kib": 0,
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 32768,
+        "prompt_ms": 30846.3,
+        "prompt_per_token_ms": 0.941,
+        "prompt_per_second": 1062.3,
+        "predicted_n": 27,
+        "predicted_ms": 1469.0,
+        "predicted_per_token_ms": 54.407,
+        "predicted_per_second": 18.4,
+        "draft_n": 0,
+        "draft_n_accepted": 0
+      }
+    },
+    {
+      "layout": "38-2",
+      "name": "Warm32K",
+      "warmup": true,
+      "correct": true,
+      "prefill_counters": [
+        {
+          "gpu": 0,
+          "tokens": 32768,
+          "chunk": 4096,
+          "expert_row_picks": 4374528,
+          "vram_row_picks": 4064987,
+          "unique_expert_uses": 39228,
+          "vram_unique_expert_uses": 15731,
+          "streamed_weight_bytes": 180653746944
+        },
+        {
+          "gpu": 1,
+          "tokens": 32768,
+          "chunk": 4096,
+          "expert_row_picks": 4374528,
+          "vram_row_picks": 4064987,
+          "unique_expert_uses": 39228,
+          "vram_unique_expert_uses": 15731,
+          "streamed_weight_bytes": 180653746944
+        },
+        {
+          "gpu": 2,
+          "tokens": 32768,
+          "chunk": 4096,
+          "expert_row_picks": 49152,
+          "vram_row_picks": 49150,
+          "unique_expert_uses": 535,
+          "vram_unique_expert_uses": 533,
+          "streamed_weight_bytes": 35478528
+        }
+      ],
+      "power_caps": {
+        "0000:03:00.0": 240000000,
+        "0000:07:00.0": 240000000,
+        "0000:0f:00.0": 240000000
+      },
+      "swap_kib": 0,
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 32768,
+        "prompt_ms": 31642.7,
+        "prompt_per_token_ms": 0.966,
+        "prompt_per_second": 1035.6,
+        "predicted_n": 27,
+        "predicted_ms": 1645.4,
+        "predicted_per_token_ms": 60.941,
+        "predicted_per_second": 16.4,
+        "draft_n": 0,
+        "draft_n_accepted": 0
+      }
+    },
+    {
+      "layout": "38-2",
+      "name": "Amber",
+      "warmup": false,
+      "correct": true,
+      "prefill_counters": [
+        {
+          "gpu": 0,
+          "tokens": 8192,
+          "chunk": 4096,
+          "expert_row_picks": 1425408,
+          "vram_row_picks": 1308052,
+          "unique_expert_uses": 13924,
+          "vram_unique_expert_uses": 5070,
+          "streamed_weight_bytes": 68734345728
+        },
+        {
+          "gpu": 1,
+          "tokens": 8192,
+          "chunk": 4096,
+          "expert_row_picks": 1425408,
+          "vram_row_picks": 1308052,
+          "unique_expert_uses": 13924,
+          "vram_unique_expert_uses": 5070,
+          "streamed_weight_bytes": 68734345728
+        },
+        {
+          "gpu": 2,
+          "tokens": 8192,
+          "chunk": 4096,
+          "expert_row_picks": 49152,
+          "vram_row_picks": 49152,
+          "unique_expert_uses": 528,
+          "vram_unique_expert_uses": 528,
+          "streamed_weight_bytes": 0
+        }
+      ],
+      "power_caps": {
+        "0000:03:00.0": 240000000,
+        "0000:07:00.0": 240000000,
+        "0000:0f:00.0": 240000000
+      },
+      "swap_kib": 0,
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 8192,
+        "prompt_ms": 9871.4,
+        "prompt_per_token_ms": 1.205,
+        "prompt_per_second": 829.9,
+        "predicted_n": 27,
+        "predicted_ms": 1508.3,
+        "predicted_per_token_ms": 55.863,
+        "predicted_per_second": 17.9,
+        "draft_n": 0,
+        "draft_n_accepted": 0
+      }
+    },
+    {
+      "layout": "38-2",
+      "name": "Cobalt",
+      "warmup": false,
+      "correct": true,
+      "prefill_counters": [
+        {
+          "gpu": 0,
+          "tokens": 32768,
+          "chunk": 4096,
+          "expert_row_picks": 4374528,
+          "vram_row_picks": 3958334,
+          "unique_expert_uses": 39526,
+          "vram_unique_expert_uses": 15089,
+          "streamed_weight_bytes": 188262461184
+        },
+        {
+          "gpu": 1,
+          "tokens": 32768,
+          "chunk": 4096,
+          "expert_row_picks": 4374528,
+          "vram_row_picks": 3958334,
+          "unique_expert_uses": 39526,
+          "vram_unique_expert_uses": 15089,
+          "streamed_weight_bytes": 188262461184
+        },
+        {
+          "gpu": 2,
+          "tokens": 32768,
+          "chunk": 4096,
+          "expert_row_picks": 49152,
+          "vram_row_picks": 49151,
+          "unique_expert_uses": 527,
+          "vram_unique_expert_uses": 526,
+          "streamed_weight_bytes": 17739264
+        }
+      ],
+      "power_caps": {
+        "0000:03:00.0": 240000000,
+        "0000:07:00.0": 240000000,
+        "0000:0f:00.0": 240000000
+      },
+      "swap_kib": 0,
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 32768,
+        "prompt_ms": 29388.6,
+        "prompt_per_token_ms": 0.897,
+        "prompt_per_second": 1115.0,
+        "predicted_n": 27,
+        "predicted_ms": 1383.9,
+        "predicted_per_token_ms": 51.256,
+        "predicted_per_second": 19.5,
+        "draft_n": 0,
+        "draft_n_accepted": 0
+      }
+    },
+    {
+      "layout": "36-4-repeat",
+      "name": "Warm32K",
+      "warmup": true,
+      "correct": true,
+      "prefill_counters": [
+        {
+          "gpu": 0,
+          "tokens": 32768,
+          "chunk": 4096,
+          "expert_row_picks": 4325376,
+          "vram_row_picks": 4066119,
+          "unique_expert_uses": 38745,
+          "vram_unique_expert_uses": 16676,
+          "streamed_weight_bytes": 169111711488
+        },
+        {
+          "gpu": 1,
+          "tokens": 32768,
+          "chunk": 4096,
+          "expert_row_picks": 4325376,
+          "vram_row_picks": 4066119,
+          "unique_expert_uses": 38745,
+          "vram_unique_expert_uses": 16676,
+          "streamed_weight_bytes": 169111711488
+        },
+        {
+          "gpu": 2,
+          "tokens": 32768,
+          "chunk": 4096,
+          "expert_row_picks": 98304,
+          "vram_row_picks": 96713,
+          "unique_expert_uses": 1030,
+          "vram_unique_expert_uses": 653,
+          "streamed_weight_bytes": 6687702528
+        }
+      ],
+      "power_caps": {
+        "0000:03:00.0": 240000000,
+        "0000:07:00.0": 240000000,
+        "0000:0f:00.0": 240000000
+      },
+      "swap_kib": 0,
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 32768,
+        "prompt_ms": 33102.9,
+        "prompt_per_token_ms": 1.01,
+        "prompt_per_second": 989.9,
+        "predicted_n": 27,
+        "predicted_ms": 1739.8,
+        "predicted_per_token_ms": 64.437,
+        "predicted_per_second": 15.5,
+        "draft_n": 0,
+        "draft_n_accepted": 0
+      }
+    },
+    {
+      "layout": "36-4-repeat",
+      "name": "Amber",
+      "warmup": false,
+      "correct": true,
+      "prefill_counters": [
+        {
+          "gpu": 0,
+          "tokens": 8192,
+          "chunk": 4096,
+          "expert_row_picks": 1376256,
+          "vram_row_picks": 1277774,
+          "unique_expert_uses": 13414,
+          "vram_unique_expert_uses": 5243,
+          "streamed_weight_bytes": 63094993152
+        },
+        {
+          "gpu": 1,
+          "tokens": 8192,
+          "chunk": 4096,
+          "expert_row_picks": 1376256,
+          "vram_row_picks": 1277774,
+          "unique_expert_uses": 13414,
+          "vram_unique_expert_uses": 5243,
+          "streamed_weight_bytes": 63094993152
+        },
+        {
+          "gpu": 2,
+          "tokens": 8192,
+          "chunk": 4096,
+          "expert_row_picks": 98304,
+          "vram_row_picks": 96741,
+          "unique_expert_uses": 1022,
+          "vram_unique_expert_uses": 654,
+          "streamed_weight_bytes": 6528049152
+        }
+      ],
+      "power_caps": {
+        "0000:03:00.0": 240000000,
+        "0000:07:00.0": 240000000,
+        "0000:0f:00.0": 240000000
+      },
+      "swap_kib": 0,
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 8192,
+        "prompt_ms": 11144.8,
+        "prompt_per_token_ms": 1.36,
+        "prompt_per_second": 735.1,
+        "predicted_n": 27,
+        "predicted_ms": 1570.2,
+        "predicted_per_token_ms": 58.156,
+        "predicted_per_second": 17.2,
+        "draft_n": 0,
+        "draft_n_accepted": 0
+      }
+    },
+    {
+      "layout": "36-4-repeat",
+      "name": "Cobalt",
+      "warmup": false,
+      "correct": true,
+      "prefill_counters": [
+        {
+          "gpu": 0,
+          "tokens": 32768,
+          "chunk": 4096,
+          "expert_row_picks": 4325376,
+          "vram_row_picks": 3983746,
+          "unique_expert_uses": 38900,
+          "vram_unique_expert_uses": 16077,
+          "streamed_weight_bytes": 175428347136
+        },
+        {
+          "gpu": 1,
+          "tokens": 32768,
+          "chunk": 4096,
+          "expert_row_picks": 4325376,
+          "vram_row_picks": 3983746,
+          "unique_expert_uses": 38900,
+          "vram_unique_expert_uses": 16077,
+          "streamed_weight_bytes": 175428347136
+        },
+        {
+          "gpu": 2,
+          "tokens": 32768,
+          "chunk": 4096,
+          "expert_row_picks": 98304,
+          "vram_row_picks": 96684,
+          "unique_expert_uses": 1024,
+          "vram_unique_expert_uses": 650,
+          "streamed_weight_bytes": 6634484736
+        }
+      ],
+      "power_caps": {
+        "0000:03:00.0": 240000000,
+        "0000:07:00.0": 240000000,
+        "0000:0f:00.0": 240000000
+      },
+      "swap_kib": 0,
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 32768,
+        "prompt_ms": 30812.8,
+        "prompt_per_token_ms": 0.94,
+        "prompt_per_second": 1063.5,
+        "predicted_n": 27,
+        "predicted_ms": 1470.5,
+        "predicted_per_token_ms": 54.463,
+        "predicted_per_second": 18.4,
+        "draft_n": 0,
+        "draft_n_accepted": 0
+      }
+    }
+  ]
+}
