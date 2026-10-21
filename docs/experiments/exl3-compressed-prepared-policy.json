@@ -1,0 +1,77 @@
+{
+  "scope": "Candidate for compressed FMA16 groups only; existing predecode dispatch retained",
+  "features": {
+    "D": 5120,
+    "F": [
+      1152,
+      2304
+    ],
+    "cb": 2,
+    "K_all_equal_in": [
+      3,
+      4
+    ],
+    "min_total_routed_rows": 256
+  },
+  "selection": "Smallest threshold in fixed conventional family with >=3 training groups and all selected training medians positive; no held-out gains inspected during selection",
+  "training_groups": 27,
+  "heldout_groups": 28,
+  "training_candidates": [
+    {
+      "threshold": 0,
+      "groups": 26,
+      "all_median_positive": false,
+      "min_gain_pct": -12.685235097911463
+    },
+    {
+      "threshold": 16,
+      "groups": 24,
+      "all_median_positive": false,
+      "min_gain_pct": -12.685235097911463
+    },
+    {
+      "threshold": 32,
+      "groups": 21,
+      "all_median_positive": false,
+      "min_gain_pct": -12.685235097911463
+    },
+    {
+      "threshold": 64,
+      "groups": 17,
+      "all_median_positive": false,
+      "min_gain_pct": -12.685235097911463
+    },
+    {
+      "threshold": 128,
+      "groups": 11,
+      "all_median_positive": false,
+      "min_gain_pct": -3.341077232171097
+    },
+    {
+      "threshold": 256,
+      "groups": 6,
+      "all_median_positive": true,
+      "min_gain_pct": 4.330023400157712
+    },
+    {
+      "threshold": 512,
+      "groups": 5,
+      "all_median_positive": true,
+      "min_gain_pct": 5.099682845480757
+    },
+    {
+      "threshold": 768,
+      "groups": 2,
+      "all_median_positive": true,
+      "min_gain_pct": 5.099682845480757
+    },
+    {
+      "threshold": 1024,
+      "groups": 2,
+      "all_median_positive": true,
+      "min_gain_pct": 5.099682845480757
+    }
+  ],
+  "training_source_sha256": "65630b68b922a18ad95e1fe2a2db2f14e35d3c772a75907aa063e227ceb92cc9",
+  "additional_gate": "RX9070XT device replay plus full-model strict parity and end-to-end timings before enabling"
+}
