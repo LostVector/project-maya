@@ -69,5 +69,19 @@ prefix in the candidate arm. Expert allocations remained
 
 This establishes numerical invariance on these three inputs relative to the
 selected matrix baseline. It does not establish equivalence between matrix
-and FMA kernels or broad model quality. The controlled timing run is pending;
-preflight timings are excluded from performance claims.
+and FMA kernels or broad model quality. The controlled run completed with all 24 scheduled samples retained:
+
+| New prompt tokens | Control mean | Pruned mean | Mean paired latency reduction | Paired time-block 95% interval |
+| --- | --- | --- | --- | --- |
+| 8192 | 19.462 s | 16.036 s | 17.608% | 11.733–23.482% (4 blocks) |
+| 32768 | 71.307 s | 43.911 s | 38.420% | 38.037–38.804% (2 blocks) |
+
+Every measured final logit vector matched its own preflight arm exactly;
+process swap, model cache movement and measured disk reads were zero. Two
+slower 8K candidate samples remain included. The portable analyzer reproduces
+the original analysis bytes. Preflight timings are excluded.
+
+The intervals describe paired time blocks within this one model session.
+The narrow 32K interval does not establish precision across independent loads
+or different workloads. The experiment uses a frozen expert profile and warm
+engram/file cache; production API integration remains a separate check.
