@@ -1,0 +1,222 @@
+DEVICE gpu=1 name=AMD Radeon AI PRO R9700 bdf=0000:07:00 free_bytes=1941962752
+PARITY case=steady512 group=8 swizzle=0 floats=8388608 mismatches=0 first=8388608 max_abs=0 finite=1 guards=1
+PARITY case=steady512 group=8 swizzle=1 floats=8388608 mismatches=0 first=8388608 max_abs=0 finite=1 guards=1
+PARITY case=steady512 group=4 swizzle=0 floats=8388608 mismatches=0 first=8388608 max_abs=0 finite=1 guards=1
+PARITY case=steady512 group=4 swizzle=1 floats=8388608 mismatches=0 first=8388608 max_abs=0 finite=1 guards=1
+TIME case=steady512 rep=-2 warmup=1 group=8 swizzle=0 gpu_ms=9.25585461 wall_ms=9.9411
+TIME case=steady512 rep=-2 warmup=1 group=8 swizzle=1 gpu_ms=4.11758375 wall_ms=4.365428
+TIME case=steady512 rep=-2 warmup=1 group=4 swizzle=0 gpu_ms=10.16646 wall_ms=10.424568
+TIME case=steady512 rep=-2 warmup=1 group=4 swizzle=1 gpu_ms=4.58738708 wall_ms=4.838317
+TIME case=steady512 rep=-1 warmup=1 group=4 swizzle=1 gpu_ms=4.28502512 wall_ms=4.527813
+TIME case=steady512 rep=-1 warmup=1 group=4 swizzle=0 gpu_ms=9.35989571 wall_ms=9.597223
+TIME case=steady512 rep=-1 warmup=1 group=8 swizzle=1 gpu_ms=3.55438089 wall_ms=3.802479
+TIME case=steady512 rep=-1 warmup=1 group=8 swizzle=0 gpu_ms=8.20896721 wall_ms=8.46253
+TIME case=steady512 rep=0 warmup=0 group=8 swizzle=0 gpu_ms=7.95060492 wall_ms=8.190699
+TIME case=steady512 rep=0 warmup=0 group=8 swizzle=1 gpu_ms=3.48709989 wall_ms=3.721787
+TIME case=steady512 rep=0 warmup=0 group=4 swizzle=0 gpu_ms=8.99109077 wall_ms=9.23382
+TIME case=steady512 rep=0 warmup=0 group=4 swizzle=1 gpu_ms=4.15746403 wall_ms=4.391446
+TIME case=steady512 rep=1 warmup=0 group=4 swizzle=1 gpu_ms=4.28322411 wall_ms=4.52612
+TIME case=steady512 rep=1 warmup=0 group=4 swizzle=0 gpu_ms=9.02825165 wall_ms=9.263305
+TIME case=steady512 rep=1 warmup=0 group=8 swizzle=1 gpu_ms=3.4210999 wall_ms=3.662836
+TIME case=steady512 rep=1 warmup=0 group=8 swizzle=0 gpu_ms=7.85380793 wall_ms=8.087234
+TIME case=steady512 rep=2 warmup=0 group=8 swizzle=0 gpu_ms=7.81940794 wall_ms=8.052029
+TIME case=steady512 rep=2 warmup=0 group=8 swizzle=1 gpu_ms=3.33618093 wall_ms=3.570061
+TIME case=steady512 rep=2 warmup=0 group=4 swizzle=0 gpu_ms=8.60545254 wall_ms=8.842625
+TIME case=steady512 rep=2 warmup=0 group=4 swizzle=1 gpu_ms=4.06390476 wall_ms=4.302399
+TIME case=steady512 rep=3 warmup=0 group=4 swizzle=1 gpu_ms=4.12790585 wall_ms=4.364205
+TIME case=steady512 rep=3 warmup=0 group=4 swizzle=0 gpu_ms=8.64805317 wall_ms=8.873743
+TIME case=steady512 rep=3 warmup=0 group=8 swizzle=1 gpu_ms=3.3403399 wall_ms=3.580973
+TIME case=steady512 rep=3 warmup=0 group=8 swizzle=0 gpu_ms=7.64936686 wall_ms=7.888971
+TIME case=steady512 rep=4 warmup=0 group=8 swizzle=0 gpu_ms=7.62520695 wall_ms=7.869174
+TIME case=steady512 rep=4 warmup=0 group=8 swizzle=1 gpu_ms=3.27193999 wall_ms=3.513205
+TIME case=steady512 rep=4 warmup=0 group=4 swizzle=0 gpu_ms=8.49932957 wall_ms=8.738379
+TIME case=steady512 rep=4 warmup=0 group=4 swizzle=1 gpu_ms=3.93682289 wall_ms=4.180299
+TIME case=steady512 rep=5 warmup=0 group=4 swizzle=1 gpu_ms=4.00146389 wall_ms=4.248788
+TIME case=steady512 rep=5 warmup=0 group=4 swizzle=0 gpu_ms=8.52960968 wall_ms=8.778333
+TIME case=steady512 rep=5 warmup=0 group=8 swizzle=1 gpu_ms=3.29273891 wall_ms=3.522122
+TIME case=steady512 rep=5 warmup=0 group=8 swizzle=0 gpu_ms=7.60720396 wall_ms=7.839939
+TIME case=steady512 rep=6 warmup=0 group=8 swizzle=0 gpu_ms=7.61228514 wall_ms=7.8559
+TIME case=steady512 rep=6 warmup=0 group=8 swizzle=1 gpu_ms=3.30553889 wall_ms=3.534335
+TIME case=steady512 rep=6 warmup=0 group=4 swizzle=0 gpu_ms=8.51696968 wall_ms=8.76549
+TIME case=steady512 rep=6 warmup=0 group=4 swizzle=1 gpu_ms=3.97574401 wall_ms=4.215135
+TIME case=steady512 rep=7 warmup=0 group=4 swizzle=1 gpu_ms=3.99322391 wall_ms=4.226305
+TIME case=steady512 rep=7 warmup=0 group=4 swizzle=0 gpu_ms=8.53669453 wall_ms=8.780808
+TIME case=steady512 rep=7 warmup=0 group=8 swizzle=1 gpu_ms=3.300421 wall_ms=3.534846
+TIME case=steady512 rep=7 warmup=0 group=8 swizzle=0 gpu_ms=7.60412884 wall_ms=7.843016
+PARITY case=early512 group=8 swizzle=0 floats=8388608 mismatches=0 first=8388608 max_abs=0 finite=1 guards=1
+PARITY case=early512 group=8 swizzle=1 floats=8388608 mismatches=0 first=8388608 max_abs=0 finite=1 guards=1
+PARITY case=early512 group=4 swizzle=0 floats=8388608 mismatches=0 first=8388608 max_abs=0 finite=1 guards=1
+PARITY case=early512 group=4 swizzle=1 floats=8388608 mismatches=0 first=8388608 max_abs=0 finite=1 guards=1
+TIME case=early512 rep=-2 warmup=1 group=8 swizzle=0 gpu_ms=1.80948997 wall_ms=2.464103
+TIME case=early512 rep=-2 warmup=1 group=8 swizzle=1 gpu_ms=0.762163997 wall_ms=0.780587
+TIME case=early512 rep=-2 warmup=1 group=4 swizzle=0 gpu_ms=1.98129094 wall_ms=2.213752
+TIME case=early512 rep=-2 warmup=1 group=4 swizzle=1 gpu_ms=0.842485011 wall_ms=0.861139
+TIME case=early512 rep=-1 warmup=1 group=4 swizzle=1 gpu_ms=0.839285016 wall_ms=0.85621
+TIME case=early512 rep=-1 warmup=1 group=4 swizzle=0 gpu_ms=1.94381094 wall_ms=2.182634
+TIME case=early512 rep=-1 warmup=1 group=8 swizzle=1 gpu_ms=0.726364017 wall_ms=0.743668
+TIME case=early512 rep=-1 warmup=1 group=8 swizzle=0 gpu_ms=1.72937 wall_ms=1.969542
+TIME case=early512 rep=0 warmup=0 group=8 swizzle=0 gpu_ms=1.72581005 wall_ms=1.956969
+TIME case=early512 rep=0 warmup=0 group=8 swizzle=1 gpu_ms=0.72536397 wall_ms=0.744209
+TIME case=early512 rep=0 warmup=0 group=4 swizzle=0 gpu_ms=1.95573103 wall_ms=2.189546
+TIME case=early512 rep=0 warmup=0 group=4 swizzle=1 gpu_ms=0.836565018 wall_ms=0.854838
+TIME case=early512 rep=1 warmup=0 group=4 swizzle=1 gpu_ms=0.830244005 wall_ms=0.846962
+TIME case=early512 rep=1 warmup=0 group=4 swizzle=0 gpu_ms=1.93293095 wall_ms=2.168206
+TIME case=early512 rep=1 warmup=0 group=8 swizzle=1 gpu_ms=0.722883999 wall_ms=0.740171
+TIME case=early512 rep=1 warmup=0 group=8 swizzle=0 gpu_ms=1.72792995 wall_ms=1.963251
+TIME case=early512 rep=2 warmup=0 group=8 swizzle=0 gpu_ms=1.73525 wall_ms=1.965725
+TIME case=early512 rep=2 warmup=0 group=8 swizzle=1 gpu_ms=0.738843977 wall_ms=0.756903
+TIME case=early512 rep=2 warmup=0 group=4 swizzle=0 gpu_ms=1.96661103 wall_ms=2.201859
+TIME case=early512 rep=2 warmup=0 group=4 swizzle=1 gpu_ms=0.829005003 wall_ms=0.848275
+TIME case=early512 rep=3 warmup=0 group=4 swizzle=1 gpu_ms=0.800963998 wall_ms=0.820112
+TIME case=early512 rep=3 warmup=0 group=4 swizzle=0 gpu_ms=1.74213004 wall_ms=1.986565
+TIME case=early512 rep=3 warmup=0 group=8 swizzle=1 gpu_ms=0.636722982 wall_ms=0.65471
+TIME case=early512 rep=3 warmup=0 group=8 swizzle=0 gpu_ms=1.53336895 wall_ms=1.778203
+TIME case=early512 rep=4 warmup=0 group=8 swizzle=0 gpu_ms=1.54216897 wall_ms=1.778494
+TIME case=early512 rep=4 warmup=0 group=8 swizzle=1 gpu_ms=0.644443989 wall_ms=0.661173
+TIME case=early512 rep=4 warmup=0 group=4 swizzle=0 gpu_ms=1.70068896 wall_ms=1.939636
+TIME case=early512 rep=4 warmup=0 group=4 swizzle=1 gpu_ms=0.729843974 wall_ms=0.746584
+TIME case=early512 rep=5 warmup=0 group=4 swizzle=1 gpu_ms=0.736563981 wall_ms=0.752034
+TIME case=early512 rep=5 warmup=0 group=4 swizzle=0 gpu_ms=1.75252998 wall_ms=1.997325
+TIME case=early512 rep=5 warmup=0 group=8 swizzle=1 gpu_ms=0.646243989 wall_ms=0.663588
+TIME case=early512 rep=5 warmup=0 group=8 swizzle=0 gpu_ms=1.539729 wall_ms=1.771981
+TIME case=early512 rep=6 warmup=0 group=8 swizzle=0 gpu_ms=1.53240895 wall_ms=1.768685
+TIME case=early512 rep=6 warmup=0 group=8 swizzle=1 gpu_ms=0.636564016 wall_ms=0.653598
+TIME case=early512 rep=6 warmup=0 group=4 swizzle=0 gpu_ms=1.72297001 wall_ms=1.960416
+TIME case=early512 rep=6 warmup=0 group=4 swizzle=1 gpu_ms=0.739484012 wall_ms=0.757043
+TIME case=early512 rep=7 warmup=0 group=4 swizzle=1 gpu_ms=0.736204982 wall_ms=0.753256
+TIME case=early512 rep=7 warmup=0 group=4 swizzle=0 gpu_ms=1.93601096 wall_ms=2.165511
+TIME case=early512 rep=7 warmup=0 group=8 swizzle=1 gpu_ms=0.64428401 wall_ms=0.661384
+TIME case=early512 rep=7 warmup=0 group=8 swizzle=0 gpu_ms=1.54508901 wall_ms=1.793642
+PARITY case=ragged73 group=8 swizzle=0 floats=1196032 mismatches=0 first=1196032 max_abs=0 finite=1 guards=1
+PARITY case=ragged73 group=8 swizzle=1 floats=1196032 mismatches=0 first=1196032 max_abs=0 finite=1 guards=1
+PARITY case=ragged73 group=4 swizzle=0 floats=1196032 mismatches=0 first=1196032 max_abs=0 finite=1 guards=1
+PARITY case=ragged73 group=4 swizzle=1 floats=1196032 mismatches=0 first=1196032 max_abs=0 finite=1 guards=1
+TIME case=ragged73 rep=-2 warmup=1 group=8 swizzle=0 gpu_ms=0.601363003 wall_ms=0.643299
+TIME case=ragged73 rep=-2 warmup=1 group=8 swizzle=1 gpu_ms=0.266281009 wall_ms=0.284395
+TIME case=ragged73 rep=-2 warmup=1 group=4 swizzle=0 gpu_ms=0.638123989 wall_ms=0.65421
+TIME case=ragged73 rep=-2 warmup=1 group=4 swizzle=1 gpu_ms=0.296961993 wall_ms=0.313399
+TIME case=ragged73 rep=-1 warmup=1 group=4 swizzle=1 gpu_ms=0.296961993 wall_ms=0.31356
+TIME case=ragged73 rep=-1 warmup=1 group=4 swizzle=0 gpu_ms=0.633082986 wall_ms=0.649571
+TIME case=ragged73 rep=-1 warmup=1 group=8 swizzle=1 gpu_ms=0.262641996 wall_ms=0.279155
+TIME case=ragged73 rep=-1 warmup=1 group=8 swizzle=0 gpu_ms=0.59048301 wall_ms=0.605609
+TIME case=ragged73 rep=0 warmup=0 group=8 swizzle=0 gpu_ms=0.589762986 wall_ms=0.60629
+TIME case=ragged73 rep=0 warmup=0 group=8 swizzle=1 gpu_ms=0.261081994 wall_ms=0.277882
+TIME case=ragged73 rep=0 warmup=0 group=4 swizzle=0 gpu_ms=0.627242982 wall_ms=0.642528
+TIME case=ragged73 rep=0 warmup=0 group=4 swizzle=1 gpu_ms=0.291081995 wall_ms=0.30813
+TIME case=ragged73 rep=1 warmup=0 group=4 swizzle=1 gpu_ms=0.290042013 wall_ms=0.304943
+TIME case=ragged73 rep=1 warmup=0 group=4 swizzle=0 gpu_ms=0.62420398 wall_ms=0.641537
+TIME case=ragged73 rep=1 warmup=0 group=8 swizzle=1 gpu_ms=0.257560998 wall_ms=0.272432
+TIME case=ragged73 rep=1 warmup=0 group=8 swizzle=0 gpu_ms=0.584443986 wall_ms=0.601561
+TIME case=ragged73 rep=2 warmup=0 group=8 swizzle=0 gpu_ms=0.582602978 wall_ms=0.597764
+TIME case=ragged73 rep=2 warmup=0 group=8 swizzle=1 gpu_ms=0.256841987 wall_ms=0.273685
+TIME case=ragged73 rep=2 warmup=0 group=4 swizzle=0 gpu_ms=0.619243026 wall_ms=0.634933
+TIME case=ragged73 rep=2 warmup=0 group=4 swizzle=1 gpu_ms=0.286042005 wall_ms=0.30304
+TIME case=ragged73 rep=3 warmup=0 group=4 swizzle=1 gpu_ms=0.287521988 wall_ms=0.30291
+TIME case=ragged73 rep=3 warmup=0 group=4 swizzle=0 gpu_ms=0.62420398 wall_ms=0.639452
+TIME case=ragged73 rep=3 warmup=0 group=8 swizzle=1 gpu_ms=0.259081006 wall_ms=0.275889
+TIME case=ragged73 rep=3 warmup=0 group=8 swizzle=0 gpu_ms=0.588003993 wall_ms=0.602974
+TIME case=ragged73 rep=4 warmup=0 group=8 swizzle=0 gpu_ms=0.587243021 wall_ms=0.602343
+TIME case=ragged73 rep=4 warmup=0 group=8 swizzle=1 gpu_ms=0.259241998 wall_ms=0.27627
+TIME case=ragged73 rep=4 warmup=0 group=4 swizzle=0 gpu_ms=0.623282969 wall_ms=0.640464
+TIME case=ragged73 rep=4 warmup=0 group=4 swizzle=1 gpu_ms=0.288920999 wall_ms=0.306185
+TIME case=ragged73 rep=5 warmup=0 group=4 swizzle=1 gpu_ms=0.289281994 wall_ms=0.306687
+TIME case=ragged73 rep=5 warmup=0 group=4 swizzle=0 gpu_ms=0.621523976 wall_ms=0.638099
+TIME case=ragged73 rep=5 warmup=0 group=8 swizzle=1 gpu_ms=0.256960988 wall_ms=0.272172
+TIME case=ragged73 rep=5 warmup=0 group=8 swizzle=0 gpu_ms=0.582324028 wall_ms=0.597513
+TIME case=ragged73 rep=6 warmup=0 group=8 swizzle=0 gpu_ms=0.581803024 wall_ms=0.601812
+TIME case=ragged73 rep=6 warmup=0 group=8 swizzle=1 gpu_ms=0.255201995 wall_ms=0.272102
+TIME case=ragged73 rep=6 warmup=0 group=4 swizzle=0 gpu_ms=0.617923021 wall_ms=0.635184
+TIME case=ragged73 rep=6 warmup=0 group=4 swizzle=1 gpu_ms=0.284361005 wall_ms=0.301818
+TIME case=ragged73 rep=7 warmup=0 group=4 swizzle=1 gpu_ms=0.284642011 wall_ms=0.301818
+TIME case=ragged73 rep=7 warmup=0 group=4 swizzle=0 gpu_ms=0.616364002 wall_ms=0.633281
+TIME case=ragged73 rep=7 warmup=0 group=8 swizzle=1 gpu_ms=0.247361004 wall_ms=0.264457
+TIME case=ragged73 rep=7 warmup=0 group=8 swizzle=0 gpu_ms=0.555643022 wall_ms=0.573228
+PARITY case=window_only group=8 swizzle=0 floats=524288 mismatches=0 first=524288 max_abs=0 finite=1 guards=1
+PARITY case=window_only group=8 swizzle=1 floats=524288 mismatches=0 first=524288 max_abs=0 finite=1 guards=1
+PARITY case=window_only group=4 swizzle=0 floats=524288 mismatches=0 first=524288 max_abs=0 finite=1 guards=1
+PARITY case=window_only group=4 swizzle=1 floats=524288 mismatches=0 first=524288 max_abs=0 finite=1 guards=1
+TIME case=window_only rep=-2 warmup=1 group=8 swizzle=0 gpu_ms=0.111360997 wall_ms=0.13273
+TIME case=window_only rep=-2 warmup=1 group=8 swizzle=1 gpu_ms=0.053679999 wall_ms=0.071204
+TIME case=window_only rep=-2 warmup=1 group=4 swizzle=0 gpu_ms=0.152241006 wall_ms=0.168276
+TIME case=window_only rep=-2 warmup=1 group=4 swizzle=1 gpu_ms=0.0685200021 wall_ms=0.085171
+TIME case=window_only rep=-1 warmup=1 group=4 swizzle=1 gpu_ms=0.0680800006 wall_ms=0.082796
+TIME case=window_only rep=-1 warmup=1 group=4 swizzle=0 gpu_ms=0.152241006 wall_ms=0.168387
+TIME case=window_only rep=-1 warmup=1 group=8 swizzle=1 gpu_ms=0.0534799993 wall_ms=0.068268
+TIME case=window_only rep=-1 warmup=1 group=8 swizzle=0 gpu_ms=0.111001 wall_ms=0.129002
+TIME case=window_only rep=0 warmup=0 group=8 swizzle=0 gpu_ms=0.111441001 wall_ms=0.128301
+TIME case=window_only rep=0 warmup=0 group=8 swizzle=1 gpu_ms=0.0535599999 wall_ms=0.06947
+TIME case=window_only rep=0 warmup=0 group=4 swizzle=0 gpu_ms=0.163160995 wall_ms=0.177964
+TIME case=window_only rep=0 warmup=0 group=4 swizzle=1 gpu_ms=0.0684010014 wall_ms=0.084609
+TIME case=window_only rep=1 warmup=0 group=4 swizzle=1 gpu_ms=0.0686400011 wall_ms=0.083307
+TIME case=window_only rep=1 warmup=0 group=4 swizzle=0 gpu_ms=0.163521007 wall_ms=0.178545
+TIME case=window_only rep=1 warmup=0 group=8 swizzle=1 gpu_ms=0.0535609983 wall_ms=0.069932
+TIME case=window_only rep=1 warmup=0 group=8 swizzle=0 gpu_ms=0.110760003 wall_ms=0.126809
+TIME case=window_only rep=2 warmup=0 group=8 swizzle=0 gpu_ms=0.111039996 wall_ms=0.126067
+TIME case=window_only rep=2 warmup=0 group=8 swizzle=1 gpu_ms=0.0533609986 wall_ms=0.069992
+TIME case=window_only rep=2 warmup=0 group=4 swizzle=0 gpu_ms=0.152760997 wall_ms=0.169949
+TIME case=window_only rep=2 warmup=0 group=4 swizzle=1 gpu_ms=0.0681200027 wall_ms=0.083086
+TIME case=window_only rep=3 warmup=0 group=4 swizzle=1 gpu_ms=0.0680010021 wall_ms=0.083016
+TIME case=window_only rep=3 warmup=0 group=4 swizzle=0 gpu_ms=0.162480995 wall_ms=0.178876
+TIME case=window_only rep=3 warmup=0 group=8 swizzle=1 gpu_ms=0.0534799993 wall_ms=0.068369
+TIME case=window_only rep=3 warmup=0 group=8 swizzle=0 gpu_ms=0.110160999 wall_ms=0.125135
+TIME case=window_only rep=4 warmup=0 group=8 swizzle=0 gpu_ms=0.109999999 wall_ms=0.124654
+TIME case=window_only rep=4 warmup=0 group=8 swizzle=1 gpu_ms=0.0527600013 wall_ms=0.06879
+TIME case=window_only rep=4 warmup=0 group=4 swizzle=0 gpu_ms=0.162081003 wall_ms=0.178025
+TIME case=window_only rep=4 warmup=0 group=4 swizzle=1 gpu_ms=0.0674400032 wall_ms=0.083327
+TIME case=window_only rep=5 warmup=0 group=4 swizzle=1 gpu_ms=0.0676010028 wall_ms=0.082195
+TIME case=window_only rep=5 warmup=0 group=4 swizzle=0 gpu_ms=0.151760995 wall_ms=0.168196
+TIME case=window_only rep=5 warmup=0 group=8 swizzle=1 gpu_ms=0.0529999994 wall_ms=0.06909
+TIME case=window_only rep=5 warmup=0 group=8 swizzle=0 gpu_ms=0.109840997 wall_ms=0.126247
+TIME case=window_only rep=6 warmup=0 group=8 swizzle=0 gpu_ms=0.109720998 wall_ms=0.128081
+TIME case=window_only rep=6 warmup=0 group=8 swizzle=1 gpu_ms=0.0526800007 wall_ms=0.068519
+TIME case=window_only rep=6 warmup=0 group=4 swizzle=0 gpu_ms=0.151241004 wall_ms=0.167325
+TIME case=window_only rep=6 warmup=0 group=4 swizzle=1 gpu_ms=0.0673609972 wall_ms=0.083928
+TIME case=window_only rep=7 warmup=0 group=4 swizzle=1 gpu_ms=0.0674400032 wall_ms=0.082085
+TIME case=window_only rep=7 warmup=0 group=4 swizzle=0 gpu_ms=0.150960997 wall_ms=0.166784
+TIME case=window_only rep=7 warmup=0 group=8 swizzle=1 gpu_ms=0.0527199991 wall_ms=0.067597
+TIME case=window_only rep=7 warmup=0 group=8 swizzle=0 gpu_ms=0.109720998 wall_ms=0.126037
+PARITY case=explicit7 group=8 swizzle=0 floats=28672 mismatches=0 first=28672 max_abs=0 finite=1 guards=1
+PARITY case=explicit7 group=8 swizzle=1 floats=28672 mismatches=0 first=28672 max_abs=0 finite=1 guards=1
+PARITY case=explicit7 group=4 swizzle=0 floats=28672 mismatches=0 first=28672 max_abs=0 finite=1 guards=1
+PARITY case=explicit7 group=4 swizzle=1 floats=28672 mismatches=0 first=28672 max_abs=0 finite=1 guards=1
+TIME case=explicit7 rep=-2 warmup=1 group=8 swizzle=0 gpu_ms=0.0765599981 wall_ms=0.095139
+TIME case=explicit7 rep=-2 warmup=1 group=8 swizzle=1 gpu_ms=0.0587209985 wall_ms=0.076114
+TIME case=explicit7 rep=-2 warmup=1 group=4 swizzle=0 gpu_ms=0.0542399995 wall_ms=0.070072
+TIME case=explicit7 rep=-2 warmup=1 group=4 swizzle=1 gpu_ms=0.0421199985 wall_ms=0.05847
+TIME case=explicit7 rep=-1 warmup=1 group=4 swizzle=1 gpu_ms=0.0423600003 wall_ms=0.057358
+TIME case=explicit7 rep=-1 warmup=1 group=4 swizzle=0 gpu_ms=0.0539200008 wall_ms=0.070202
+TIME case=explicit7 rep=-1 warmup=1 group=8 swizzle=1 gpu_ms=0.0587209985 wall_ms=0.075362
+TIME case=explicit7 rep=-1 warmup=1 group=8 swizzle=0 gpu_ms=0.0769999996 wall_ms=0.096271
+TIME case=explicit7 rep=0 warmup=0 group=8 swizzle=0 gpu_ms=0.0772410035 wall_ms=0.092253
+TIME case=explicit7 rep=0 warmup=0 group=8 swizzle=1 gpu_ms=0.058600001 wall_ms=0.074941
+TIME case=explicit7 rep=0 warmup=0 group=4 swizzle=0 gpu_ms=0.0542009994 wall_ms=0.070382
+TIME case=explicit7 rep=0 warmup=0 group=4 swizzle=1 gpu_ms=0.0422799997 wall_ms=0.058821
+TIME case=explicit7 rep=1 warmup=0 group=4 swizzle=1 gpu_ms=0.0423999988 wall_ms=0.057418
+TIME case=explicit7 rep=1 warmup=0 group=4 swizzle=0 gpu_ms=0.0540810004 wall_ms=0.070332
+TIME case=explicit7 rep=1 warmup=0 group=8 swizzle=1 gpu_ms=0.0583200008 wall_ms=0.07456
+TIME case=explicit7 rep=1 warmup=0 group=8 swizzle=0 gpu_ms=0.0768409967 wall_ms=0.093175
+TIME case=explicit7 rep=2 warmup=0 group=8 swizzle=0 gpu_ms=0.0766799971 wall_ms=0.092013
+TIME case=explicit7 rep=2 warmup=0 group=8 swizzle=1 gpu_ms=0.0586009994 wall_ms=0.074901
+TIME case=explicit7 rep=2 warmup=0 group=4 swizzle=0 gpu_ms=0.0539599992 wall_ms=0.070823
+TIME case=explicit7 rep=2 warmup=0 group=4 swizzle=1 gpu_ms=0.0422799997 wall_ms=0.059191
+TIME case=explicit7 rep=3 warmup=0 group=4 swizzle=1 gpu_ms=0.0422809981 wall_ms=0.056827
+TIME case=explicit7 rep=3 warmup=0 group=4 swizzle=0 gpu_ms=0.0543200001 wall_ms=0.069029
+TIME case=explicit7 rep=3 warmup=0 group=8 swizzle=1 gpu_ms=0.0589610003 wall_ms=0.075071
+TIME case=explicit7 rep=3 warmup=0 group=8 swizzle=0 gpu_ms=0.0771199986 wall_ms=0.093155
+TIME case=explicit7 rep=4 warmup=0 group=8 swizzle=0 gpu_ms=0.0770410001 wall_ms=0.092053
+TIME case=explicit7 rep=4 warmup=0 group=8 swizzle=1 gpu_ms=0.0589599982 wall_ms=0.075432
+TIME case=explicit7 rep=4 warmup=0 group=4 swizzle=0 gpu_ms=0.0544800013 wall_ms=0.0692
+TIME case=explicit7 rep=4 warmup=0 group=4 swizzle=1 gpu_ms=0.0422799997 wall_ms=0.05847
+TIME case=explicit7 rep=5 warmup=0 group=4 swizzle=1 gpu_ms=0.0425200015 wall_ms=0.059021
+TIME case=explicit7 rep=5 warmup=0 group=4 swizzle=0 gpu_ms=0.0544009991 wall_ms=0.070743
+TIME case=explicit7 rep=5 warmup=0 group=8 swizzle=1 gpu_ms=0.0590000004 wall_ms=0.073739
+TIME case=explicit7 rep=5 warmup=0 group=8 swizzle=0 gpu_ms=0.0772410035 wall_ms=0.093466
+TIME case=explicit7 rep=6 warmup=0 group=8 swizzle=0 gpu_ms=0.077320002 wall_ms=0.095149
+TIME case=explicit7 rep=6 warmup=0 group=8 swizzle=1 gpu_ms=0.0591210015 wall_ms=0.075793
+TIME case=explicit7 rep=6 warmup=0 group=4 swizzle=0 gpu_ms=0.0542000011 wall_ms=0.070463
+TIME case=explicit7 rep=6 warmup=0 group=4 swizzle=1 gpu_ms=0.0423999988 wall_ms=0.05839
+TIME case=explicit7 rep=7 warmup=0 group=4 swizzle=1 gpu_ms=0.0425609984 wall_ms=0.057558
+TIME case=explicit7 rep=7 warmup=0 group=4 swizzle=0 gpu_ms=0.0545199998 wall_ms=0.071795
+TIME case=explicit7 rep=7 warmup=0 group=8 swizzle=1 gpu_ms=0.0591210015 wall_ms=0.076564
+TIME case=explicit7 rep=7 warmup=0 group=8 swizzle=0 gpu_ms=0.077200003 wall_ms=0.092974
+COMPLETE exact=1
