@@ -583,15 +583,37 @@ void test_set(int K, int cb, int tail = 0) {
     const auto y16 = host_copy(d_out, (size_t) rows * E);
     const bool exact = h8 == h16 && std::memcmp(y8.data(), y16.data(), y8.size() * sizeof(float)) == 0;
     if (!exact) ++g_fail;
+    uint16_t* prepared_storage = nullptr;
+    const size_t prepared_bytes = ex::prepared_set_input_bytes(sa, rows);
+    CK(cudaMalloc(&prepared_storage, prepared_bytes + 32));
+    CK(cudaMemset(prepared_storage, 0xa5, prepared_bytes + 32));
+    uint16_t* prepared = prepared_storage + 8;
+    if (!ex::set_gate_up_prepared(sa, decoded, d_x, E, d_rows, d_h, F, prepared, rows, 0) ||
+        !ex::set_down_prepared(sa, decoded, d_h, F, d_out, E, prepared, rows, 0)) ++g_fail;
+    CK(cudaDeviceSynchronize());
+    const auto hp = host_copy(d_h, size_t(rows) * F);
+    const auto yp = host_copy(d_out, size_t(rows) * E);
+    const auto guard0 = host_copy(prepared_storage, size_t(8));
+    const auto guard1 = host_copy(prepared_storage + 8 + prepared_bytes / 2, size_t(8));
+    const bool prepared_exact = hp == h16 && std::memcmp(yp.data(), y16.data(), yp.size() * sizeof(float)) == 0 &&
+        std::all_of(yp.begin(), yp.end(), [](float v) { return std::isfinite(v); }) &&
+        std::all_of(guard0.begin(), guard0.end(), [](uint16_t v) { return v == 0xa5a5; }) &&
+        std::all_of(guard1.begin(), guard1.end(), [](uint16_t v) { return v == 0xa5a5; });
+    if (!prepared_exact) ++g_fail;
+    std::printf("PREPARED_PARITY K=%d cb=%d rows=%d row0=%d exact=%d guard=1 bytes=%zu\n",
+                K, cb, rows, sa.row0, int(prepared_exact), prepared_bytes);
     std::printf("SET_PARITY K=%d cb=%d rows=%d exact=%d\n", K, cb, rows, int(exact));
     if (bench) {
         test_env("DS4_EXL3_FMA16", "1", 1);
-        for (int mode : {0,1,2,2,1,0,1,0,2,2,0,1}) {
+        for (int mode : {0,1,2,3,3,2,1,0,1,3,0,2,2,0,3,1}) {
             auto run = [&] {
-                if (mode == 1 && !ex::decode_set(sa, decoded, 0)) ++g_fail;
+                if ((mode == 1 || mode == 3) && !ex::decode_set(sa, decoded, 0)) ++g_fail;
                 if (mode == 0) {
                     ex::set_gate_up(sa, d_x, E, d_rows, d_h, F, 0);
                     ex::set_down(sa, d_h, F, d_out, E, 0);
+                } else if (mode == 3) {
+                    if (!ex::set_gate_up_prepared(sa, decoded, d_x, E, d_rows, d_h, F, prepared, rows, 0) ||
+                        !ex::set_down_prepared(sa, decoded, d_h, F, d_out, E, prepared, rows, 0)) ++g_fail;
                 } else {
                     if (!ex::set_gate_up_decoded(sa, decoded, d_x, E, d_rows, d_h, F, 0) ||
                         !ex::set_down_decoded(sa, decoded, d_h, F, d_out, E, 0)) ++g_fail;
@@ -612,8 +634,9 @@ void test_set(int K, int cb, int tail = 0) {
             std::printf("PREDECODE_BENCH K=%d cb=%d hot=%d rows=%d mode=%d warm=%d reps=%d total_ms=%.4f mean_ms=%.6f bytes=%zu\n",K,cb,tail,rows,mode,warm,reps,ms,ms/reps,ex::decoded_set_bytes(sa));std::fflush(stdout);
             CK(cudaEventDestroy(begin));CK(cudaEventDestroy(end));
         }
-        cleanup();return;
+        cudaFree(prepared_storage);cleanup();return;
     }
+    cudaFree(prepared_storage);
 #endif
     std::vector<float> ref((size_t) rows * E);
     for (int e = 0, r = 0; e < 3; ++e) {
