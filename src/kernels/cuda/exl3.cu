@@ -1261,14 +1261,15 @@ __device__ __forceinline__ int hip_mma_row(int i, int hi) {
 constexpr int kHipMatrixStride = kCols + 4; // 8-byte LDS row padding, separate from output layout.
 // Eight-byte alignment is retained by the padded row stride. Load exact FP16
 // operand bits in two64-bit pieces instead of eight scalar LDS halfword loads.
-__device__ __forceinline__ HipOperand hip_matrix_load_operand(const __half* p, bool valid) {
-    HipOperand value = {};
+template <class Operand = HipOperand>
+__device__ __forceinline__ Operand hip_matrix_load_operand(const __half* p, bool valid) {
+    Operand value = {};
     if (!valid) return value;
-    if constexpr (kHipOperand == 8) {
+    if constexpr (sizeof(Operand) == 16) {
         const uint2 lo = *reinterpret_cast<const uint2*>(p);
         const uint2 hi = *reinterpret_cast<const uint2*>(p + 4);
         const uint4 packed = make_uint4(lo.x, lo.y, hi.x, hi.y);
-        value = __builtin_bit_cast(HipOperand, packed);
+        value = __builtin_bit_cast(Operand, packed);
     } else {
 #pragma unroll
         for (int i=0;i<kHipOperand;++i)
