@@ -1,0 +1,12 @@
+{
+  "status": "context_retrieval_inputs_frozen_build_prepared",
+  "source_proof": "/home/rkuo/research/llm-weight-compression/_meta/maya-long-prompt-context-20261020/source-proof.json",
+  "input_manifest_sha256": "a63a03d4b7bd55731d1fcddcbf13114dd45f1a80a69239ea4e09208f345b18ff",
+  "new_validation": "Four cases,chunk1024,64 teacher-forced steps,baseline/skip/repeat. Facts from early,middle,cached prefixes; cut-row0 at4448.",
+  "quality": "Decode baseline through firstEOS. Candidate free-greedy answer only established if all decisions through that EOS match. Otherwise report inconclusive and run independent free generation. Score original expected region+six nonce codes, preserve baseline failures and regressions.",
+  "numerics": "Keep all65 steps and original0.001 KL review flag. Also report meaningful preEOS and postEOS separately; never delete postEOS results or substitute a posthoc gate.",
+  "acceptance": "No broad quality or performance acceptance from this small synthetic suite. Pruning stays off.",
+  "public_prepare": "python bench/micro/ds4_long_prompt_context_prepare.py OUT PACK/tokenizer FROZEN_PROFILE",
+  "public_analyze": "python bench/micro/ds4_long_prompt_context_analyze.py RUN_DIR PACK/tokenizer",
+  "public_verification": "Generated input bytes and complete analysis bytes match executed originals exactly."
+}

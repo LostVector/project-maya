@@ -1,0 +1,22 @@
+[
+  {
+    "id": "early_8k",
+    "needle_entirely_before_skip_cut": true,
+    "expected_answer_tokens": 34
+  },
+  {
+    "id": "middle_8k",
+    "needle_entirely_before_skip_cut": true,
+    "expected_answer_tokens": 34
+  },
+  {
+    "id": "cached_prefix_8k",
+    "needle_entirely_before_skip_cut": true,
+    "expected_answer_tokens": 34
+  },
+  {
+    "id": "aligned_cut_4448",
+    "needle_entirely_before_skip_cut": true,
+    "expected_answer_tokens": 34
+  }
+]

@@ -1,0 +1,13 @@
+{
+  "recorded_before_reading_aligned_case_results": true,
+  "time": "2026-10-21T04:27:16.131959+00:00",
+  "hypothesis": "Partial-cut suffix changes dense GEMM row shapes, which can change reductions and cross quantization boundaries in sharedKV/index and intermediate window states. Whole-chunk-aligned skip retains original shapes and may reduce or eliminate final-state rounding drift.",
+  "prediction": "The existing4448-token/chunk1024 case has cut_chunk2,cut_row0. If partial-shape changes dominate, its final logits/state should be closer to baseline than partial-cut cases, potentially bit-exact under FMA kernels.",
+  "limits": [
+    "Expert routing/batch compaction can still alter per-row accumulation even with unchanged dense shapes.",
+    "Exactness of this one case would not prove general exactness or matrix-kernel exactness.",
+    "If not closer/exact, investigate the proposed source of drift rather than silently relabeling the result."
+  ],
+  "possible_followup": "Optional whole-chunk cut: retain extra cut_r rows, so no split source pass or suffix view is needed. Skip fewer rows, particularly at shorter prompts; compare numerical fidelity and actual latency before claiming improvement.",
+  "status": "hypothesis_only_no_production_change"
+}

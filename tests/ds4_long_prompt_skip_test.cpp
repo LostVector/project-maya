@@ -22,9 +22,11 @@ static bool save(const std::string& path,const std::vector<float>& x) {
     std::ofstream f(path,std::ios::binary);f.write(reinterpret_cast<const char*>(x.data()),x.size()*sizeof(float));return bool(f);
 }
 int main(int argc,char** argv) {
-    if(argc!=3 && argc!=4)return 2;
+    if(argc!=3 && argc!=4 && argc!=5)return 2;
     const std::string root=argv[2];
-    const int chunk=argc==4?std::atoi(argv[3]):2048;
+    const int chunk=argc>=4?std::atoi(argv[3]):2048;
+    const int steps=argc==5?std::atoi(argv[4]):16;
+    if(steps<1 || steps>128)return 2;
     if(chunk!=2048 && chunk!=1024)return 2;
     for(const char* name:{"DS4_SKIP_UNPICKED","DS4_EXL3_FMA16","DS4_EXL3_PACKED_HOST","DS4_EXL3_PREDECODE","DS4_HIP_HOST_COPY_WAIT","DS4_HIP_PEER_AR","DS4_YOCO_MULTIGPU","DS4_YOCO_STATS"})setenv(name,"1",1);
     for(const char* name:{"DS4_EXL3_MATRIX_RELAXED","DS4_EXL3_MATRIX_DECODED","DS4_YOCO_KEEP","DS4_PATH_PICK"})setenv(name,"0",1);
@@ -76,20 +78,47 @@ int main(int argc,char** argv) {
             const auto plans=m.benchmark_prompt_skip_calls()-before;
             const bool eligible=mode==1&&input.size()>=3692;
             if(plans!=uint64_t(eligible)){std::fprintf(stderr,"skip-plan counter mismatch case=%s expected=%d got=%llu\n",id.c_str(),int(eligible),(unsigned long long)plans);return 1;}
+            std::vector<int> trial_decisions;
             std::ofstream decisions(root+"/"+id+"-trial"+std::to_string(trial)+"-argmax.txt");
-            for(int step=0;step<=16;++step){
+            for(int step=0;step<=steps;++step){
                 std::vector<float> x;if(!logits(x))return 1;
                 const std::string file=root+"/"+id+"-trial"+std::to_string(trial)+"-step"+std::to_string(step)+".f32";if(!save(file,x))return 1;
                 if(trial==0)reference_logits.push_back(x);
                 if(trial==2&&std::memcmp(x.data(),reference_logits[size_t(step)].data(),x.size()*sizeof(float))){std::fprintf(stderr,"BASELINE_REPEAT_MISMATCH case=%s step=%d\n",id.c_str(),step);return 1;}
-                const int token=int(std::max_element(x.begin(),x.end())-x.begin());decisions<<token<<'\n';
-                if(step==16)break;
+                const int token=int(std::max_element(x.begin(),x.end())-x.begin());decisions<<token<<'\n';trial_decisions.push_back(token);
+                if(step==steps)break;
                 if(trial==0)reference_tokens.push_back(token);
                 // Score identical continuation tokens; divergent decisions are preserved in files.
                 if(!m.step(reference_tokens[size_t(step)],true,err)){std::fprintf(stderr,"%s\n",err.c_str());return 1;}
             }
             if(!decisions)return 1;
-            std::fprintf(stderr,"YOCO_CASE case=%s chunk=%d trial=%d mode=%d new_tokens=%zu prefix_tokens=%zu plans=%llu prefill_ms=%.3f teacher_forced_steps=16 finite=1 baseline_repeat_checked=%d\n",id.c_str(),chunk,trial,mode,input.size(),prefix.size(),(unsigned long long)plans,ms,int(trial==2));std::fflush(stderr);
+            const auto eos=std::find(reference_tokens.begin(),reference_tokens.end(),1);
+            const size_t stop=std::min(size_t(steps),size_t(eos-reference_tokens.begin())+(eos!=reference_tokens.end()));
+            bool same=true;
+            for(size_t i=0;i<stop;++i)same=same&&trial_decisions[i]==reference_tokens[i];
+            std::vector<int> free_tokens;std::string free_source;
+            if(trial!=1 || same){
+                free_tokens.assign(trial_decisions.begin(),trial_decisions.begin()+stop);
+                free_source=trial==1?"matching_decisions_through_EOS":"baseline_greedy_path";
+            } else {
+                // Divergent teacher-forced decisions do not establish the candidate's
+                // free response. Rebuild its own state and generate independently.
+                std::fprintf(stderr,"YOCO_FREE_BEGIN case=%s trial=%d\n",id.c_str(),trial);std::fflush(stderr);
+                if(!m.benchmark_prompt_skip_mode(0))return 1;m.reset();
+                if(!prefix.empty()&&!m.feed(prefix.data(),int(prefix.size()),1,err)){std::fprintf(stderr,"%s\n",err.c_str());return 1;}
+                if(!m.benchmark_prompt_skip_mode(mode)||!m.feed(input.data(),int(input.size()),1,err)){std::fprintf(stderr,"%s\n",err.c_str());return 1;}
+                for(int i=0;i<steps;++i){
+                    std::vector<float> x;if(!logits(x))return 1;
+                    const int token=int(std::max_element(x.begin(),x.end())-x.begin());free_tokens.push_back(token);
+                    if(token==1)break;
+                    if(!m.step(token,true,err)){std::fprintf(stderr,"%s\n",err.c_str());return 1;}
+                }
+                free_source="independent_free_generation";
+            }
+            std::ofstream free_file(root+"/"+id+"-trial"+std::to_string(trial)+"-free-tokens.txt");
+            for(int token:free_tokens)free_file<<token<<'\n';if(!free_file)return 1;
+            std::ofstream source_file(root+"/"+id+"-trial"+std::to_string(trial)+"-free-source.txt");source_file<<free_source<<'\n';if(!source_file)return 1;
+            std::fprintf(stderr,"YOCO_CASE case=%s chunk=%d trial=%d mode=%d new_tokens=%zu prefix_tokens=%zu plans=%llu prefill_ms=%.3f teacher_forced_steps=%d finite=1 baseline_repeat_checked=%d\n",id.c_str(),chunk,trial,mode,input.size(),prefix.size(),(unsigned long long)plans,ms,steps,int(trial==2));std::fflush(stderr);
             if(m.stats().swaps||m.stats().ram_moves)return 1;
         }
     }

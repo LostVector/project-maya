@@ -1,0 +1,11 @@
+{
+  "status": "retrieval4of4_both_aligned_cut65states_exact",
+  "baseline_correct": 4,
+  "candidate_correct": 4,
+  "regressions": [],
+  "source": "Production Model/header/kernels identical toPR30; only native continuation budget/free-response evidence expanded.",
+  "coverage": "Early and middle skipped-prefix facts,cached-prefix fact,and4448/chunk1024 exact cut-row0. Each correct answer contains region plus6 nonce codes.",
+  "numerics": "All65 greedy decisions match in each case. Partial-cut final rowKL2.1e-6\u20133.4e-6; maxthroughEOS3.82e-4. PostEOSmaxKL0.0332 retained. Aligned case65/65snapshotbit-exact.",
+  "limits": "Four original synthetic tasks,not broad quality. Independent fallback regeneration code built but not exercised because decisions throughEOS matched in every case. Matrix-combined pruning and32K remain untested. No controlled performance or serving enablement.",
+  "hypothesis": "Whole-chunk shape hypothesis recorded before aligned data review,supported by one aligned case; no general parity claim."
+}

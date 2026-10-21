@@ -1,0 +1,7 @@
+{
+  "hypothesis_record": "/home/rkuo/research/llm-weight-compression/_meta/maya-long-prompt-context-20261020/aligned-shape-hypothesis.json",
+  "result": "Supported in existing aligned case: actual cut_row0 logged; all65 candidate rows byte-identical to baseline. Partial-cut cases show small nonzero drift.",
+  "independent_boundary_review": "Rehashed aligned snapshots0,26,64 independently; exact. All candidate/stopping tokens identical on4 retrieval tasks, expected region and6 nonce codes correct.",
+  "limits": "One aligned input with FMA kernels does not prove general parity, matrix-combined parity, cache-resume behavior or whole-chunk latency tradeoff.",
+  "next_action": "Implement optional whole-chunk cutoff and validate across same fixed retrieval suite and longer contexts before selecting controlled timing strategy."
+}
