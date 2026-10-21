@@ -1,0 +1,38 @@
+{
+  "scope": "Singlefresh model,frozenprofile,32K nativefeed screen only;not API or independentload inference",
+  "warmups_excluded": 2,
+  "timed_pairs": [
+    {
+      "rep": 0,
+      "control_ms": 32524.963895,
+      "candidate_ms": 31983.134108,
+      "latency_reduction_percent": 1.6658889730029713
+    },
+    {
+      "rep": 1,
+      "control_ms": 32498.302852,
+      "candidate_ms": 31967.409345,
+      "latency_reduction_percent": 1.6336037897663025
+    },
+    {
+      "rep": 2,
+      "control_ms": 32517.687154,
+      "candidate_ms": 31970.915978,
+      "latency_reduction_percent": 1.6814577660783647
+    },
+    {
+      "rep": 3,
+      "control_ms": 32494.731007,
+      "candidate_ms": 31986.772748,
+      "latency_reduction_percent": 1.563201919999202
+    }
+  ],
+  "pooled_latency_reduction_percent": 1.636053003839033,
+  "control_native_tokens_per_second": 1007.9694669408109,
+  "candidate_native_tokens_per_second": 1024.7346692789288,
+  "positive_pairs": 4,
+  "all10_prefill_logits_exact": true,
+  "all10_routing_copy_counters_identical": true,
+  "promising_for_API_screen": true,
+  "limits": "Time includesModel.feed,not tokenization/HTTP/decode;warmups retained;four temporallycorrelatedpairs. No newservingacceptance."
+}

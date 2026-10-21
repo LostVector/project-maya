@@ -1,0 +1,197 @@
+YOCO_TEST_SETTINGS matrix=1 performance=0
+ds4: exact peer prefill all-reduce enabled on HIP0/HIP1 (160 MiB/rank)
+YOCO_LOAD_READY chunk=4096
+YOCO_BEGIN case=study_8k trial=0 mode=1
+YOCO_PLAN n=8192 offset=0 layer=20 keep=2668 cut_chunk=1 cut_row=0 skipped_rows=4096 whole_chunks=1 retained_rows=4096
+EXL3_PREDECODE gpu=0 scratch_bytes=106168320
+EXL3_PREDECODE gpu=1 scratch_bytes=106168320
+ds4 prompt batches, CUDA0: 9377 experts copied, 6813 unpicked experts skipped
+DS4_PREFILL gpu=0 tokens=8192 chunk=4096 expert_row_picks=1376256 vram_row_picks=688549 unique_expert_uses=13358 vram_unique_expert_uses=3981 streamed_weight_bytes=72312877824
+ds4 prompt batches, CUDA1: 9377 experts copied, 6813 unpicked experts skipped
+DS4_PREFILL gpu=1 tokens=8192 chunk=4096 expert_row_picks=1376256 vram_row_picks=688549 unique_expert_uses=13358 vram_unique_expert_uses=3981 streamed_weight_bytes=72312877824
+ds4 prompt batches, CUDA2: 511 experts copied, 355 unpicked experts skipped
+DS4_PREFILL gpu=2 tokens=8192 chunk=4096 expert_row_picks=98304 vram_row_picks=61319 unique_expert_uses=1031 vram_unique_expert_uses=520 streamed_weight_bytes=9064763904
+YOCO_CASE case=study_8k chunk=4096 trial=0 mode=1 new_tokens=8192 prefix_tokens=0 plans=1 prefill_ms=24929.568 teacher_forced_steps=64 finite=1 baseline_repeat_checked=0
+YOCO_BEGIN case=study_8k trial=1 mode=1
+YOCO_PLAN n=8192 offset=0 layer=20 keep=2668 cut_chunk=1 cut_row=0 skipped_rows=4096 whole_chunks=1 retained_rows=4096
+ds4 prompt batches, CUDA0: 9377 experts copied, 6813 unpicked experts skipped
+DS4_PREFILL gpu=0 tokens=8192 chunk=4096 expert_row_picks=1376256 vram_row_picks=688549 unique_expert_uses=13358 vram_unique_expert_uses=3981 streamed_weight_bytes=72312877824
+ds4 prompt batches, CUDA1: 9377 experts copied, 6813 unpicked experts skipped
+DS4_PREFILL gpu=1 tokens=8192 chunk=4096 expert_row_picks=1376256 vram_row_picks=688549 unique_expert_uses=13358 vram_unique_expert_uses=3981 streamed_weight_bytes=72312877824
+ds4 prompt batches, CUDA2: 511 experts copied, 355 unpicked experts skipped
+DS4_PREFILL gpu=2 tokens=8192 chunk=4096 expert_row_picks=98304 vram_row_picks=61319 unique_expert_uses=1031 vram_unique_expert_uses=520 streamed_weight_bytes=9064763904
+YOCO_CASE case=study_8k chunk=4096 trial=1 mode=1 new_tokens=8192 prefix_tokens=0 plans=1 prefill_ms=11613.952 teacher_forced_steps=64 finite=1 baseline_repeat_checked=0
+YOCO_BEGIN case=study_8k trial=2 mode=1
+YOCO_PLAN n=8192 offset=0 layer=20 keep=2668 cut_chunk=1 cut_row=0 skipped_rows=4096 whole_chunks=1 retained_rows=4096
+ds4 prompt batches, CUDA0: 9377 experts copied, 6813 unpicked experts skipped
+DS4_PREFILL gpu=0 tokens=8192 chunk=4096 expert_row_picks=1376256 vram_row_picks=688549 unique_expert_uses=13358 vram_unique_expert_uses=3981 streamed_weight_bytes=72312877824
+ds4 prompt batches, CUDA1: 9377 experts copied, 6813 unpicked experts skipped
+DS4_PREFILL gpu=1 tokens=8192 chunk=4096 expert_row_picks=1376256 vram_row_picks=688549 unique_expert_uses=13358 vram_unique_expert_uses=3981 streamed_weight_bytes=72312877824
+ds4 prompt batches, CUDA2: 511 experts copied, 355 unpicked experts skipped
+DS4_PREFILL gpu=2 tokens=8192 chunk=4096 expert_row_picks=98304 vram_row_picks=61319 unique_expert_uses=1031 vram_unique_expert_uses=520 streamed_weight_bytes=9064763904
+YOCO_CASE case=study_8k chunk=4096 trial=2 mode=1 new_tokens=8192 prefix_tokens=0 plans=1 prefill_ms=11712.428 teacher_forced_steps=64 finite=1 baseline_repeat_checked=1
+YOCO_BEGIN case=study_32k trial=0 mode=1
+YOCO_PLAN n=32768 offset=0 layer=20 keep=2668 cut_chunk=7 cut_row=0 skipped_rows=28672 whole_chunks=1 retained_rows=4096
+ds4 prompt batches, CUDA0: 27759 experts copied, 23081 unpicked experts skipped
+DS4_PREFILL gpu=0 tokens=32768 chunk=4096 expert_row_picks=4325376 vram_row_picks=1880068 unique_expert_uses=38800 vram_unique_expert_uses=11041 streamed_weight_bytes=214108962048
+ds4 prompt batches, CUDA1: 27759 experts copied, 23081 unpicked experts skipped
+DS4_PREFILL gpu=1 tokens=32768 chunk=4096 expert_row_picks=4325376 vram_row_picks=1880068 unique_expert_uses=38800 vram_unique_expert_uses=11041 streamed_weight_bytes=214108962048
+ds4 prompt batches, CUDA2: 511 experts copied, 355 unpicked experts skipped
+DS4_PREFILL gpu=2 tokens=32768 chunk=4096 expert_row_picks=98304 vram_row_picks=60685 unique_expert_uses=1035 vram_unique_expert_uses=524 streamed_weight_bytes=9064763904
+YOCO_CASE case=study_32k chunk=4096 trial=0 mode=1 new_tokens=32768 prefix_tokens=0 plans=1 prefill_ms=35769.224 teacher_forced_steps=64 finite=1 baseline_repeat_checked=0
+YOCO_BEGIN case=study_32k trial=1 mode=1
+YOCO_PLAN n=32768 offset=0 layer=20 keep=2668 cut_chunk=7 cut_row=0 skipped_rows=28672 whole_chunks=1 retained_rows=4096
+ds4 prompt batches, CUDA0: 27759 experts copied, 23081 unpicked experts skipped
+DS4_PREFILL gpu=0 tokens=32768 chunk=4096 expert_row_picks=4325376 vram_row_picks=1880068 unique_expert_uses=38800 vram_unique_expert_uses=11041 streamed_weight_bytes=214108962048
+ds4 prompt batches, CUDA1: 27759 experts copied, 23081 unpicked experts skipped
+DS4_PREFILL gpu=1 tokens=32768 chunk=4096 expert_row_picks=4325376 vram_row_picks=1880068 unique_expert_uses=38800 vram_unique_expert_uses=11041 streamed_weight_bytes=214108962048
+ds4 prompt batches, CUDA2: 511 experts copied, 355 unpicked experts skipped
+DS4_PREFILL gpu=2 tokens=32768 chunk=4096 expert_row_picks=98304 vram_row_picks=60685 unique_expert_uses=1035 vram_unique_expert_uses=524 streamed_weight_bytes=9064763904
+YOCO_CASE case=study_32k chunk=4096 trial=1 mode=1 new_tokens=32768 prefix_tokens=0 plans=1 prefill_ms=31785.863 teacher_forced_steps=64 finite=1 baseline_repeat_checked=0
+YOCO_BEGIN case=study_32k trial=2 mode=1
+YOCO_PLAN n=32768 offset=0 layer=20 keep=2668 cut_chunk=7 cut_row=0 skipped_rows=28672 whole_chunks=1 retained_rows=4096
+ds4 prompt batches, CUDA0: 27759 experts copied, 23081 unpicked experts skipped
+DS4_PREFILL gpu=0 tokens=32768 chunk=4096 expert_row_picks=4325376 vram_row_picks=1880068 unique_expert_uses=38800 vram_unique_expert_uses=11041 streamed_weight_bytes=214108962048
+ds4 prompt batches, CUDA1: 27759 experts copied, 23081 unpicked experts skipped
+DS4_PREFILL gpu=1 tokens=32768 chunk=4096 expert_row_picks=4325376 vram_row_picks=1880068 unique_expert_uses=38800 vram_unique_expert_uses=11041 streamed_weight_bytes=214108962048
+ds4 prompt batches, CUDA2: 511 experts copied, 355 unpicked experts skipped
+DS4_PREFILL gpu=2 tokens=32768 chunk=4096 expert_row_picks=98304 vram_row_picks=60685 unique_expert_uses=1035 vram_unique_expert_uses=524 streamed_weight_bytes=9064763904
+YOCO_CASE case=study_32k chunk=4096 trial=2 mode=1 new_tokens=32768 prefix_tokens=0 plans=1 prefill_ms=32237.586 teacher_forced_steps=64 finite=1 baseline_repeat_checked=1
+YOCO_PLAN n=8192 offset=0 layer=20 keep=2668 cut_chunk=1 cut_row=0 skipped_rows=4096 whole_chunks=1 retained_rows=4096
+ds4 prompt batches, CUDA0: 8612 experts copied, 7578 unpicked experts skipped
+DS4_PREFILL gpu=0 tokens=8192 chunk=4096 expert_row_picks=1376256 vram_row_picks=692130 unique_expert_uses=12234 vram_unique_expert_uses=3622 streamed_weight_bytes=66387323904
+ds4 prompt batches, CUDA1: 8612 experts copied, 7578 unpicked experts skipped
+DS4_PREFILL gpu=1 tokens=8192 chunk=4096 expert_row_picks=1376256 vram_row_picks=692130 unique_expert_uses=12234 vram_unique_expert_uses=3622 streamed_weight_bytes=66387323904
+ds4 prompt batches, CUDA2: 460 experts copied, 406 unpicked experts skipped
+DS4_PREFILL gpu=2 tokens=8192 chunk=4096 expert_row_picks=98304 vram_row_picks=61436 unique_expert_uses=872 vram_unique_expert_uses=412 streamed_weight_bytes=8160061440
+YOCO_BEGIN case=resume_pruned_prefix trial=0 mode=1
+ds4 prompt batches, CUDA1: 4789 experts copied, 5626 unpicked experts skipped
+DS4_PREFILL gpu=1 tokens=512 chunk=4096 expert_row_picks=110592 vram_row_picks=57850 unique_expert_uses=7186 vram_unique_expert_uses=2397 streamed_weight_bytes=36761841408
+ds4 prompt batches, CUDA0: 4789 experts copied, 5626 unpicked experts skipped
+DS4_PREFILL gpu=0 tokens=512 chunk=4096 expert_row_picks=110592 vram_row_picks=57850 unique_expert_uses=7186 vram_unique_expert_uses=2397 streamed_weight_bytes=36761841408
+ds4 prompt batches, CUDA2: 386 experts copied, 480 unpicked experts skipped
+DS4_PREFILL gpu=2 tokens=512 chunk=4096 expert_row_picks=12288 vram_row_picks=7702 unique_expert_uses=850 vram_unique_expert_uses=464 streamed_weight_bytes=6847355904
+YOCO_CASE case=resume_pruned_prefix chunk=4096 trial=0 mode=1 new_tokens=512 prefix_tokens=8192 plans=0 prefill_ms=3780.162 teacher_forced_steps=64 finite=1 baseline_repeat_checked=0
+YOCO_PLAN n=8192 offset=0 layer=20 keep=2668 cut_chunk=1 cut_row=0 skipped_rows=4096 whole_chunks=1 retained_rows=4096
+ds4 prompt batches, CUDA0: 8612 experts copied, 7578 unpicked experts skipped
+DS4_PREFILL gpu=0 tokens=8192 chunk=4096 expert_row_picks=1376256 vram_row_picks=692130 unique_expert_uses=12234 vram_unique_expert_uses=3622 streamed_weight_bytes=66387323904
+ds4 prompt batches, CUDA1: 8612 experts copied, 7578 unpicked experts skipped
+DS4_PREFILL gpu=1 tokens=8192 chunk=4096 expert_row_picks=1376256 vram_row_picks=692130 unique_expert_uses=12234 vram_unique_expert_uses=3622 streamed_weight_bytes=66387323904
+ds4 prompt batches, CUDA2: 460 experts copied, 406 unpicked experts skipped
+DS4_PREFILL gpu=2 tokens=8192 chunk=4096 expert_row_picks=98304 vram_row_picks=61436 unique_expert_uses=872 vram_unique_expert_uses=412 streamed_weight_bytes=8160061440
+YOCO_BEGIN case=resume_pruned_prefix trial=1 mode=1
+ds4 prompt batches, CUDA1: 4789 experts copied, 5626 unpicked experts skipped
+DS4_PREFILL gpu=1 tokens=512 chunk=4096 expert_row_picks=110592 vram_row_picks=57850 unique_expert_uses=7186 vram_unique_expert_uses=2397 streamed_weight_bytes=36761841408
+ds4 prompt batches, CUDA0: 4789 experts copied, 5626 unpicked experts skipped
+DS4_PREFILL gpu=0 tokens=512 chunk=4096 expert_row_picks=110592 vram_row_picks=57850 unique_expert_uses=7186 vram_unique_expert_uses=2397 streamed_weight_bytes=36761841408
+ds4 prompt batches, CUDA2: 386 experts copied, 480 unpicked experts skipped
+DS4_PREFILL gpu=2 tokens=512 chunk=4096 expert_row_picks=12288 vram_row_picks=7702 unique_expert_uses=850 vram_unique_expert_uses=464 streamed_weight_bytes=6847355904
+YOCO_CASE case=resume_pruned_prefix chunk=4096 trial=1 mode=1 new_tokens=512 prefix_tokens=8192 plans=0 prefill_ms=3763.299 teacher_forced_steps=64 finite=1 baseline_repeat_checked=0
+YOCO_PLAN n=8192 offset=0 layer=20 keep=2668 cut_chunk=1 cut_row=0 skipped_rows=4096 whole_chunks=1 retained_rows=4096
+ds4 prompt batches, CUDA0: 8612 experts copied, 7578 unpicked experts skipped
+DS4_PREFILL gpu=0 tokens=8192 chunk=4096 expert_row_picks=1376256 vram_row_picks=692130 unique_expert_uses=12234 vram_unique_expert_uses=3622 streamed_weight_bytes=66387323904
+ds4 prompt batches, CUDA1: 8612 experts copied, 7578 unpicked experts skipped
+DS4_PREFILL gpu=1 tokens=8192 chunk=4096 expert_row_picks=1376256 vram_row_picks=692130 unique_expert_uses=12234 vram_unique_expert_uses=3622 streamed_weight_bytes=66387323904
+ds4 prompt batches, CUDA2: 460 experts copied, 406 unpicked experts skipped
+DS4_PREFILL gpu=2 tokens=8192 chunk=4096 expert_row_picks=98304 vram_row_picks=61436 unique_expert_uses=872 vram_unique_expert_uses=412 streamed_weight_bytes=8160061440
+YOCO_BEGIN case=resume_pruned_prefix trial=2 mode=1
+ds4 prompt batches, CUDA1: 4789 experts copied, 5626 unpicked experts skipped
+DS4_PREFILL gpu=1 tokens=512 chunk=4096 expert_row_picks=110592 vram_row_picks=57850 unique_expert_uses=7186 vram_unique_expert_uses=2397 streamed_weight_bytes=36761841408
+ds4 prompt batches, CUDA0: 4789 experts copied, 5626 unpicked experts skipped
+DS4_PREFILL gpu=0 tokens=512 chunk=4096 expert_row_picks=110592 vram_row_picks=57850 unique_expert_uses=7186 vram_unique_expert_uses=2397 streamed_weight_bytes=36761841408
+ds4 prompt batches, CUDA2: 386 experts copied, 480 unpicked experts skipped
+DS4_PREFILL gpu=2 tokens=512 chunk=4096 expert_row_picks=12288 vram_row_picks=7702 unique_expert_uses=850 vram_unique_expert_uses=464 streamed_weight_bytes=6847355904
+YOCO_CASE case=resume_pruned_prefix chunk=4096 trial=2 mode=1 new_tokens=512 prefix_tokens=8192 plans=0 prefill_ms=3764.801 teacher_forced_steps=64 finite=1 baseline_repeat_checked=1
+COMBINE_PREFLIGHT_READY
+COMBINE_PERF_BEGIN rep=-1 mode=0
+YOCO_PLAN n=32768 offset=0 layer=20 keep=2668 cut_chunk=7 cut_row=0 skipped_rows=28672 whole_chunks=1 retained_rows=4096
+ds4 prompt batches, CUDA0: 27759 experts copied, 23081 unpicked experts skipped
+DS4_PREFILL gpu=0 tokens=32768 chunk=4096 expert_row_picks=4325376 vram_row_picks=1880068 unique_expert_uses=38800 vram_unique_expert_uses=11041 streamed_weight_bytes=214108962048
+ds4 prompt batches, CUDA1: 27759 experts copied, 23081 unpicked experts skipped
+DS4_PREFILL gpu=1 tokens=32768 chunk=4096 expert_row_picks=4325376 vram_row_picks=1880068 unique_expert_uses=38800 vram_unique_expert_uses=11041 streamed_weight_bytes=214108962048
+ds4 prompt batches, CUDA2: 511 experts copied, 355 unpicked experts skipped
+DS4_PREFILL gpu=2 tokens=32768 chunk=4096 expert_row_picks=98304 vram_row_picks=60685 unique_expert_uses=1035 vram_unique_expert_uses=524 streamed_weight_bytes=9064763904
+COMBINE_PERF_END rep=-1 mode=0 ms=32392.594524000 exact=1
+COMBINE_PERF_BEGIN rep=-1 mode=2
+YOCO_PLAN n=32768 offset=0 layer=20 keep=2668 cut_chunk=7 cut_row=0 skipped_rows=28672 whole_chunks=1 retained_rows=4096
+ds4 prompt batches, CUDA0: 27759 experts copied, 23081 unpicked experts skipped
+DS4_PREFILL gpu=0 tokens=32768 chunk=4096 expert_row_picks=4325376 vram_row_picks=1880068 unique_expert_uses=38800 vram_unique_expert_uses=11041 streamed_weight_bytes=214108962048
+ds4 prompt batches, CUDA1: 27759 experts copied, 23081 unpicked experts skipped
+DS4_PREFILL gpu=1 tokens=32768 chunk=4096 expert_row_picks=4325376 vram_row_picks=1880068 unique_expert_uses=38800 vram_unique_expert_uses=11041 streamed_weight_bytes=214108962048
+ds4 prompt batches, CUDA2: 511 experts copied, 355 unpicked experts skipped
+DS4_PREFILL gpu=2 tokens=32768 chunk=4096 expert_row_picks=98304 vram_row_picks=60685 unique_expert_uses=1035 vram_unique_expert_uses=524 streamed_weight_bytes=9064763904
+COMBINE_PERF_END rep=-1 mode=2 ms=32119.710278000 exact=1
+COMBINE_PERF_BEGIN rep=0 mode=0
+YOCO_PLAN n=32768 offset=0 layer=20 keep=2668 cut_chunk=7 cut_row=0 skipped_rows=28672 whole_chunks=1 retained_rows=4096
+ds4 prompt batches, CUDA0: 27759 experts copied, 23081 unpicked experts skipped
+DS4_PREFILL gpu=0 tokens=32768 chunk=4096 expert_row_picks=4325376 vram_row_picks=1880068 unique_expert_uses=38800 vram_unique_expert_uses=11041 streamed_weight_bytes=214108962048
+ds4 prompt batches, CUDA1: 27759 experts copied, 23081 unpicked experts skipped
+DS4_PREFILL gpu=1 tokens=32768 chunk=4096 expert_row_picks=4325376 vram_row_picks=1880068 unique_expert_uses=38800 vram_unique_expert_uses=11041 streamed_weight_bytes=214108962048
+ds4 prompt batches, CUDA2: 511 experts copied, 355 unpicked experts skipped
+DS4_PREFILL gpu=2 tokens=32768 chunk=4096 expert_row_picks=98304 vram_row_picks=60685 unique_expert_uses=1035 vram_unique_expert_uses=524 streamed_weight_bytes=9064763904
+COMBINE_PERF_END rep=0 mode=0 ms=32524.963895000 exact=1
+COMBINE_PERF_BEGIN rep=0 mode=2
+YOCO_PLAN n=32768 offset=0 layer=20 keep=2668 cut_chunk=7 cut_row=0 skipped_rows=28672 whole_chunks=1 retained_rows=4096
+ds4 prompt batches, CUDA0: 27759 experts copied, 23081 unpicked experts skipped
+DS4_PREFILL gpu=0 tokens=32768 chunk=4096 expert_row_picks=4325376 vram_row_picks=1880068 unique_expert_uses=38800 vram_unique_expert_uses=11041 streamed_weight_bytes=214108962048
+ds4 prompt batches, CUDA1: 27759 experts copied, 23081 unpicked experts skipped
+DS4_PREFILL gpu=1 tokens=32768 chunk=4096 expert_row_picks=4325376 vram_row_picks=1880068 unique_expert_uses=38800 vram_unique_expert_uses=11041 streamed_weight_bytes=214108962048
+ds4 prompt batches, CUDA2: 511 experts copied, 355 unpicked experts skipped
+DS4_PREFILL gpu=2 tokens=32768 chunk=4096 expert_row_picks=98304 vram_row_picks=60685 unique_expert_uses=1035 vram_unique_expert_uses=524 streamed_weight_bytes=9064763904
+COMBINE_PERF_END rep=0 mode=2 ms=31983.134108000 exact=1
+COMBINE_PERF_BEGIN rep=1 mode=2
+YOCO_PLAN n=32768 offset=0 layer=20 keep=2668 cut_chunk=7 cut_row=0 skipped_rows=28672 whole_chunks=1 retained_rows=4096
+ds4 prompt batches, CUDA0: 27759 experts copied, 23081 unpicked experts skipped
+DS4_PREFILL gpu=0 tokens=32768 chunk=4096 expert_row_picks=4325376 vram_row_picks=1880068 unique_expert_uses=38800 vram_unique_expert_uses=11041 streamed_weight_bytes=214108962048
+ds4 prompt batches, CUDA1: 27759 experts copied, 23081 unpicked experts skipped
+DS4_PREFILL gpu=1 tokens=32768 chunk=4096 expert_row_picks=4325376 vram_row_picks=1880068 unique_expert_uses=38800 vram_unique_expert_uses=11041 streamed_weight_bytes=214108962048
+ds4 prompt batches, CUDA2: 511 experts copied, 355 unpicked experts skipped
+DS4_PREFILL gpu=2 tokens=32768 chunk=4096 expert_row_picks=98304 vram_row_picks=60685 unique_expert_uses=1035 vram_unique_expert_uses=524 streamed_weight_bytes=9064763904
+COMBINE_PERF_END rep=1 mode=2 ms=31967.409345000 exact=1
+COMBINE_PERF_BEGIN rep=1 mode=0
+YOCO_PLAN n=32768 offset=0 layer=20 keep=2668 cut_chunk=7 cut_row=0 skipped_rows=28672 whole_chunks=1 retained_rows=4096
+ds4 prompt batches, CUDA0: 27759 experts copied, 23081 unpicked experts skipped
+DS4_PREFILL gpu=0 tokens=32768 chunk=4096 expert_row_picks=4325376 vram_row_picks=1880068 unique_expert_uses=38800 vram_unique_expert_uses=11041 streamed_weight_bytes=214108962048
+ds4 prompt batches, CUDA1: 27759 experts copied, 23081 unpicked experts skipped
+DS4_PREFILL gpu=1 tokens=32768 chunk=4096 expert_row_picks=4325376 vram_row_picks=1880068 unique_expert_uses=38800 vram_unique_expert_uses=11041 streamed_weight_bytes=214108962048
+ds4 prompt batches, CUDA2: 511 experts copied, 355 unpicked experts skipped
+DS4_PREFILL gpu=2 tokens=32768 chunk=4096 expert_row_picks=98304 vram_row_picks=60685 unique_expert_uses=1035 vram_unique_expert_uses=524 streamed_weight_bytes=9064763904
+COMBINE_PERF_END rep=1 mode=0 ms=32498.302852000 exact=1
+COMBINE_PERF_BEGIN rep=2 mode=0
+YOCO_PLAN n=32768 offset=0 layer=20 keep=2668 cut_chunk=7 cut_row=0 skipped_rows=28672 whole_chunks=1 retained_rows=4096
+ds4 prompt batches, CUDA0: 27759 experts copied, 23081 unpicked experts skipped
+DS4_PREFILL gpu=0 tokens=32768 chunk=4096 expert_row_picks=4325376 vram_row_picks=1880068 unique_expert_uses=38800 vram_unique_expert_uses=11041 streamed_weight_bytes=214108962048
+ds4 prompt batches, CUDA1: 27759 experts copied, 23081 unpicked experts skipped
+DS4_PREFILL gpu=1 tokens=32768 chunk=4096 expert_row_picks=4325376 vram_row_picks=1880068 unique_expert_uses=38800 vram_unique_expert_uses=11041 streamed_weight_bytes=214108962048
+ds4 prompt batches, CUDA2: 511 experts copied, 355 unpicked experts skipped
+DS4_PREFILL gpu=2 tokens=32768 chunk=4096 expert_row_picks=98304 vram_row_picks=60685 unique_expert_uses=1035 vram_unique_expert_uses=524 streamed_weight_bytes=9064763904
+COMBINE_PERF_END rep=2 mode=0 ms=32517.687154000 exact=1
+COMBINE_PERF_BEGIN rep=2 mode=2
+YOCO_PLAN n=32768 offset=0 layer=20 keep=2668 cut_chunk=7 cut_row=0 skipped_rows=28672 whole_chunks=1 retained_rows=4096
+ds4 prompt batches, CUDA0: 27759 experts copied, 23081 unpicked experts skipped
+DS4_PREFILL gpu=0 tokens=32768 chunk=4096 expert_row_picks=4325376 vram_row_picks=1880068 unique_expert_uses=38800 vram_unique_expert_uses=11041 streamed_weight_bytes=214108962048
+ds4 prompt batches, CUDA1: 27759 experts copied, 23081 unpicked experts skipped
+DS4_PREFILL gpu=1 tokens=32768 chunk=4096 expert_row_picks=4325376 vram_row_picks=1880068 unique_expert_uses=38800 vram_unique_expert_uses=11041 streamed_weight_bytes=214108962048
+ds4 prompt batches, CUDA2: 511 experts copied, 355 unpicked experts skipped
+DS4_PREFILL gpu=2 tokens=32768 chunk=4096 expert_row_picks=98304 vram_row_picks=60685 unique_expert_uses=1035 vram_unique_expert_uses=524 streamed_weight_bytes=9064763904
+COMBINE_PERF_END rep=2 mode=2 ms=31970.915978000 exact=1
+COMBINE_PERF_BEGIN rep=3 mode=2
+YOCO_PLAN n=32768 offset=0 layer=20 keep=2668 cut_chunk=7 cut_row=0 skipped_rows=28672 whole_chunks=1 retained_rows=4096
+ds4 prompt batches, CUDA0: 27759 experts copied, 23081 unpicked experts skipped
+DS4_PREFILL gpu=0 tokens=32768 chunk=4096 expert_row_picks=4325376 vram_row_picks=1880068 unique_expert_uses=38800 vram_unique_expert_uses=11041 streamed_weight_bytes=214108962048
+ds4 prompt batches, CUDA1: 27759 experts copied, 23081 unpicked experts skipped
+DS4_PREFILL gpu=1 tokens=32768 chunk=4096 expert_row_picks=4325376 vram_row_picks=1880068 unique_expert_uses=38800 vram_unique_expert_uses=11041 streamed_weight_bytes=214108962048
+ds4 prompt batches, CUDA2: 511 experts copied, 355 unpicked experts skipped
+DS4_PREFILL gpu=2 tokens=32768 chunk=4096 expert_row_picks=98304 vram_row_picks=60685 unique_expert_uses=1035 vram_unique_expert_uses=524 streamed_weight_bytes=9064763904
+COMBINE_PERF_END rep=3 mode=2 ms=31986.772748000 exact=1
+COMBINE_PERF_BEGIN rep=3 mode=0
+YOCO_PLAN n=32768 offset=0 layer=20 keep=2668 cut_chunk=7 cut_row=0 skipped_rows=28672 whole_chunks=1 retained_rows=4096
+ds4 prompt batches, CUDA0: 27759 experts copied, 23081 unpicked experts skipped
+DS4_PREFILL gpu=0 tokens=32768 chunk=4096 expert_row_picks=4325376 vram_row_picks=1880068 unique_expert_uses=38800 vram_unique_expert_uses=11041 streamed_weight_bytes=214108962048
+ds4 prompt batches, CUDA1: 27759 experts copied, 23081 unpicked experts skipped
+DS4_PREFILL gpu=1 tokens=32768 chunk=4096 expert_row_picks=4325376 vram_row_picks=1880068 unique_expert_uses=38800 vram_unique_expert_uses=11041 streamed_weight_bytes=214108962048
+ds4 prompt batches, CUDA2: 511 experts copied, 355 unpicked experts skipped
+DS4_PREFILL gpu=2 tokens=32768 chunk=4096 expert_row_picks=98304 vram_row_picks=60685 unique_expert_uses=1035 vram_unique_expert_uses=524 streamed_weight_bytes=9064763904
+COMBINE_PERF_END rep=3 mode=0 ms=32494.731007000 exact=1
+COMBINE_PERF_COMPLETE samples=10
+COMBINE_VALIDATION_COMPLETE finite=1 candidate_and_repeat_exact=1

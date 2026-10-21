@@ -1820,19 +1820,44 @@ __global__ void bounds_scan_kernel(int* bounds, int n_vs) {   // one thread: bou
     for (int s = 0; s < n_vs; ++s) bounds[s + 1] += bounds[s];
 }
 
+template <bool Lazy = false>
 __global__ void moe_combine_kernel(float* acc, const float* __restrict__ y, const int* __restrict__ pos,
                                    const float* __restrict__ w, int k, int r0, int r1, int dim) {
     const int e = blockIdx.x * blockDim.x + threadIdx.x, t = blockIdx.y;
     if (e >= dim) return;
-    float a = acc[(size_t) t * dim + e];
+    float a = 0.0f;
+    if constexpr (!Lazy) a = acc[(size_t) t * dim + e];
     bool any = false;
     for (int i = 0; i < k; ++i) {
         const int r = pos[(size_t) t * kPicks + i];
         if (r < r0 || r >= r1) continue;
+        if constexpr (Lazy) if (!any) a = acc[(size_t) t * dim + e];
         a = __fmaf_rn(w[(size_t) t * kPicks + i], y[(size_t) (r - r0) * dim + e], a);
         any = true;
     }
     if (any) acc[(size_t) t * dim + e] = a;
+}
+
+// Same six FMAs in pick order, but resolve the token's batch membership before
+// reading its accumulator. The fixed metadata accesses can be combined by LLVM.
+__global__ void moe_combine6_kernel(float* acc, const float* __restrict__ y, const int* __restrict__ pos,
+                                    const float* __restrict__ w, int r0, int r1, int dim) {
+    const int e = blockIdx.x * blockDim.x + threadIdx.x, t = blockIdx.y;
+    if (e >= dim) return;
+    int rows[6];
+    unsigned mask = 0;
+#pragma unroll
+    for (int i = 0; i < 6; ++i) {
+        rows[i] = pos[(size_t) t * kPicks + i];
+        if (rows[i] >= r0 && rows[i] < r1) mask |= 1u << i;
+    }
+    if (!mask) return;
+    float a = acc[(size_t) t * dim + e];
+#pragma unroll
+    for (int i = 0; i < 6; ++i)
+        if (mask & (1u << i))
+            a = __fmaf_rn(w[(size_t) t * kPicks + i], y[(size_t) (rows[i] - r0) * dim + e], a);
+    acc[(size_t) t * dim + e] = a;
 }
 
 int cdiv(int a, int b) { return (a + b - 1) / b; }
@@ -1908,7 +1933,21 @@ void moe_sort(const int* idx, int T, int k, const int* vs, int n_vs, int* bounds
 }
 void moe_combine(float* acc, const float* y, const int* pos, const float* w, int T, int k, int r0, int r1, int dim,
                  cudaStream_t s) {
-    if (r1 > r0 && T > 0) moe_combine_kernel<<<dim3(cdiv(dim, kThreads), T), kThreads, 0, s>>>(acc, y, pos, w, k, r0, r1, dim);
+    if (r1 <= r0 || T <= 0) return;
+    const dim3 grid(cdiv(dim, kThreads), T);
+#if defined(STRATA_USE_HIP)
+    const char* opt = std::getenv("DS4_MOE_COMBINE_MODE");
+    const int mode = opt ? std::atoi(opt) : 0;
+    if (mode == 2 && k == 6) {
+        moe_combine6_kernel<<<grid, kThreads, 0, s>>>(acc, y, pos, w, r0, r1, dim);
+        return;
+    }
+    if (mode == 1) {
+        moe_combine_kernel<true><<<grid, kThreads, 0, s>>>(acc, y, pos, w, k, r0, r1, dim);
+        return;
+    }
+#endif
+    moe_combine_kernel<false><<<grid, kThreads, 0, s>>>(acc, y, pos, w, k, r0, r1, dim);
 }
 
 void gemv_f16(const uint16_t* W, const float* x, int n, int k, int T, float alpha, float* y, cudaStream_t s) {

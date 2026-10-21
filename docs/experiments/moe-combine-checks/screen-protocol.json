@@ -1,0 +1,25 @@
+{
+  "status": "frozen_before_measurement",
+  "device": 1,
+  "modes": {
+    "0": "original",
+    "1": "lazyfirsthitacc",
+    "2": "fixed6metadata_guard_unroll;otherkbaseline"
+  },
+  "cases": [
+    "sparse1",
+    "sparse10",
+    "half",
+    "full1",
+    "sparse10x3",
+    "dense6",
+    "no_hits",
+    "ragged_cpu",
+    "other_k",
+    "empty_range"
+  ],
+  "primary": "sparse1/sparse10,selectedT4096D5120k6;densecasesguardagainsttradeoffs",
+  "correctness": "30GPU comparisons,bitexactvsoriginal;CPUfma smallcases;finiteand4floatguardseachside",
+  "timing": "2warmups,12timed/option,alternateforward/reverse;256MiBcachelineeviction beforeeveryoption outsideGPUevents. Accumulators evolve(noresetincost). host_queue_wallincludespendingevictionandisnot kernel-only.",
+  "limits": "Syntheticoperatoronly;no newmodelgain/parity claim;nohit/emptycorrectnessstresscasesarenotrepresentativemodelbatches."
+}

@@ -1,0 +1,176 @@
+{
+  "scope": "Operator+strictnative+frozenprofilefeed screen;noAPIacceptance,notselectedserving",
+  "initial": {
+    "exit_code": 0,
+    "comparisons": 30,
+    "all_exact": true,
+    "isolated": true,
+    "before": {
+      "requests": 0,
+      "in_flight": 0,
+      "last_request_at": null
+    },
+    "after": {
+      "requests": 0,
+      "in_flight": 0,
+      "last_request_at": null
+    },
+    "binary_sha256": "5c16c7d8c926bbaddfaa4ea21322b058ec2e046983ae2051aaaaf7cf6ee2294a"
+  },
+  "confirmation": {
+    "results": [
+      {
+        "gpu": 1,
+        "comparisons": 30,
+        "all_exact": true,
+        "isolated": true,
+        "before": {
+          "requests": 0,
+          "in_flight": 0,
+          "last_request_at": null
+        },
+        "after": {
+          "requests": 0,
+          "in_flight": 0,
+          "last_request_at": null
+        },
+        "medians": {
+          "sparse1": {
+            "0": 0.1988414975,
+            "1": 0.193941496,
+            "2": 0.131801002
+          },
+          "sparse10": {
+            "0": 0.2129409985,
+            "1": 0.203601003,
+            "2": 0.1499409975
+          },
+          "half": {
+            "0": 0.29410199800000003,
+            "1": 0.275082007,
+            "2": 0.2529014945
+          },
+          "full1": {
+            "0": 0.423582509,
+            "1": 0.435863003,
+            "2": 0.4308824985
+          },
+          "sparse10x3": {
+            "0": 0.226781495,
+            "1": 0.2114809975,
+            "2": 0.164160997
+          },
+          "dense6": {
+            "0": 1.1078069849999999,
+            "1": 1.109607045,
+            "2": 1.108447015
+          }
+        }
+      },
+      {
+        "gpu": 0,
+        "comparisons": 30,
+        "all_exact": true,
+        "isolated": true,
+        "before": {
+          "requests": 0,
+          "in_flight": 0,
+          "last_request_at": null
+        },
+        "after": {
+          "requests": 0,
+          "in_flight": 0,
+          "last_request_at": null
+        },
+        "medians": {
+          "sparse1": {
+            "0": 0.296323001,
+            "1": 0.2907035055,
+            "2": 0.1873020005
+          },
+          "sparse10": {
+            "0": 0.207602501,
+            "1": 0.202642493,
+            "2": 0.1562219935
+          },
+          "half": {
+            "0": 0.32086300850000005,
+            "1": 0.314683497,
+            "2": 0.278243005
+          },
+          "full1": {
+            "0": 0.422604993,
+            "1": 0.43916499649999996,
+            "2": 0.4481649845
+          },
+          "sparse10x3": {
+            "0": 0.318662986,
+            "1": 0.309524,
+            "2": 0.2186225055
+          },
+          "dense6": {
+            "0": 1.09613204,
+            "1": 1.0980324750000001,
+            "2": 1.098012985
+          }
+        }
+      },
+      {
+        "gpu": 2,
+        "comparisons": 30,
+        "all_exact": true,
+        "isolated": true,
+        "before": {
+          "requests": 0,
+          "in_flight": 0,
+          "last_request_at": null
+        },
+        "after": {
+          "requests": 0,
+          "in_flight": 0,
+          "last_request_at": null
+        },
+        "medians": {
+          "sparse1": {
+            "0": 0.2053804995,
+            "1": 0.197600998,
+            "2": 0.136200495
+          },
+          "sparse10": {
+            "0": 0.2072409985,
+            "1": 0.19605999400000002,
+            "2": 0.150260001
+          },
+          "half": {
+            "0": 0.2940209955,
+            "1": 0.266001001,
+            "2": 0.2519809905
+          },
+          "full1": {
+            "0": 0.4266219885,
+            "1": 0.441681504,
+            "2": 0.437281996
+          },
+          "sparse10x3": {
+            "0": 0.22180099749999999,
+            "1": 0.2026204985,
+            "2": 0.161280498
+          },
+          "dense6": {
+            "0": 1.11358404,
+            "1": 1.10254401,
+            "2": 1.1143839949999998
+          }
+        }
+      }
+    ],
+    "all3_passed": true
+  },
+  "native_exit": {
+    "exit_code": 0,
+    "pid": 336346,
+    "swap_peak_kib": 0
+  },
+  "numerical_reference": "195priorselectedb49fullvocabulary stateSHA256values;optionalrawverification",
+  "limits": "120operatorcomparisonsincludesGPU1repeat;native4pairs onefrozenmodel correlated,10lastlogitsruntimecheckedbutindividualtimedvectorsnotdumped. ActualfreshloadAPIcomparisonseparateandpending."
+}
