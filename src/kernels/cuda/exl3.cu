@@ -1259,6 +1259,23 @@ __device__ __forceinline__ int hip_mma_row(int i, int hi) {
 }
 
 constexpr int kHipMatrixStride = kCols + 4; // 8-byte LDS row padding, separate from output layout.
+// Eight-byte alignment is retained by the padded row stride. Load exact FP16
+// operand bits in two64-bit pieces instead of eight scalar LDS halfword loads.
+__device__ __forceinline__ HipOperand hip_matrix_load_operand(const __half* p, bool valid) {
+    HipOperand value = {};
+    if (!valid) return value;
+    if constexpr (kHipOperand == 8) {
+        const uint2 lo = *reinterpret_cast<const uint2*>(p);
+        const uint2 hi = *reinterpret_cast<const uint2*>(p + 4);
+        const uint4 packed = make_uint4(lo.x, lo.y, hi.x, hi.y);
+        value = __builtin_bit_cast(HipOperand, packed);
+    } else {
+#pragma unroll
+        for (int i=0;i<kHipOperand;++i)
+            value[i]=__builtin_bit_cast(_Float16,__half_as_ushort(p[i]));
+    }
+    return value;
+}
 template <int K, int Rows = 16> struct HipMmaSmem {
     __half xb[Rows * kHipMatrixStride];
     float out[Rows * kCols];
@@ -1312,9 +1329,7 @@ __device__ void hip_block_wmma(const uint32_t* tr, int ld, int tc0, int k0, int 
             }
 #pragma unroll
             for (int m = 0; m < Rows / 16; ++m) {
-#pragma unroll
-                for (int i = 0; i < kHipOperand; ++i)
-                    av[i] = m * 16 + col < nc ? __builtin_bit_cast(_Float16, __half_as_ushort(sm.xb[(m * 16 + col) * kHipMatrixStride + step * 16 + kh + i])) : (_Float16) 0;
+                av = hip_matrix_load_operand(sm.xb + (m * 16 + col) * kHipMatrixStride + step * 16 + kh, m * 16 + col < nc);
                 acc[m] = hip_mma(av, bv, acc[m]);
             }
         }
@@ -1626,8 +1641,7 @@ __device__ void hip_block_decoded_matrix(const uint32_t* decoded, int output_blo
 #pragma unroll
    for(int m=0;m<Rows/16;++m) {
     HipOperand av;
-#pragma unroll
-    for(int i=0;i<kHipOperand;++i)av[i]=m*16+col<nc?__builtin_bit_cast(_Float16,__half_as_ushort(sm.xb[(m*16+col)*kHipMatrixStride+step*16+kh+i])):(_Float16)0;
+    av=hip_matrix_load_operand(sm.xb+(m*16+col)*kHipMatrixStride+step*16+kh,m*16+col<nc);
     acc[m]=hip_mma(av,bv,acc[m]);
    }
   }
