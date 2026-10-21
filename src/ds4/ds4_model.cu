@@ -72,6 +72,7 @@ namespace {
 #if defined(STRATA_DS4_SCHEDULE_TEST)
 std::atomic<uint64_t> g_host_copy_wait_calls{0};
 std::atomic<uint64_t> g_peer_ar_calls{0};
+std::atomic<uint64_t> g_prepared_calls{0};
 #endif
 
 double now_ms() {
@@ -512,6 +513,8 @@ struct Chunk {
     size_t w16_elems = 0;
 #if defined(STRATA_USE_HIP)
     uint32_t* predecoded = nullptr;
+    uint16_t* prepared_input = nullptr;
+    size_t prepared_input_bytes = 0;
 #if defined(STRATA_DS4_PREDECODE_TEST)
     uint64_t predecode_calls = 0, predecode_rows = 0;
 #endif
@@ -3330,11 +3333,36 @@ struct Model::Impl {
                             if (!dalloc(d, c.predecoded, cap / 4, err)) return false;
                             std::fprintf(stderr, "EXL3_PREDECODE gpu=%d scratch_bytes=%zu\n", d.id, cap);
                         }
-                        if (x3::decoded_set_bytes(sa) > cap || !x3::decode_set(sa, c.predecoded, d.st) ||
-                            !x3::set_gate_up_decoded(sa, c.predecoded, c.x, D, c.row_tok + a, c.h16, FF, d.st) ||
-                            !x3::set_down_decoded(sa, c.predecoded, c.h16, FF, c.y, D, d.st)) {
-                            err = "experimental predecode dispatch failed"; return false;
+                        if (x3::decoded_set_bytes(sa) > cap || !x3::decode_set(sa, c.predecoded, d.st)) {
+                            err = "experimental weight predecode failed"; return false;
                         }
+                        const char* pi = std::getenv("DS4_EXL3_PREPARED");
+                        const bool prepared = pi && std::atoi(pi) == 1;
+                        bool ok;
+                        if (prepared) {
+                            // run_set pieces contain at most C sorted routed rows. Allocate after
+                            // expert placement; both projections reuse this one stream-owned buffer.
+                            if (nrows > c.C) { err = "prepared expert group exceeds chunk capacity"; return false; }
+                            const size_t bytes = x3::prepared_set_input_bytes(sa, size_t(c.C));
+                            if (!bytes) { err = "invalid prepared input capacity"; return false; }
+                            if (!c.prepared_input) {
+                                if (!dalloc(d, c.prepared_input, bytes / sizeof(uint16_t), err)) return false;
+                                c.prepared_input_bytes = bytes;
+                                std::fprintf(stderr, "EXL3_PREPARED gpu=%d scratch_bytes=%zu\n", d.id, bytes);
+                            }
+                            if (bytes > c.prepared_input_bytes) { err = "prepared input allocation too small"; return false; }
+#if defined(STRATA_DS4_SCHEDULE_TEST)
+                            g_prepared_calls.fetch_add(1, std::memory_order_relaxed);
+#endif
+                            ok = x3::set_gate_up_prepared(sa, c.predecoded, c.x, D, c.row_tok + a,
+                                    c.h16, FF, c.prepared_input, size_t(nrows), d.st) &&
+                                 x3::set_down_prepared(sa, c.predecoded, c.h16, FF, c.y, D,
+                                    c.prepared_input, size_t(nrows), d.st);
+                        } else {
+                            ok = x3::set_gate_up_decoded(sa, c.predecoded, c.x, D, c.row_tok + a, c.h16, FF, d.st) &&
+                                 x3::set_down_decoded(sa, c.predecoded, c.h16, FF, c.y, D, d.st);
+                        }
+                        if (!ok) { err = "experimental predecode projection failed"; return false; }
                     } else
 #endif
                     {
@@ -8116,6 +8144,7 @@ const std::vector<int32_t>& Model::tokens() const { return p_->toks; }
 void Model::reset() { p_->reset(); }
 #if defined(STRATA_DS4_SCHEDULE_TEST)
 uint64_t Model::benchmark_copy_wait_calls() const { return g_host_copy_wait_calls.load(std::memory_order_relaxed); }
+uint64_t Model::benchmark_prepared_calls() const { return g_prepared_calls.load(std::memory_order_relaxed); }
 uint64_t Model::benchmark_peer_ar_calls() const { return g_peer_ar_calls.load(std::memory_order_relaxed); }
 bool Model::benchmark_peer_ar_inject_error() {
 #if defined(STRATA_USE_HIP)
