@@ -1,0 +1,187 @@
+{
+  "checks": {
+    "six_exact_states": true,
+    "native_exit_zero": true,
+    "zero_swap": true,
+    "both_timing_pairs_gain_at_least_one_pct": false,
+    "used_on_both_tp_ranks": true,
+    "no_pending": true
+  },
+  "quick_gate_pass": false,
+  "paired_timings": [
+    {
+      "off_ms": 32514.902166,
+      "on_ms": 32459.622175,
+      "latency_reduction_pct": 0.17001432364082059
+    },
+    {
+      "off_ms": 32639.605723,
+      "on_ms": 32503.77055,
+      "latency_reduction_pct": 0.4161667090980855
+    }
+  ],
+  "rows": [
+    {
+      "index": "0",
+      "warmup": "1",
+      "enabled": "0",
+      "prefill_ms": "34826.897246",
+      "exact": "1"
+    },
+    {
+      "index": "1",
+      "warmup": "1",
+      "enabled": "1",
+      "prefill_ms": "32176.194628",
+      "exact": "1"
+    },
+    {
+      "index": "2",
+      "warmup": "0",
+      "enabled": "0",
+      "prefill_ms": "32514.902166",
+      "exact": "1"
+    },
+    {
+      "index": "3",
+      "warmup": "0",
+      "enabled": "1",
+      "prefill_ms": "32459.622175",
+      "exact": "1"
+    },
+    {
+      "index": "4",
+      "warmup": "0",
+      "enabled": "1",
+      "prefill_ms": "32503.77055",
+      "exact": "1"
+    },
+    {
+      "index": "5",
+      "warmup": "0",
+      "enabled": "0",
+      "prefill_ms": "32639.605723",
+      "exact": "1"
+    }
+  ],
+  "prefetch_counters_by_request": {
+    "0": [],
+    "1": [
+      {
+        "gpu": 0,
+        "issued": 698,
+        "used": 611,
+        "wasted": 87,
+        "repaired": 89,
+        "pending": 0,
+        "issued_bytes": 5290446336,
+        "used_bytes": 4628044032,
+        "wasted_bytes": 662402304,
+        "repaired_bytes": 686807808
+      },
+      {
+        "gpu": 1,
+        "issued": 698,
+        "used": 611,
+        "wasted": 87,
+        "repaired": 89,
+        "pending": 0,
+        "issued_bytes": 5290446336,
+        "used_bytes": 4628044032,
+        "wasted_bytes": 662402304,
+        "repaired_bytes": 686807808
+      },
+      {
+        "gpu": 2,
+        "issued": 0,
+        "used": 0,
+        "wasted": 0,
+        "repaired": 0,
+        "pending": 0,
+        "issued_bytes": 0,
+        "used_bytes": 0,
+        "wasted_bytes": 0,
+        "repaired_bytes": 0
+      }
+    ],
+    "2": [],
+    "3": [
+      {
+        "gpu": 0,
+        "issued": 698,
+        "used": 611,
+        "wasted": 87,
+        "repaired": 89,
+        "pending": 0,
+        "issued_bytes": 5290446336,
+        "used_bytes": 4628044032,
+        "wasted_bytes": 662402304,
+        "repaired_bytes": 686807808
+      },
+      {
+        "gpu": 1,
+        "issued": 698,
+        "used": 611,
+        "wasted": 87,
+        "repaired": 89,
+        "pending": 0,
+        "issued_bytes": 5290446336,
+        "used_bytes": 4628044032,
+        "wasted_bytes": 662402304,
+        "repaired_bytes": 686807808
+      },
+      {
+        "gpu": 2,
+        "issued": 0,
+        "used": 0,
+        "wasted": 0,
+        "repaired": 0,
+        "pending": 0,
+        "issued_bytes": 0,
+        "used_bytes": 0,
+        "wasted_bytes": 0,
+        "repaired_bytes": 0
+      }
+    ],
+    "4": [
+      {
+        "gpu": 0,
+        "issued": 698,
+        "used": 611,
+        "wasted": 87,
+        "repaired": 89,
+        "pending": 0,
+        "issued_bytes": 5290446336,
+        "used_bytes": 4628044032,
+        "wasted_bytes": 662402304,
+        "repaired_bytes": 686807808
+      },
+      {
+        "gpu": 1,
+        "issued": 698,
+        "used": 611,
+        "wasted": 87,
+        "repaired": 89,
+        "pending": 0,
+        "issued_bytes": 5290446336,
+        "used_bytes": 4628044032,
+        "wasted_bytes": 662402304,
+        "repaired_bytes": 686807808
+      },
+      {
+        "gpu": 2,
+        "issued": 0,
+        "used": 0,
+        "wasted": 0,
+        "repaired": 0,
+        "pending": 0,
+        "issued_bytes": 0,
+        "used_bytes": 0,
+        "wasted_bytes": 0,
+        "repaired_bytes": 0
+      }
+    ],
+    "5": []
+  },
+  "limitation": "Quick full-prefill parity and speed screen only; no decode/KV quality claim."
+}
