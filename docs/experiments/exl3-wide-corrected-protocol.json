@@ -1,0 +1,14 @@
+{
+  "status": "diagnostic_build_prepared",
+  "trigger": "Wide-load candidate completed6 exact full logit files then sticky peer all-reduce failure before generation",
+  "scope": "Only diagnostic error reporting changes Model; wide-load kernels identical08d8a49",
+  "report_fields": [
+    "GPU",
+    "rank",
+    "stream synchronization status",
+    "error copy status",
+    "device timeout bit",
+    "issued reduction sequence"
+  ],
+  "invariant": "Do not disable transport, raise timeout or clear sticky failure to pass tests."
+}

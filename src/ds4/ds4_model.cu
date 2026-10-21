@@ -1282,9 +1282,13 @@ struct Model::Impl {
                 Dev& d = devs[(size_t) G.mem[m]];
                 cudaSetDevice(d.id);
                 unsigned error = 0;
-                if (cudaStreamSynchronize(d.st) != cudaSuccess ||
-                    hipMemcpy(&error, G.peer_arb[m].error, sizeof(error), hipMemcpyDeviceToHost) != hipSuccess || error)
+                const auto sync_status = cudaStreamSynchronize(d.st);
+                const auto copy_status = hipMemcpy(&error, G.peer_arb[m].error, sizeof(error), hipMemcpyDeviceToHost);
+                if (sync_status != cudaSuccess || copy_status != hipSuccess || error) {
+                    std::fprintf(stderr, "PEER_AR_FAILURE gpu=%d rank=%d stream_status=%d copy_status=%d error=%u sequence=%u\n",
+                                 d.id, m, int(sync_status), int(copy_status), error, chunks[(size_t) G.mem[m]]->arb_seq);
                     peer_ar_failed = true;
+                }
             }
         }
         if (peer_ar_failed) err = "peer all-reduce failed; model state invalid, reload required";

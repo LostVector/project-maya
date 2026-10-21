@@ -1,0 +1,8 @@
+{
+  "source_sha256": {
+    "src/ds4/ds4_model.cu": "bc8d93493231167915bfdd41d42b3fd8dbcde25593312d07490b8f8fcf50d77e",
+    "src/kernels/cuda/exl3.cu": "3ad50b9aa4d4463060f492ccc6e1c85be12b0a69c3042d84cda4ebe91ab74c0b"
+  },
+  "difference": "Only error-status logging in Model vs08d8a49; executed kernel identical wide candidate",
+  "build": "HIP gfx1201 passed"
+}
