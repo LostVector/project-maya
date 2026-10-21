@@ -1,0 +1,40 @@
+{
+  "status": "default_off_multiGPU_implementation_prepared_not_built",
+  "base": "6f14cf2",
+  "upstream": "9bfebb5",
+  "goal": "Default-off multiGPU dependency pruning for cold long prompts; preserve sourceKV/index and decode rings",
+  "design": "/home/rkuo/research/llm-weight-compression/_meta/maya-rdna4-techniques-followup-20261020/multi-gpu-long-prompt-port-design.json",
+  "schedule_model": "/home/rkuo/research/llm-weight-compression/_meta/maya-rdna4-techniques-followup-20261020/long-prompt-slot-model.json",
+  "isolation": "Source work only while API timing controller runs; no compile or GPU tests during comparison",
+  "mandatory_cases": [
+    "prefix KV/index drain",
+    "skip nonexistent activation acknowledgments",
+    "single complete cut publication",
+    "matching TP reductions",
+    "normal/suffix expert flow scheduling",
+    "nonzero-prefix offsets and final decode rings"
+  ],
+  "source_sha256": "f6632ff0081a729ed9575cede05cef139c7a7d466b6407b07a11b15aee8d07c5",
+  "eligibility": "Explicit DS4_YOCO=1 and DS4_YOCO_MULTIGPU=1; TP2 first group + oneGPU tail, source layer in first group. MultiGPU approximate128-row mode and custom shorter keep rejected.",
+  "implementation": [
+    "Remote source-only receive/ack for skipped prefix",
+    "Conditional activation handoff reuse waits only for published predecessor",
+    "Cut source prefix stages suppressed; suffix publishes full original row interval once",
+    "Flow speculation starts at first actually executed expert chunk",
+    "Upstream KV-only/suffix row views and skip scheduling backported"
+  ],
+  "test_hooks": "Test-only synchronized mode0/1 switch and monotonically increasing actual skip-plan counter; runtime opt-in YOCO_PLAN logging. No production mode override.",
+  "input_manifest_sha256": "ffc9b33148cbf974b87b208bfd3aee7ba9b9a7550a6d175c03822ce673738131",
+  "native_validation": "Baseline0/skip1/baseline0 per case. Strict finite and baseline repeat, actual skip-plan counter,17 full-vocabulary snapshots across16 identical continuation steps. Candidate drift reported; no broad quality acceptance. Separate chunk2048 and1024 results; no timing pooling.",
+  "cases": [
+    "3691 below threshold",
+    "3692 first eligible",
+    "8192 multi-slot",
+    "8192 with257-token prefix",
+    "12288 many slot wraps",
+    "4448, cut row0 with chunk1024"
+  ],
+  "review_flags": "Any candidate decision divergence or row KL>0.001 requires explicit review; flags are not a quality guarantee. Below-threshold candidate must remain byte-exact.",
+  "independent_baseline_gate": "Before long cases with chunk2048: full2069-code and2048-database logits must exactly match immutable accepted peer-prefill references. Same single model load; default-off changes cannot bypass baseline parity.",
+  "native_controller_pid": 169698
+}

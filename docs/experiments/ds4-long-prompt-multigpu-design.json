@@ -1,0 +1,42 @@
+{
+  "status": "source_level_multi_GPU_port_design_not_implemented",
+  "upstream_commit": "9bfebb5b6b18e8f72beb272f2275523be2c61454",
+  "priority": "Large cold prompts; current1966-token benchmark ineligible",
+  "requirements": [
+    {
+      "area": "Collectives",
+      "finding": "Both TP ranks must make identical kv_only/full/skip decisions. KV-only returns before attention/expert reductions; retain matching per-rank arb_seq for executed operations."
+    },
+    {
+      "area": "Remote KV/index prefix drain",
+      "finding": "Source layer20 still produces full-prefix sharedKV/index. Its remote two-slot stage waits each reader ack at k-2. Last pipeline group must consume and acknowledge those prefix transfers even when layers36\u201339 do no compute, otherwise producer deadlocks."
+    },
+    {
+      "area": "Skipped activation handoffs",
+      "finding": "Group0 executes no last-layer35 work on skipped prefix and must not publish activation handoffs. Later handoff slot reuse must not wait for acknowledgments of non-existent skipped handoffs. Avoid starting ordinary group2 activation receive on fully skipped chunks."
+    },
+    {
+      "area": "Cut chunk shared publication",
+      "finding": "Upstream run_layer invokes source kv_only on prefix then full layer on suffix with same wp.k/wp.win. Single GPU has no remote publication. Naive multiGPU port would publish same sequence twice and reuse stage at offset0, exposing partial or overwritten data to reader expecting whole original chunk. Suppress prefix publication and publish full combined KV/index range once after source suffix completes."
+    },
+    {
+      "area": "Cut chunk activation offsets",
+      "finding": "Preserve c.h/c.pre row offset views and original buffer bases. If retaining full-size activation handoff, downstream must apply identical suffix view. Transfer only suffix requires explicit source/destination shape/stride agreement."
+    },
+    {
+      "area": "Expert scheduling and IO",
+      "finding": "flow_next/fl_rows/speculation must skip kv_only and skipped layer/chunks and size cut suffix correctly. Otherwise dead waits or wasted host/VRAM traffic erase gain."
+    },
+    {
+      "area": "State and outputs",
+      "finding": "All earlier sourceKV/index rows persist; final decode rings and checkpoint last-row state must match. Full-row-logit requests disable skip. Test fresh and nonzero-prefix offsets and chunk-boundary cuts."
+    }
+  ],
+  "validation_plan": [
+    "CPU schedule/ack model with chunk slots0/1 across cut0,1,2+ to prove every waited flag has a publisher and no premature stage overwrite",
+    "Default off; compare full versus skip with same multiGPU placement, kernel flags and prompts",
+    "Long lengths3691/3692,4096,8192 and cuts adjacent to chunk/window boundaries; include cached offset prefixes and teacher-forced answer/decode checks",
+    "Keep exact arithmetic kernels; separately quantify routing/addition rounding drift as user-authorized numerical issue",
+    "Measure uncached8K/32K prompts after correctness; do not extrapolate published singleGPU gains to this hardware"
+  ]
+}

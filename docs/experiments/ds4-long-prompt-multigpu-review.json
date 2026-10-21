@@ -1,0 +1,14 @@
+{
+  "status": "initial_native_numerical_run_complete_review_flags_remain",
+  "source": "Backport upstream9bfebb5 onto corrected accepted baseline and add TP2+tail transfer lifetime handling",
+  "independent_baseline": "2069-code/2048-database full accepted references exact; all baseline repeats exact; belowthreshold no-op exact",
+  "candidate": "All six answers12 and EOS match. Eligible final-prompt KL0.0000996\u20130.0007524. Full17-step teacher-forced sequences differ afterEOS; maxKL0.0732 and candidate decisions change in2cases. Preserve flags; not broad quality acceptance.",
+  "performance": "8K diagnostic22.39s\u219216.67s; not a controlled speed claim. No activation.",
+  "coverage": "chunk2048 only; multiple slot wraps,partial cuts,and257-token prior prefix. The case named cut_aligned_chunk1024 has not yet been run with chunk1024,so exact cut-row0 remains unvalidated.",
+  "required_followup": [
+    "Fresh context-retrieval cases with facts in skipped prefix",
+    "chunk1024 exact cut-row0 validation",
+    "Meaningful decode throughEOS and numerical review",
+    "Controlled prefill performance before any enablement"
+  ]
+}

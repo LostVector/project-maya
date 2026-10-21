@@ -73,6 +73,8 @@ namespace {
 #if defined(STRATA_DS4_SCHEDULE_TEST)
 std::atomic<uint64_t> g_host_copy_wait_calls{0};
 std::atomic<uint64_t> g_peer_ar_calls{0};
+std::atomic<int> g_prompt_skip_mode{-1};
+std::atomic<uint64_t> g_prompt_skip_calls{0};
 #endif
 
 double now_ms() {
@@ -575,6 +577,7 @@ struct Chunk {
     int spec_k = -1, spec_il = -1, n_spec = 0;   // the likely items queued last: (chunk, layer), how many, from where
     size_t spec_begin = 0;
     std::vector<int> fl_layers, fl_T;        // the device's trunk layers in order; the run's chunk sizes
+    int fl_yoco = -1, fl_cut_k = 0, fl_cut_r = 0;   // Run::yoco / cut_k / cut_r: what a layer's chunk streams for
     int bc_n = 0, bc_w = 0;                  // a batch's compacted bounds: bc_n regions of bc_w, by batch count
     int *bc_pin = nullptr, *bc_dev = nullptr;
     uint64_t n_batch = 0;
@@ -812,6 +815,7 @@ struct Model::Impl {
     std::vector<std::unique_ptr<Chunk>> chunks;   // per device
     size_t eg_cap = kWin;             // tokens h_eg holds
     int tap_cap = kWin;               // rows h_taps holds (a chunk seeds the drafter with its last 128)
+    static constexpr int kYocoMin = 1024;   // a long prompt's skip (forward_chunks): the fewest rows worth skipping
     bool logits_all = false;          // the last feed was a chunk with logits for every row (chunk_logits)
     std::vector<float> chunk_logits;
     std::function<void(int64_t)> progress;   // a run of chunks: the tokens done so far (the main thread, while it waits)
@@ -3146,8 +3150,22 @@ struct Model::Impl {
             if (v >= l.n_slots + c.n_spec && b[(size_t) v + 1] > b[(size_t) v]) flow_push(c, l, mi, k, e, v);
         }
     }
-    // the next (chunk, layer) of the device after (k, il) in the run's order (false: none)
+    // the next (chunk, layer) of the device after (k, il) in the run's order that streams experts (false: none) - a
+    // long prompt's skip leaves out its early chunks' layers from Run::yoco on (kv_only there: no experts)
     bool flow_next(const Chunk& c, int k, int il, int& k2, int& il2) const {
+        while (flow_next1(c, k, il, k2, il2)) {
+            if (c.fl_yoco < 0 || k2 >= c.fl_cut_k || il2 < c.fl_yoco) return true;
+            k = k2;
+            il = il2;
+        }
+        return false;
+    }
+    // the rows chunk k runs layer il on (a long prompt's skip: the cut chunk's from cut_r on, from the yoco layer on)
+    static int fl_rows(const Chunk& c, int k, int il) {
+        const int T = c.fl_T[(size_t) k];
+        return c.fl_yoco >= 0 && k == c.fl_cut_k && il >= c.fl_yoco ? T - c.fl_cut_r : T;
+    }
+    bool flow_next1(const Chunk& c, int k, int il, int& k2, int& il2) const {
         const auto it = std::find(c.fl_layers.begin(), c.fl_layers.end(), il);
         const size_t i = (size_t) (it - c.fl_layers.begin());
         if (c.lm) {   // (layer-major: the layer's next chunk, then the next layer's first)
@@ -3288,7 +3306,7 @@ struct Model::Impl {
         flow_rest(c, k, L0.il, b);
         const size_t lb = c.spec_begin, le = c.base + c.items.size(), n_lay = le - lb;
         int k2 = 0, il2 = 0;
-        if (flow_next(c, k, L0.il, k2, il2)) flow_spec(c, k2, il2, c.fl_T[(size_t) k2]);
+        if (flow_next(c, k, L0.il, k2, il2)) flow_spec(c, k2, il2, fl_rows(c, k2, il2));
         const size_t R = (size_t) c.ring_n, bmax = std::max<size_t>(1, R / 2);
         int v_done = 0;
         while (c.n_comp < le) {
@@ -6022,8 +6040,10 @@ struct Model::Impl {
 
     // layer L0 for a chunk of T tokens at p0 as group member mi: layer()'s arithmetic over the chunk's rows (the
     // projections as GEMMs, the attention and the indexer in slabs, the routed experts as sorted rows: the VRAM ones in
-    // place, the CPU lane's streamed in batches)
-    bool layer_chunk(Layer& L0, int mi, int64_t p0, int T, const WinPlan& wp, Streamer& S, std::string& err) {
+    // place, the CPU lane's streamed in batches).  kv_only (a long prompt's first pass, Run::stop): only what the layers
+    // after it read of these rows - its compressed KV and index keys - and nothing of its own attention or experts
+    bool layer_chunk(Layer& L0, int mi, int64_t p0, int T, const WinPlan& wp, Streamer& S, std::string& err,
+                     bool kv_only = false, bool publish_shared = true, int64_t share_p0 = -1, int share_T = 0) {
         Layer& l = member(L0, mi);
         Dev& d = devs[(size_t) l.dev];
         Chunk& c = *chunks[(size_t) l.dev];
@@ -6055,35 +6075,37 @@ struct Model::Impl {
         hc_split(c.mix, l.hca_scale, l.hca_base, H, g.sinkhorn, g.hc_eps, T, c.a_pre, c.a_post, c.a_comb, s);
         hc_pre_norm(c.h, c.pre, l.attn_norm, D, H, T, g.eps, c.x, s);
         x3::rows_f16(c.x, D, nullptr, T, D, c.x16, s);
-        if (!gemm(d, c, l.wq_a, c.x16, D, T, c.qr, g.q_lora, 0.0f, err) ||
-            !gemm(d, c, l.wkv, c.x16, D, T, c.kvr, HD, 0.0f, err))
+        if (!kv_only && (!gemm(d, c, l.wq_a, c.x16, D, T, c.qr, g.q_lora, 0.0f, err) ||
+                         !gemm(d, c, l.wkv, c.x16, D, T, c.kvr, HD, 0.0f, err)))
             return false;
         if (l.kv_src && !gemm(d, c, l.c_wkv, c.x16, D, T, c.ckr, HD, 0.0f, err)) return false;
         if (l.kv_src && l.ratio > 1 && !gemm(d, c, l.c_wgate, c.x16, D, T, c.cgr, HD, 0.0f, err)) return false;
-        Finish fq;
-        fq.w = l.q_norm;
-        fq.eps = g.eps;
-        finish(c.qr, T, g.q_lora, g.q_lora, fq, s);
-        x3::rows_f16(c.qr, g.q_lora, nullptr, T, g.q_lora, c.qr16, s);
-        // the window rows: the ring's (positions p0 - win ..) then the chunk's
-        ring_to_ext(l.win, c.ext, p0, g.win, HD, s);
-        Finish fk;
-        fk.w = l.kv_norm;
-        fk.eps = g.eps;
-        fk.rd = g.rd;
-        fk.pos = (int) p0;
-        fk.freqs = freqs;
-        fk.quant = 1;
-        fk.dst = c.ext + (size_t) g.win * HD;
-        fk.dst_stride = HD;
-        finish(c.kvr, T, HD, HD, fk, s);
-        // feed_mark's checkpoint: the ring as it was before row snap_t - the old ring, then the chunk's rows before it
-        const bool snap = wp.snap_t >= 0 && mi == 0 && L0.snap_win != nullptr;
-        if (snap) {
-            CK(cudaMemcpyAsync(L0.snap_win, l.win, (size_t) g.win * win_rb(), cudaMemcpyDeviceToDevice, s));
-            if (wp.snap_t > 0) ext_to_ring(c.ext, L0.snap_win, p0, g.win, wp.snap_t, HD, s, nullptr);
+        const bool snap = !kv_only && wp.snap_t >= 0 && mi == 0 && L0.snap_win != nullptr;
+        if (!kv_only) {
+            Finish fq;
+            fq.w = l.q_norm;
+            fq.eps = g.eps;
+            finish(c.qr, T, g.q_lora, g.q_lora, fq, s);
+            x3::rows_f16(c.qr, g.q_lora, nullptr, T, g.q_lora, c.qr16, s);
+            // the window rows: the ring's (positions p0 - win ..) then the chunk's
+            ring_to_ext(l.win, c.ext, p0, g.win, HD, s);
+            Finish fk;
+            fk.w = l.kv_norm;
+            fk.eps = g.eps;
+            fk.rd = g.rd;
+            fk.pos = (int) p0;
+            fk.freqs = freqs;
+            fk.quant = 1;
+            fk.dst = c.ext + (size_t) g.win * HD;
+            fk.dst_stride = HD;
+            finish(c.kvr, T, HD, HD, fk, s);
+            // feed_mark's checkpoint: the ring as it was before row snap_t - the old ring, then the chunk's rows before it
+            if (snap) {
+                CK(cudaMemcpyAsync(L0.snap_win, l.win, (size_t) g.win * win_rb(), cudaMemcpyDeviceToDevice, s));
+                if (wp.snap_t > 0) ext_to_ring(c.ext, L0.snap_win, p0, g.win, wp.snap_t, HD, s, nullptr);
+            }
+            ext_to_ring(c.ext, l.win, p0, g.win, T, HD, s, nullptr);
         }
-        ext_to_ring(c.ext, l.win, p0, g.win, T, HD, s, nullptr);
         const uint8_t* ckv = nullptr;
         const long long ss = (long long) o.max_context + 64;
         if (l.ratio > 0) {
@@ -6131,7 +6153,7 @@ struct Model::Impl {
                     fi.pdst_stride = (long long) ik_rb();
                     finish(c.ikr, ng, g.ix_hd, g.ix_hd, fi, s);
                 }
-                if (clen_max > 0) {
+                if (clen_max > 0 && !kv_only) {
                     if (!gemm_f16w(c, l.i_wproj, g.ix_heads, D, c.x16, D, T,
                                    1.0f / std::sqrt((float) g.ix_hd) / std::sqrt((float) g.ix_heads), c.iw, 64, err))
                         return false;
@@ -6192,19 +6214,24 @@ struct Model::Impl {
                 fc.pdst = sr.ckv[(size_t) l.dev] + (size_t) g_first * ckv_rb();
                 fc.pdst_stride = (long long) ckv_rb();
                 finish(const_cast<float*>(latent), ng, HD, HD, fc, s);
-                if (mi == 0 && sr.remote) {   // the new rows for the other groups' readers (slot k % 2, once
+                if (mi == 0 && sr.remote && publish_shared) {   // publish a cut chunk once, after both source passes
+                    const int64_t send_p0 = share_p0 >= 0 ? share_p0 : p0;
+                    const int send_T = share_p0 >= 0 ? share_T : T;
+                    const int64_t send_first = send_p0 / R;
+                    const int send_ng = int((send_p0 + send_T) / R - send_first);
+                    // the new rows for the other groups' readers (slot k % 2, once
                     const int slot = wp.k % 2;  // they took the chunk before last's)
                     if (wp.k >= 2)
                         for (int r : sr.readers) wait_flags(sr.x_ack + ((size_t) slot * devs.size() + r) * 32, 1, 32, wp.win - 2, s);
                     Xfer x;
-                    x.src[0] = fc.pdst;
+                    x.src[0] = sr.ckv[(size_t) l.dev] + (size_t) send_first * ckv_rb();
                     x.dst[0] = sr.stage(slot);
-                    x.bytes[0] = (size_t) ng * ckv_rb();
+                    x.bytes[0] = (size_t) send_ng * ckv_rb();
                     x.n = 1;
                     if (l.owns_k && srcs[(size_t) l.ik_src].ik[(size_t) l.dev] != nullptr) {
-                        x.src[1] = srcs[(size_t) l.ik_src].ik[(size_t) l.dev] + (size_t) g_first * ik_rb();
+                        x.src[1] = srcs[(size_t) l.ik_src].ik[(size_t) l.dev] + (size_t) send_first * ik_rb();
                         x.dst[1] = sr.stage(slot) + x_cap() * ckv_rb();
-                        x.bytes[1] = (size_t) ng * ik_rb();
+                        x.bytes[1] = (size_t) send_ng * ik_rb();
                         x.n = 2;
                     }
                     xfer_put(x, sr.flag(slot), wp.win, d.xcnt, s);
@@ -6212,6 +6239,7 @@ struct Model::Impl {
             }
             ckv = sr.ckv[(size_t) l.dev];
         }
+        if (kv_only) return true;
         // the attention in slabs: q, the sparse attention, wo_a, wo_b (this member's share) into acc
         if (NHL == 0) CK(cudaMemsetAsync(c.acc, 0, (size_t) T * D * sizeof(*c.acc), s));   // (no heads)
         for (int a0 = 0; a0 < T && NHL > 0; a0 += c.A) {
@@ -6392,7 +6420,40 @@ struct Model::Impl {
         std::vector<int> T;
         std::vector<unsigned> seq;
         int64_t snap_pos = -1;   // feed_mark: the position whose state before it the layers keep (-1: none)
+        // a long prompt's skip (forward_chunks): the cut at row cut_r of chunk cut_k - the chunks before it go through
+        // the layers before `yoco`, that layer as layer_chunk's kv_only and none after it; chunk cut_k's rows before
+        // cut_r the same, its rows from cut_r on and the chunks after it through every layer (yoco -1: no skip)
+        int yoco = -1, cut_k = 0, cut_r = 0;
+        bool runs(int k, int il) const { return yoco < 0 || k >= cut_k || il <= yoco; }
+        bool kv_only(int k, int il) const { return yoco >= 0 && k < cut_k && il == yoco; }
+        int r0(int k, int il) const { return yoco >= 0 && k == cut_k && il >= yoco ? cut_r : 0; }   // the first row
     };
+    // layer L0 over chunk k per a long prompt's skip (Run): its kv_only, or its rows from Run::r0 on - the chunk's
+    // buffers seen from that row (the yoco layer: its kv_only over the rows before it first)
+    bool run_layer(Layer& L0, int mi, int64_t p0, int T, const WinPlan& wp, Streamer& S, std::string& err,
+                   const Run& run, int k, int il) {
+        if (run.kv_only(k, il)) return layer_chunk(L0, mi, p0, T, wp, S, err, true);
+        const int r0 = run.r0(k, il);
+        if (r0 <= 0) return layer_chunk(L0, mi, p0, T, wp, S, err);
+        if (il == run.yoco) {
+            WinPlan w0 = wp;
+            w0.snap_t = -1;
+            if (!layer_chunk(L0, mi, p0, r0, w0, S, err, true, false)) return false;
+        }
+        Chunk& c = *chunks[(size_t) member(L0, mi).dev];
+        float* const h0 = c.h;
+        float* const pre0 = c.pre;
+        c.h += (size_t) r0 * g.hc * g.dim;
+        c.pre += (size_t) r0 * 8;
+        WinPlan w1 = wp;
+        w1.snap_t = wp.snap_t >= r0 ? wp.snap_t - r0 : -1;
+        const bool ok = layer_chunk(L0, mi, p0 + r0, T - r0, w1, S, err, false, true,
+                                    il == run.yoco ? p0 : -1, il == run.yoco ? T : 0);
+        c.h = h0;
+        c.pre = pre0;
+        return ok;
+    }
+
     // layer-major (c.lm: a run of several chunks, device di every trunk layer, the flow set up by run_dev_chunks):
     // layer after layer, each through all the chunks in order - a chunk's state to host memory after each of its
     // layers and back before the next - so a layer's experts are read from the files once for the whole run (the
@@ -6410,7 +6471,8 @@ struct Model::Impl {
         std::vector<std::pair<int, int>> egu;   // (Engram layer, chunk)
         for (int il : c.fl_layers)
             if (L[(size_t) il].eg >= 0)
-                for (int k = 0; k < nk; ++k) egu.push_back({L[(size_t) il].eg, k});
+                for (int k = 0; k < nk; ++k)
+                    if (run.runs(k, il)) egu.push_back({L[(size_t) il].eg, k});
         const size_t eg_per = (size_t) (pk.eg_ngram - 1) * pk.eg_heads * (pk.eg_hd + pk.eg_hd / 32);
         auto read_eg = [this, &c, &run, &egu, eg_per](size_t u) {
             if (u >= 2) cudaEventSynchronize(c.eg_ev[u % 2]);
@@ -6425,6 +6487,7 @@ struct Model::Impl {
             Layer& L0 = L[(size_t) il];
             const bool last_l = li + 1 == c.fl_layers.size();
             for (int k = 0; k < nk; ++k) {
+                if (!run.runs(k, il)) continue;   // (a skipped early chunk: nothing after the yoco layer)
                 const int64_t p0 = run.p0[(size_t) k];
                 const int T = run.T[(size_t) k], slot = k % 2;
                 const bool last_k = k + 1 == nk;
@@ -6466,8 +6529,10 @@ struct Model::Impl {
                                              (size_t) nr, cudaMemcpyDeviceToHost, s));
                     }
                 }
-                if (!layer_chunk(L0, 0, p0, T, wp, S, err)) return false;
+                const bool kvo = run.kv_only(k, il);
+                if (!run_layer(L0, 0, p0, T, wp, S, err, run, k, il)) return false;
                 if (dump_l != nullptr) dump_layer(d, c.h, il, p0, T);
+                if (kvo) continue;   // (no layer after it reads this chunk's state)
                 if (!last_l) {   // the chunk's state kept for the next layer
                     const Xfer x = chunk_xfer(c.lm_state + (size_t) k * hb, c, T, true);
                     for (int i = 0; i < x.n; ++i)
@@ -6499,6 +6564,29 @@ struct Model::Impl {
         }
         return true;
     }
+    bool receive_chunk_source(int sidx, int di, int64_t p0, int T, const WinPlan& wp) {
+        const int slot = wp.k % 2;
+        cudaStream_t s = devs[(size_t) di].st;
+        Src& sr = srcs[(size_t) sidx];
+        if (L[(size_t) sr.layer].grp == devs[(size_t) di].grp) return true;
+        const int64_t g_first = p0 / sr.ratio;
+        const int ng = (int) std::max<int64_t>(0, (p0 + T) / sr.ratio - g_first);
+        Xfer x;
+        if (ng > 0 && sr.ckv[(size_t) di] != nullptr) {
+            x.src[x.n] = sr.stage(slot);
+            x.dst[x.n] = sr.ckv[(size_t) di] + (size_t) g_first * ckv_rb();
+            x.bytes[x.n++] = (size_t) ng * ckv_rb();
+        }
+        if (ng > 0 && sr.ik[(size_t) di] != nullptr) {
+            x.src[x.n] = sr.stage(slot) + x_cap() * ckv_rb();
+            x.dst[x.n] = sr.ik[(size_t) di] + (size_t) g_first * ik_rb();
+            x.bytes[x.n++] = (size_t) ng * ik_rb();
+        }
+        if (x.n > 0) xfer_get(x, sr.flag(slot), wp.win, s);
+        set_flag(sr.x_ack + ((size_t) slot * devs.size() + di) * 32, wp.win, s);   // (taken, or none)
+        return true;
+    }
+
     bool run_dev_chunks(int di, const Run& run, std::string& err) {
         Dev& d = devs[(size_t) di];
         Chunk& c = *chunks[(size_t) di];
@@ -6519,6 +6607,9 @@ struct Model::Impl {
                 for (int m = 0; m < L[(size_t) il].nm; ++m)
                     if (member(L[(size_t) il], m).dev == di) c.fl_layers.push_back(il);
             c.fl_T = run.T;
+            c.fl_yoco = run.yoco;
+            c.fl_cut_k = run.cut_k;
+            c.fl_cut_r = run.cut_r;
             c.spec_k = c.spec_il = -1;
             c.wait_ms = 0;
             c.it_file = c.it_ram = c.it_spec = c.it_spec_unused = c.it_lc = 0;
@@ -6528,13 +6619,16 @@ struct Model::Impl {
             c.io_d0 = c.io->direct_bytes();
             c.io_b0 = c.io->buffered_bytes();
             if (!c.fl_layers.empty()) {
-                flow_spec(c, 0, c.fl_layers[0], run.T[0]);
+                const int first_il = c.fl_layers[0];
+                const int first_k = run.yoco >= 0 && first_il >= run.yoco ? run.cut_k : 0;
+                flow_spec(c, first_k, first_il, fl_rows(c, first_k, first_il));
                 if (!flow_pump(c, err)) return false;
             }
             if (c.lm) return run_dev_layers(di, run, err);
         }
         for (int k = 0; k < nk && !c.flow; ++k)
             for (int il = 0; il < g.nl; ++il) {
+                if (!run.runs(k, il) || run.kv_only(k, il)) continue;   // (a long prompt's skip: no experts there)
                 const Layer& L0 = L[(size_t) il];
                 bool here = false;
                 for (int m = 0; m < L0.nm; ++m) here = here || member(L0, m).dev == di;
@@ -6590,7 +6684,20 @@ struct Model::Impl {
             wp.snap_t = run.snap_pos >= p0 && run.snap_pos < p0 + T ? (int) (run.snap_pos - p0) : -1;
             bool started = false;
             std::vector<char> got(srcs.size(), 0);
-            for (int il = 0; il < g.nl; ++il) {
+            if (run.yoco >= 0 && k < run.cut_k) {
+                for (int il = run.yoco + 1; il < g.nl; ++il) {
+                    Layer& L0 = L[(size_t) il];
+                    bool here = false;
+                    for (int mi = 0; mi < L0.nm; ++mi) here = here || member(L0, mi).dev == di;
+                    if (!here) continue;
+                    for (int sidx : {L0.src, L0.ix_src ? L0.ik_src : -1}) {
+                        if (sidx < 0 || got[(size_t) sidx]) continue;
+                        got[(size_t) sidx] = 1;
+                        if (!receive_chunk_source(sidx, di, p0, T, wp)) return false;
+                    }
+                }
+            }
+            for (int il = 0; il < g.nl && run.runs(k, il); ++il) {
                 Layer& L0 = L[(size_t) il];
                 int mi = -1;
                 for (int m = 0; m < L0.nm; ++m)
@@ -6616,23 +6723,7 @@ struct Model::Impl {
                 for (int sidx : {L0.src, L0.ix_src ? L0.ik_src : -1}) {
                     if (sidx < 0 || got[(size_t) sidx]) continue;
                     got[(size_t) sidx] = 1;
-                    Src& sr = srcs[(size_t) sidx];
-                    if (L[(size_t) sr.layer].grp == L0.grp) continue;
-                    const int64_t g_first = p0 / sr.ratio;
-                    const int ng = (int) std::max<int64_t>(0, (p0 + T) / sr.ratio - g_first);
-                    Xfer x;
-                    if (ng > 0 && sr.ckv[(size_t) di] != nullptr) {
-                        x.src[x.n] = sr.stage(slot);
-                        x.dst[x.n] = sr.ckv[(size_t) di] + (size_t) g_first * ckv_rb();
-                        x.bytes[x.n++] = (size_t) ng * ckv_rb();
-                    }
-                    if (ng > 0 && sr.ik[(size_t) di] != nullptr) {
-                        x.src[x.n] = sr.stage(slot) + x_cap() * ckv_rb();
-                        x.dst[x.n] = sr.ik[(size_t) di] + (size_t) g_first * ik_rb();
-                        x.bytes[x.n++] = (size_t) ng * ik_rb();
-                    }
-                    if (x.n > 0) xfer_get(x, sr.flag(slot), wp.win, s);
-                    set_flag(sr.x_ack + ((size_t) slot * devs.size() + di) * 32, wp.win, s);   // (taken, or none)
+                    if (!receive_chunk_source(sidx, di, p0, T, wp)) return false;
                 }
                 if (last_k && mi == 0 && g.n_mtp > 0) {   // the drafter's taps: the last chunk's last rows
                     const auto it = std::find(g.d_targets.begin(), g.d_targets.end(), il);
@@ -6645,12 +6736,13 @@ struct Model::Impl {
                                              (size_t) nr, cudaMemcpyDeviceToHost, s));
                     }
                 }
-                if (!layer_chunk(L0, mi, p0, T, wp, S, err)) return false;
+                if (!run_layer(L0, mi, p0, T, wp, S, err, run, k, il)) return false;
                 if (dump_l != nullptr && mi == 0) dump_layer(d, c.h, il, p0, T);
                 const bool last = il + 1 == g.nl || L[(size_t) il + 1].grp != L0.grp;
                 if (last && mi == 0 && il + 1 < g.nl) {   // the hand-off, once the next group took the chunk before last
                     const int nnext = L[(size_t) il + 1].nm;
-                    if (k >= 2) wait_flags(c.hand_ack + (size_t) slot * 8 * 32, nnext, 32, wp.win - 2, s);
+                    if (k >= 2 && run.runs(k - 2, il) && !run.kv_only(k - 2, il))
+                        wait_flags(c.hand_ack + (size_t) slot * 8 * 32, nnext, 32, wp.win - 2, s);
                     xfer_put(chunk_xfer(c.hand[slot], c, T, true), c.hand_flag[slot], wp.win, d.xcnt, s);
                 }
             }
@@ -7033,6 +7125,49 @@ struct Model::Impl {
         }
     }
 
+    // the first layer of a long prompt's second half (forward_chunks' two passes), or -1: the first with compress ratio 1
+    // (V4.1: 20), every one after it ratio 1 too and owning no compressed KV or index keys of its own (they read its),
+    // one GPU or an explicitly enabled TP2+tail pipeline. The settings: STRATA_DS4_PROMPT_SKIP; DS4_YOCO for tests:
+    // 1 the dependency-preserving skip, 2 DeepSeek's own serving's (single GPU only; last128 rows, answers shift a
+    // little), 0 off (experimental port default)
+    static int yoco_mode() {
+#if defined(STRATA_DS4_SCHEDULE_TEST)
+        const int test_mode = g_prompt_skip_mode.load(std::memory_order_relaxed);
+        if (test_mode >= 0) return test_mode;
+#endif
+        static const int m = [] {
+            const char* v = std::getenv("DS4_YOCO");
+            if (v == nullptr) v = std::getenv("STRATA_DS4_PROMPT_SKIP");
+            return v != nullptr ? std::atoi(v) : 0;
+        }();
+        return m;
+    }
+    int yoco_layer() const {
+        if (yoco_mode() == 0 || chunk <= 0 || g.nl < 2 || (int) g.ratios.size() < g.nl) return -1;
+        int yl = -1;
+        for (int il = 0; il < g.nl && yl < 0; ++il)
+            if (g.ratios[(size_t) il] == 1) yl = il;
+        if (yl <= 0 || !L[(size_t) yl].kv_src) return -1;
+        for (int il = 0; il < g.nl; ++il) {
+            const Layer& l = L[(size_t) il];
+            if (devs.size() == 1) {
+                if (l.nm != 1 || l.dev != L[0].dev) return -1;
+            } else {
+                const char* opt = std::getenv("DS4_YOCO_MULTIGPU");
+                const char* keep_opt = std::getenv("DS4_YOCO_KEEP");
+                if (yoco_mode() != 1 || (keep_opt && std::atoi(keep_opt) > 0)) return -1;
+                if (!opt || std::atoi(opt) != 1 || groups.size() != 2 || devs.size() != 3 ||
+                    groups[0].mem.size() != 2 || groups[1].mem.size() != 1) return -1;
+                // Initial port targets this machine's TP2 first stage and one-GPU tail.
+                if (il <= yl && l.grp != L[0].grp) return -1;
+                if (l.nm != (l.grp == L[0].grp ? 2 : 1)) return -1;
+            }
+            if (il > yl && (g.ratios[(size_t) il] != 1 || l.kv_src)) return -1;
+        }
+        return yl;
+    }
+
+
     // n tokens at positions pos .. in chunks of equal size (at most `chunk`), pipelined over the groups; the logits of
     // the last min(logits_rows, 16) rows (logits_rows > 16: a run of one chunk, every row's into chunk_logits)
     bool forward_chunks(const int* tk, int n, int logits_rows, std::string& err, int snap_slot = -1) {
@@ -7049,12 +7184,39 @@ struct Model::Impl {
                 err = "token " + std::to_string(tk[t]) + " out of range";
                 return false;
             }
+        // a long prompt's skip: the layers from yoco_layer() on (V4.1: 20-39) read the earlier positions only through
+        // that layer's compressed KV and index keys, and each looks back one window (win - 1 positions) more than the
+        // layer before - so they need their own work only on the last keep = (nl - yoco) (win - 1) + win rows for the
+        // run's last rows and the rings the decode reads to be what the full work gives (up to the experts' summing
+        // order).  The chunks stay as they are: the ones before the cut go through the layers before yoco and its
+        // kv_only, the cut's chunk through those over all its rows and through the rest from the cut on (Run::r0, a
+        // view of its buffers), the chunks after it through every layer - each layer's experts read as without the
+        // skip. DS4_YOCO=1;0:off, and DS4_YOCO_MULTIGPU=1 for the experimental TP2+tail port. Not with every row's logits.
+        const int yl = logits_rows > kWin ? -1 : yoco_layer();
+        // (DS4_YOCO_KEEP=<rows>: fewer - DeepSeek's own serving replays the last 128 tokens through those layers
+        //  (DeepInfer's "SWA bounded replay"), which shifts the answers a little; at least one window)
+        static const int keep_env = std::getenv("DS4_YOCO_KEEP") ? std::atoi(std::getenv("DS4_YOCO_KEEP")) : 0;
+        const int keep = yl <= 0 ? 0
+                         : keep_env > 0 ? std::max(keep_env, g.win)
+                         : yoco_mode() == 2 ? g.win : (g.nl - yl) * (g.win - 1) + g.win;
+        const int a = yl > 0 && n - keep >= kYocoMin ? n - keep : 0;
         const int nc = (n + chunk - 1) / chunk, per = (n + nc - 1) / nc;
         Run run;
-        for (int a = 0; a < n; a += per) {
-            run.p0.push_back(pos + a);
-            run.T.push_back(std::min(per, n - a));
+        for (int x = 0; x < n; x += per) {
+            run.p0.push_back(pos + x);
+            run.T.push_back(std::min(per, n - x));
             run.seq.push_back(++win_seq);
+        }
+        if (a > 0) {
+#if defined(STRATA_DS4_SCHEDULE_TEST)
+            g_prompt_skip_calls.fetch_add(1, std::memory_order_relaxed);
+#endif
+            if (std::getenv("DS4_YOCO_STATS"))
+                std::fprintf(stderr,"YOCO_PLAN n=%d offset=%lld layer=%d keep=%d cut_chunk=%d cut_row=%d skipped_rows=%d\n",
+                             n,(long long)pos,yl,keep,a/per,a%per,a);
+            run.yoco = yl;
+            run.cut_k = a / per;
+            run.cut_r = a - run.cut_k * per;
         }
         logits_all = logits_rows > kWin;
         if (logits_all) chunk_logits.resize((size_t) n * g.vocab);
@@ -8176,6 +8338,14 @@ void Model::reset() { p_->reset(); }
 #if defined(STRATA_DS4_SCHEDULE_TEST)
 uint64_t Model::benchmark_copy_wait_calls() const { return g_host_copy_wait_calls.load(std::memory_order_relaxed); }
 uint64_t Model::benchmark_peer_ar_calls() const { return g_peer_ar_calls.load(std::memory_order_relaxed); }
+uint64_t Model::benchmark_prompt_skip_calls() const { return g_prompt_skip_calls.load(std::memory_order_relaxed); }
+bool Model::benchmark_prompt_skip_mode(int mode) {
+    if (mode != 0 && mode != 1) return false;
+    for (auto& d : p_->devs)
+        if (cudaSetDevice(d.id) != cudaSuccess || cudaDeviceSynchronize() != cudaSuccess) return false;
+    g_prompt_skip_mode.store(mode, std::memory_order_relaxed);
+    return true;
+}
 bool Model::benchmark_peer_ar_inject_error() {
 #if defined(STRATA_USE_HIP)
     bool found = false;
