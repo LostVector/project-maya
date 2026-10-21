@@ -162,6 +162,8 @@ target_link_libraries(strata-dequant PRIVATE strata_artifact)
 # this file is now nothing but the CLI entry point, and its inherited guard spells that as a "selftest"
 target_compile_definitions(strata-dequant PRIVATE STRATA_DEQUANT_SELFTEST)
 if(STRATA_BUILD_TESTS)
+  add_executable(ds4_prefill_stats_test tests/ds4_prefill_stats_test.cpp)
+  add_test(NAME ds4_prefill_stats_test COMMAND ds4_prefill_stats_test)
   add_executable(ds4_ram_slice_test tests/ds4_ram_slice_test.cpp)
   add_test(NAME ds4_ram_slice_test COMMAND ds4_ram_slice_test)
   # the reader refuses a duplicate tensor name at open, naming it (a synthetic GGUF: no model, no GPU)

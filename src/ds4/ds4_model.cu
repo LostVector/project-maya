@@ -18,6 +18,7 @@
 #include "ds4_kernels.cuh"
 #include "ds4_os.hpp"
 #include "ds4_pool.hpp"
+#include "ds4_prefill_stats.hpp"
 #include "ds4_ram_slice.hpp"
 #include "ds4_vision.cuh"
 #include "strata/kernels/cpu/exl3_cpu.hpp"
@@ -2885,6 +2886,17 @@ struct Model::Impl {
         int routed_layer = -1, routed_chunk = -1;
         std::vector<int> routed_bounds;
         size_t skipped = 0, copied = 0;
+        const bool collect_prefill = std::getenv("DS4_PREFILL_STATS") != nullptr &&
+                                     std::atoi(std::getenv("DS4_PREFILL_STATS")) != 0;
+        PrefillCounts prefill;
+        void report_prefill(int gpu, int tokens, int chunk, double streamed_bytes) const {
+            if (!collect_prefill) return;
+            std::fprintf(stderr, "DS4_PREFILL gpu=%d tokens=%d chunk=%d expert_row_picks=%llu vram_row_picks=%llu "
+                         "unique_expert_uses=%llu vram_unique_expert_uses=%llu streamed_weight_bytes=%llu\n",
+                         gpu, tokens, chunk, (unsigned long long) prefill.picks,
+                         (unsigned long long) prefill.vram_picks, (unsigned long long) prefill.unique_uses,
+                         (unsigned long long) prefill.vram_unique_uses, (unsigned long long) streamed_bytes);
+        }
     };
     // in place (file_experts): the batches' file regions read ahead of their copies - POSIX_FADV_WILLNEED, the kernel
     // reading them in the background in large requests, where the copies alone fault the pages in a few at a time -
@@ -6306,6 +6318,10 @@ struct Model::Impl {
         prof_mark(d, 2);
         CK(cudaStreamSynchronize(s));
         std::vector<int> b(c.bounds_pin, c.bounds_pin + n_vs + 1);
+        if (S.collect_prefill && !S.prefill.add_bounds(b.data(), (size_t) n_vs, (size_t) L0.n_slots)) {
+            err = "invalid prefill routing bounds for statistics";
+            return false;
+        }
         if (dump_r != nullptr && mi == 0) {
             const size_t nk = (size_t) T * l.k_exp, np = (size_t) T * kPicks;
             std::vector<int> ri(np), rt(nk);
@@ -6465,6 +6481,7 @@ struct Model::Impl {
         cudaStream_t s = d.st;
         const int D = g.dim, H = g.hc, nk = (int) run.T.size();
         Streamer S;   // (none: the flow streams)
+        const double stream_start = c.stream_bytes;
         const size_t hb = chunk_hand_bytes();
         // the Engram rows: (layer, chunk) after (layer, chunk) in the run's order, each read on a helper thread while
         // the one before runs (slot u % 2, once unit u - 2's copy of it is done)
@@ -6562,6 +6579,7 @@ struct Model::Impl {
             }
             lm_layers.store((int) li + 1, std::memory_order_release);
         }
+        S.report_prefill(d.id, std::accumulate(run.T.begin(), run.T.end(), 0), chunk, c.stream_bytes - stream_start);
         return true;
     }
     bool receive_chunk_source(int sidx, int di, int64_t p0, int T, const WinPlan& wp) {
@@ -6594,6 +6612,7 @@ struct Model::Impl {
         cudaStream_t s = d.st;
         const int D = g.dim, H = g.hc, nk = (int) run.T.size();
         Streamer S;
+        const double stream_start = c.stream_bytes;
         const int B = std::max(1, c.ring_n / Chunk::kParts);
         if (c.flow) {   // (the flow decides its streams as the layers route; nothing planned here)
             CK(cudaStreamSynchronize(s));
@@ -6772,6 +6791,7 @@ struct Model::Impl {
         if (!c.flow && S.copied + S.skipped > 0 && std::getenv("DS4_FLOW_STATS") != nullptr)
             std::fprintf(stderr, "ds4 prompt batches, CUDA%d: %zu experts copied, %zu unpicked experts skipped\n",
                          devs[(size_t) di].id, S.copied, S.skipped);
+        S.report_prefill(d.id, std::accumulate(run.T.begin(), run.T.end(), 0), chunk, c.stream_bytes - stream_start);
         return true;
     }
 
