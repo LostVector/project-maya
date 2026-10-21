@@ -1,0 +1,416 @@
+{
+  "summary": {
+    "cold-code": {
+      "blocks": [
+        {
+          "block": 0,
+          "baseline_mean_ms": 11439.666,
+          "candidate_mean_ms": 11289.32,
+          "gain_pct": 1.3142516573473317
+        },
+        {
+          "block": 1,
+          "baseline_mean_ms": 11324.244,
+          "candidate_mean_ms": 11368.398000000001,
+          "gain_pct": -0.38990682291903944
+        }
+      ],
+      "mean_block_gain_pct": 0.46217241721414615,
+      "ci95_pct": [
+        -10.364520859213416,
+        11.288865693641709
+      ],
+      "df": 1,
+      "all_swap_zero": true,
+      "baseline_median_ms": 11369.9455,
+      "candidate_median_ms": 11302.942
+    },
+    "warm-database": {
+      "blocks": [
+        {
+          "block": 0,
+          "baseline_mean_ms": 6814.4545,
+          "candidate_mean_ms": 6744.96,
+          "gain_pct": 1.019810169691493
+        },
+        {
+          "block": 1,
+          "baseline_mean_ms": 6810.005,
+          "candidate_mean_ms": 6759.9065,
+          "gain_pct": 0.7356602528192036
+        },
+        {
+          "block": 2,
+          "baseline_mean_ms": 6759.877,
+          "candidate_mean_ms": 6761.322,
+          "gain_pct": -0.02137612858932325
+        },
+        {
+          "block": 3,
+          "baseline_mean_ms": 6769.4765,
+          "candidate_mean_ms": 6759.2035,
+          "gain_pct": 0.1517547184040069
+        },
+        {
+          "block": 4,
+          "baseline_mean_ms": 6775.152,
+          "candidate_mean_ms": 6758.4349999999995,
+          "gain_pct": 0.2467398517406072
+        },
+        {
+          "block": 5,
+          "baseline_mean_ms": 6809.075,
+          "candidate_mean_ms": 6744.419,
+          "gain_pct": 0.9495562906855937
+        }
+      ],
+      "mean_block_gain_pct": 0.5136908591252635,
+      "ci95_pct": [
+        0.048147408996377206,
+        0.9792343092541498
+      ],
+      "df": 5,
+      "all_swap_zero": true,
+      "baseline_median_ms": 6775.152,
+      "candidate_median_ms": 6758.9195
+    }
+  },
+  "raw_trials": [
+    {
+      "kind": "cold-code",
+      "trial": 0,
+      "mode": 0,
+      "ms": 11465.282,
+      "read_bytes": 634896384,
+      "syscr": 304114,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "cold-code",
+      "trial": 1,
+      "mode": 1,
+      "ms": 11294.035,
+      "read_bytes": 634896384,
+      "syscr": 304114,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "cold-code",
+      "trial": 2,
+      "mode": 1,
+      "ms": 11284.605,
+      "read_bytes": 634900480,
+      "syscr": 304114,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "cold-code",
+      "trial": 3,
+      "mode": 0,
+      "ms": 11414.05,
+      "read_bytes": 634900480,
+      "syscr": 304114,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "cold-code",
+      "trial": 4,
+      "mode": 1,
+      "ms": 11311.849,
+      "read_bytes": 634896384,
+      "syscr": 304114,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "cold-code",
+      "trial": 5,
+      "mode": 0,
+      "ms": 11322.647,
+      "read_bytes": 634900480,
+      "syscr": 304114,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "cold-code",
+      "trial": 6,
+      "mode": 0,
+      "ms": 11325.841,
+      "read_bytes": 634896384,
+      "syscr": 304114,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "cold-code",
+      "trial": 7,
+      "mode": 1,
+      "ms": 11424.947,
+      "read_bytes": 634900480,
+      "syscr": 304114,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 0,
+      "mode": 0,
+      "ms": 6812.508,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 1,
+      "mode": 1,
+      "ms": 6762.176,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 2,
+      "mode": 1,
+      "ms": 6727.744,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 3,
+      "mode": 0,
+      "ms": 6816.401,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 4,
+      "mode": 1,
+      "ms": 6759.453,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 5,
+      "mode": 0,
+      "ms": 6760.482,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 6,
+      "mode": 0,
+      "ms": 6859.528,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 7,
+      "mode": 1,
+      "ms": 6760.36,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 8,
+      "mode": 0,
+      "ms": 6760.9,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 9,
+      "mode": 1,
+      "ms": 6764.482,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 10,
+      "mode": 1,
+      "ms": 6758.162,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 11,
+      "mode": 0,
+      "ms": 6758.854,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 12,
+      "mode": 1,
+      "ms": 6760.013,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 13,
+      "mode": 0,
+      "ms": 6772.731,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 14,
+      "mode": 0,
+      "ms": 6766.222,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 15,
+      "mode": 1,
+      "ms": 6758.394,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 16,
+      "mode": 0,
+      "ms": 6772.927,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 17,
+      "mode": 1,
+      "ms": 6758.143,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 18,
+      "mode": 1,
+      "ms": 6758.727,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 19,
+      "mode": 0,
+      "ms": 6777.377,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 20,
+      "mode": 1,
+      "ms": 6729.726,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 21,
+      "mode": 0,
+      "ms": 6809.016,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 22,
+      "mode": 0,
+      "ms": 6809.134,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    },
+    {
+      "kind": "warm-database",
+      "trial": 23,
+      "mode": 1,
+      "ms": 6759.112,
+      "read_bytes": 0,
+      "syscr": 2,
+      "swap_before": 0,
+      "swap_after": 0
+    }
+  ],
+  "decode": [
+    {
+      "mode": 0,
+      "ms": 5169.188,
+      "tok_s": 12.381
+    },
+    {
+      "mode": 1,
+      "ms": 5204.548,
+      "tok_s": 12.297
+    }
+  ],
+  "all_cold_warm_logits_finite_bit_exact_independent_accepted": true,
+  "all80_greedy_tokens_exact_independent_accepted": true,
+  "prepared_path_checked": true,
+  "cache_moves_zero": true
+}

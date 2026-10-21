@@ -1,0 +1,21 @@
+{
+  "scope": "Existing flag-off decoded gate/up and down GPU instruction bodies vs accepted pre-preparation build; sizes and all bytes compared",
+  "kernels": {
+    "0": {
+      "bytes": 23004,
+      "byte_identical": true,
+      "sha256": {
+        "old": "f976e8ff5d8628bebec0793e8052c4989fa730d0ff767e239bee2147fd846121",
+        "new": "f976e8ff5d8628bebec0793e8052c4989fa730d0ff767e239bee2147fd846121"
+      }
+    },
+    "1": {
+      "bytes": 45524,
+      "byte_identical": true,
+      "sha256": {
+        "old": "3026abbedeeccc46f567040d298f1c2d925436af3bdee2e916814c679221edef",
+        "new": "3026abbedeeccc46f567040d298f1c2d925436af3bdee2e916814c679221edef"
+      }
+    }
+  }
+}
