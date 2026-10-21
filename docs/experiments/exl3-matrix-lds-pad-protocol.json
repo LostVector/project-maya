@@ -1,0 +1,12 @@
+{
+  "hypothesis": "Pad WMMA activation LDS rows by8 bytes to reduce bank conflicts across operand fragment rows",
+  "source": "https://github.com/magiccodingman/vllm-radiance/blob/1d2e24849c9d8441b9614acade5252c9937a2bbf/radiance_mxfp4_fp8.hip#L23-L25",
+  "adaptation": "FP16 row stride128\u2192132 elements; Radiance uses FP8 row stride64\u219272 bytes. Both add8-byte padding, but byte widths and arithmetic differ. No source copied.",
+  "comparison": "Same four-mode screen and unit tests as unpadded79f8d3a; cross-build comparison is exploratory, positive result needs controlled confirmation",
+  "gates": [
+    "CPU reference",
+    "Cached/compressed16/32 exact comparisons",
+    "Decoding cost included",
+    "Actual instruction/resource review"
+  ]
+}
