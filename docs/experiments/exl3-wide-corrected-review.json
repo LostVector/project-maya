@@ -1,11 +1,11 @@
 {
-  "status": "full_native_validation_passed_API_performance_pending",
+  "status": "native_invariance_and_actual_API_comparison_passed_prior_peer_failure_unresolved",
   "scope": "Wide operand loads on corrected transfer-pruning baseline, plus error-only peer status diagnostics",
   "build": "HIP gfx1201 passes",
   "candidate": "Full2069 cold/2048 warm logits and80 greedy tokens exact vs corrected padded matrix candidate",
   "baseline": "Independent accepted references and repeats exact; see numerical-analysis",
   "prior_failure": "Earlier identical-kernel run hit sticky peer error before generation. Diagnostic rerun did not reproduce it. Cause unresolved; do not call fixed.",
-  "performance": "No full-model wide-load speed claim. Dedicated matched API ABBA queued after restore.",
+  "performance": "Actual API ABBA1966 uncached tokens, four requests per load: mean paired-load latency reduction1.5562%,95%CI[0.5283%,2.5841%],two load pairs. Same profile/allocation; both matrix flags1. Incremental versus padded WMMA only.",
   "decode": "Observed decode rates follow different tokens under FMA vs matrix. Not a decode-speedup comparison.",
   "binary_sha256": {
     "checkpoint-maya-ds4": "769c46ef9d6d17ba42ba25a0b155ee7bca86b4bf9cb7938a47e69315ec207833",

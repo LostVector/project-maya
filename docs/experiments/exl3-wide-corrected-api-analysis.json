@@ -1,0 +1,156 @@
+{
+  "scope": "Actual production executables through identical API frontend; ABBA four loads, four uncached samples per load. Two independent load-pair blocks; wide confidence interval is possible.",
+  "arms": [
+    {
+      "index": 0,
+      "label": "accepted",
+      "mean_ms": 5514.3,
+      "median_ms": 5514.05,
+      "samples": [
+        {
+          "name": "Amber",
+          "prompt_ms": 5512.3,
+          "wall_seconds": 5.515410410000186
+        },
+        {
+          "name": "Birch",
+          "prompt_ms": 5518.5,
+          "wall_seconds": 5.521889675997954
+        },
+        {
+          "name": "Cobalt",
+          "prompt_ms": 5515.8,
+          "wall_seconds": 5.51908352800092
+        },
+        {
+          "name": "Dune",
+          "prompt_ms": 5510.6,
+          "wall_seconds": 5.513730751001276
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "label": "candidate",
+      "mean_ms": 5424.025,
+      "median_ms": 5423.85,
+      "samples": [
+        {
+          "name": "Amber",
+          "prompt_ms": 5410.5,
+          "wall_seconds": 5.413524259001861
+        },
+        {
+          "name": "Birch",
+          "prompt_ms": 5437.2,
+          "wall_seconds": 5.440075741000328
+        },
+        {
+          "name": "Cobalt",
+          "prompt_ms": 5438.9,
+          "wall_seconds": 5.442483309998352
+        },
+        {
+          "name": "Dune",
+          "prompt_ms": 5409.5,
+          "wall_seconds": 5.412459126997419
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "label": "candidate",
+      "mean_ms": 5427.75,
+      "median_ms": 5420.75,
+      "samples": [
+        {
+          "name": "Amber",
+          "prompt_ms": 5409.4,
+          "wall_seconds": 5.412357656001404
+        },
+        {
+          "name": "Birch",
+          "prompt_ms": 5460.1,
+          "wall_seconds": 5.463054584004567
+        },
+        {
+          "name": "Cobalt",
+          "prompt_ms": 5430.4,
+          "wall_seconds": 5.433317240996985
+        },
+        {
+          "name": "Dune",
+          "prompt_ms": 5411.1,
+          "wall_seconds": 5.414375088999805
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "label": "accepted",
+      "mean_ms": 5509.025,
+      "median_ms": 5511.95,
+      "samples": [
+        {
+          "name": "Amber",
+          "prompt_ms": 5489.0,
+          "wall_seconds": 5.492339896998601
+        },
+        {
+          "name": "Birch",
+          "prompt_ms": 5523.2,
+          "wall_seconds": 5.526200483996945
+        },
+        {
+          "name": "Cobalt",
+          "prompt_ms": 5514.5,
+          "wall_seconds": 5.5174789630036685
+        },
+        {
+          "name": "Dune",
+          "prompt_ms": 5509.4,
+          "wall_seconds": 5.512911794001411
+        }
+      ]
+    }
+  ],
+  "blocks": [
+    {
+      "accepted_arm": 0,
+      "candidate_arm": 1,
+      "gain_pct": 1.6371071577534924
+    },
+    {
+      "accepted_arm": 3,
+      "candidate_arm": 2,
+      "gain_pct": 1.4753064289960482
+    }
+  ],
+  "mean_block_gain_pct": 1.5562067933747703,
+  "ci95_pct": [
+    0.5282702003617266,
+    2.5841433863878143
+  ],
+  "profile_sha256": "1002e2cffa1847f46c38874e01dc1720232d050fea85a6fb8edaa08895748b2b",
+  "allocation": [
+    [
+      "0",
+      "26.85",
+      "3469",
+      "13824"
+    ],
+    [
+      "1",
+      "26.85",
+      "3469",
+      "13824"
+    ],
+    [
+      "2",
+      "12.40",
+      "695",
+      "1536"
+    ]
+  ],
+  "activation": "Performance evidence only; quality and stability gates remain separate."
+}

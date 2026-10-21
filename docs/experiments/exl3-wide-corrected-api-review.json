@@ -1,0 +1,7 @@
+{
+  "candidate_binary_matches_native_validated_production": true,
+  "all_four_configurations_matrix_flags_on": true,
+  "binary_files_rehashed_match_frozen_inputs": true,
+  "padded_control_not_original_FMA_server": true,
+  "interpretation": "Incremental wider-load gain over padded WMMA only. Two paired loads; no independent stability resolution."
+}
