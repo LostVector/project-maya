@@ -65,6 +65,8 @@ int main(int argc,char**argv) {
     setenv("DS4_HIP_HOST_COPY_WAIT","1",1);
     setenv("DS4_HIP_PEER_AR","1",1);
     setenv("DS4_EXL3_MATRIX_RELAXED","0",1);
+    setenv("DS4_EXL3_MATRIX_DECODED","1",1);
+    setenv("DS4_EXL3_MATRIX_ROWS","16",1);
     setenv("DS4_EXL3_PREDECODE","1",1);
     setenv("DS4_EXL3_PACKED_HOST","1",1);
     setenv("DS4_EXL3_FMA16","1",1);
