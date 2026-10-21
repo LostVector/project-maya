@@ -1,0 +1,17 @@
+{
+  "logits-1.f32": {
+    "exact": true,
+    "repaired_sha256": "d925029cef01e2bcd4195c0216a2574ab943c843d9734b696125fff10fd49a7a",
+    "prior_sha256": "d925029cef01e2bcd4195c0216a2574ab943c843d9734b696125fff10fd49a7a"
+  },
+  "warm-1.f32": {
+    "exact": true,
+    "repaired_sha256": "f138fb41bf94e1f670b098ac570163e25ecd88c5e244d701b16e7804a98765b4",
+    "prior_sha256": "f138fb41bf94e1f670b098ac570163e25ecd88c5e244d701b16e7804a98765b4"
+  },
+  "decode1-tokens.txt": {
+    "exact": true,
+    "repaired_sha256": "26f4ac2d2398e6064b4c7c3e1a03c6e189223136cb1b5f772c03fabe0bb209f3",
+    "prior_sha256": "26f4ac2d2398e6064b4c7c3e1a03c6e189223136cb1b5f772c03fabe0bb209f3"
+  }
+}

@@ -1,0 +1,171 @@
+{
+  "interim": true,
+  "all_three_gpus_exercise_pruning": true,
+  "counts": [
+    {
+      "gpu": 1,
+      "copied": 13959,
+      "skipped": 6751
+    },
+    {
+      "gpu": 0,
+      "copied": 13959,
+      "skipped": 6751
+    },
+    {
+      "gpu": 2,
+      "copied": 1127,
+      "skipped": 555
+    },
+    {
+      "gpu": 0,
+      "copied": 4481,
+      "skipped": 5874
+    },
+    {
+      "gpu": 1,
+      "copied": 4481,
+      "skipped": 5874
+    },
+    {
+      "gpu": 2,
+      "copied": 305,
+      "skipped": 536
+    },
+    {
+      "gpu": 0,
+      "copied": 13998,
+      "skipped": 6712
+    },
+    {
+      "gpu": 1,
+      "copied": 13998,
+      "skipped": 6712
+    },
+    {
+      "gpu": 2,
+      "copied": 1135,
+      "skipped": 547
+    },
+    {
+      "gpu": 0,
+      "copied": 13959,
+      "skipped": 6751
+    },
+    {
+      "gpu": 1,
+      "copied": 13959,
+      "skipped": 6751
+    },
+    {
+      "gpu": 2,
+      "copied": 1127,
+      "skipped": 555
+    },
+    {
+      "gpu": 0,
+      "copied": 13998,
+      "skipped": 6712
+    },
+    {
+      "gpu": 1,
+      "copied": 13998,
+      "skipped": 6712
+    },
+    {
+      "gpu": 2,
+      "copied": 1135,
+      "skipped": 547
+    },
+    {
+      "gpu": 0,
+      "copied": 4428,
+      "skipped": 5927
+    },
+    {
+      "gpu": 1,
+      "copied": 4428,
+      "skipped": 5927
+    },
+    {
+      "gpu": 2,
+      "copied": 300,
+      "skipped": 541
+    },
+    {
+      "gpu": 0,
+      "copied": 4481,
+      "skipped": 5874
+    },
+    {
+      "gpu": 1,
+      "copied": 4481,
+      "skipped": 5874
+    },
+    {
+      "gpu": 2,
+      "copied": 305,
+      "skipped": 536
+    },
+    {
+      "gpu": 0,
+      "copied": 4428,
+      "skipped": 5927
+    },
+    {
+      "gpu": 1,
+      "copied": 4428,
+      "skipped": 5927
+    },
+    {
+      "gpu": 2,
+      "copied": 300,
+      "skipped": 541
+    },
+    {
+      "gpu": 0,
+      "copied": 4428,
+      "skipped": 5927
+    },
+    {
+      "gpu": 1,
+      "copied": 4428,
+      "skipped": 5927
+    },
+    {
+      "gpu": 2,
+      "copied": 300,
+      "skipped": 541
+    },
+    {
+      "gpu": 0,
+      "copied": 4428,
+      "skipped": 5927
+    },
+    {
+      "gpu": 1,
+      "copied": 4428,
+      "skipped": 5927
+    },
+    {
+      "gpu": 2,
+      "copied": 300,
+      "skipped": 541
+    },
+    {
+      "gpu": 0,
+      "copied": 4428,
+      "skipped": 5927
+    },
+    {
+      "gpu": 1,
+      "copied": 4428,
+      "skipped": 5927
+    },
+    {
+      "gpu": 2,
+      "copied": 300,
+      "skipped": 541
+    }
+  ]
+}
