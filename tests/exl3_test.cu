@@ -602,6 +602,19 @@ void test_set(int K, int cb, int tail = 0) {
     if (!prepared_exact) ++g_fail;
     std::printf("PREPARED_PARITY K=%d cb=%d rows=%d row0=%d exact=%d guard=1 bytes=%zu\n",
                 K, cb, rows, sa.row0, int(prepared_exact), prepared_bytes);
+    if (!ex::set_gate_up_compressed_prepared(sa, d_x, E, d_rows, d_h, F, prepared, rows, 0) ||
+        !ex::set_down_compressed_prepared(sa, d_h, F, d_out, E, prepared, rows, 0)) ++g_fail;
+    CK(cudaDeviceSynchronize());
+    const auto hcprep = host_copy(d_h, size_t(rows) * F);
+    const auto ycprep = host_copy(d_out, size_t(rows) * E);
+    const auto cg0 = host_copy(prepared_storage, size_t(8));
+    const auto cg1 = host_copy(prepared_storage + 8 + prepared_bytes / 2, size_t(8));
+    const bool compressed_exact = hcprep == h16 && !std::memcmp(ycprep.data(), y16.data(), ycprep.size()*4) &&
+        std::all_of(ycprep.begin(),ycprep.end(),[](float v){return std::isfinite(v);}) &&
+        std::all_of(cg0.begin(),cg0.end(),[](uint16_t v){return v==0xa5a5;}) &&
+        std::all_of(cg1.begin(),cg1.end(),[](uint16_t v){return v==0xa5a5;});
+    if (!compressed_exact) ++g_fail;
+    std::printf("COMPRESSED_PREPARED_PARITY K=%d cb=%d rows=%d exact=%d guard=1\n",K,cb,rows,int(compressed_exact));
     std::printf("SET_PARITY K=%d cb=%d rows=%d exact=%d\n", K, cb, rows, int(exact));
     if (bench) {
         test_env("DS4_EXL3_FMA16", "1", 1);

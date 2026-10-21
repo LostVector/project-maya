@@ -176,6 +176,13 @@ bool set_gate_up_prepared(const SetArgs& a, const uint32_t* decoded, const float
 bool set_down_prepared(const SetArgs& a, const uint32_t* decoded, const uint16_t* h16, int ldh,
     float* y, int ldy, uint16_t* staged, size_t capacity, cudaStream_t s);
 
+// Same scratch and stream contract as prepared inputs above, but weights remain
+// compressed and are decoded inside the original FMA16 multiply loop. No expanded weights.
+bool set_gate_up_compressed_prepared(const SetArgs& a, const float* x, int ldx,
+    const int* row_idx, uint16_t* h16, int ldh, uint16_t* staged, size_t capacity, cudaStream_t s);
+bool set_down_compressed_prepared(const SetArgs& a, const uint16_t* h16, int ldh,
+    float* y, int ldy, uint16_t* staged, size_t capacity, cudaStream_t s);
+
 /// Y[r] = beta Y[r] + (X[r] W) for r < rows: one matrix over FP16 rows (ldx), F32 output rows (ldy).
 void gemm_rows(const Mat& m, const uint16_t* x16, int ldx, int rows, float* y, int ldy, float beta, cudaStream_t s);
 
