@@ -7530,18 +7530,41 @@ struct Model::Impl {
                 err="pair schedule requires packed EXL3 RAM weights";return false;
             }
             const char* budget_opt=std::getenv("DS4_PAIR_CACHE_MIB");
-            const int budget=budget_opt?std::atoi(budget_opt):768;
+            const int budget=budget_opt?std::atoi(budget_opt):512;
             if(budget<0 || budget>1024){err="pair cache budget outside 0..1024 MiB";return false;}
             pair_end.on=true;
+            // Allocate all state first, before choosing one cache budget common to every rank.
             for(size_t i=0;i<devs.size();++i){auto& d=devs[i];auto& c=*chunks[i];
-                if(c.flow || c.stage || c.lm){err="pair schedule requires packed-RAM batch streamer";return false;}
+                if(c.flow || c.stage || c.lm){err="pair schedule requires resident EXL3 batch streamer";return false;}
                 cudaSetDevice(d.id);CK(cudaStreamSynchronize(d.st));CK(cudaStreamSynchronize(c.cs));
                 size_t free=0,total=0;CK(cudaMemGetInfo(&free,&total));
-                const size_t bytes=chunk_hand_bytes(),cb=(size_t)budget*1048576;
-                if(free<bytes+cb+size_t(512)*1048576){err="pair workspace would breach 512 MiB free guard";return false;}
+                const size_t bytes=chunk_hand_bytes();
+                if(free<bytes+size_t(512)*1048576){err="pair state would breach 512 MiB free guard";return false;}
                 CK(cudaMalloc((void**)&c.pair_state,bytes));
-                if(cb)CK(cudaMalloc((void**)&c.pair_cache,cb));c.pair_cache_bytes=cb;
-                std::fprintf(stderr,"DS4_PAIR_ALLOC gpu=%d free_before=%zu state=%zu cache=%zu\n",d.id,free,bytes,cb);
+                std::fprintf(stderr,"DS4_PAIR_STATE gpu=%d free_before=%zu state=%zu\n",d.id,free,bytes);
+            }
+            bool allocated=false;
+            std::vector<int> budgets{budget};
+            for(int smaller:{512,384,256})if(smaller<budget)budgets.push_back(smaller);
+            for(int mib:budgets){
+                const size_t cb=(size_t)mib*1048576;bool fits=true;
+                for(size_t i=0;i<devs.size();++i){auto& c=*chunks[i];cudaSetDevice(devs[i].id);
+                    size_t free=0,total=0;CK(cudaMemGetInfo(&free,&total));
+                    if(free<cb+size_t(512)*1048576){fits=false;break;}
+                    if(cb && cudaMalloc((void**)&c.pair_cache,cb)!=cudaSuccess){
+                        (void)cudaGetLastError();fits=false;break;
+                    }
+                }
+                if(fits){for(auto& c:chunks)c->pair_cache_bytes=cb;allocated=true;break;}
+                std::fprintf(stderr,"DS4_PAIR_ALLOCATION_RETRY requested_mib=%d\n",mib);
+                for(size_t i=0;i<devs.size();++i){cudaSetDevice(devs[i].id);auto& c=*chunks[i];
+                    if(c.pair_cache)cudaFree(c.pair_cache);c.pair_cache=nullptr;
+                }
+            }
+            if(!allocated){err="pair cache allocation failed at all bounded budgets";return false;}
+            for(size_t i=0;i<devs.size();++i){cudaSetDevice(devs[i].id);size_t free=0,total=0;
+                CK(cudaMemGetInfo(&free,&total));std::fprintf(stderr,"DS4_PAIR_ALLOC gpu=%d free_after=%zu state=%zu cache=%zu\n",
+                    devs[i].id,free,chunk_hand_bytes(),chunks[i]->pair_cache_bytes);
             }
             run.paired=true;
 #endif

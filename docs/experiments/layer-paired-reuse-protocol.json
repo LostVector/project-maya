@@ -6,5 +6,12 @@
   "performance_gate": "both paired timing blocks >=1% latency reduction;nonzero cache hits/savedH2D; otherwise no expensive quality suite",
   "constraints": "Default off; packed-RAM batch streamer only, HIP only, DSpark off;wholechunk pruning;no expert placement changes;512MiB measured free guard;new scheduler preserves per-layer chronological order,virtual slots and expert accumulation order. No decode/snapshot/full parity claims until broader validation.",
   "workspace": "~360MiB extra chunk state +768MiB cache/rank;perrun allocate before worker launch;sync and free after all workers finish",
-  "monitor": "controller checks live PID,swap,time limit;always restores serving; no extra concurrent model"
+  "monitor": "controller checks live PID,swap,time limit;always restores serving; no extra concurrent model",
+  "amendments": [
+    {
+      "utc": "2026-10-21T19:04:07.164162+00:00",
+      "reason": "768 MiB cache allocation failed before any paired execution despite free-memory guard; preserve rejected attempt.",
+      "budget": "Uniform target512 MiB perrank; boundedfallback384/256 without reloading; logactualallocation. States all allocated before cache attempts;512MiB free guard remains. No paired timing collected before amendment."
+    }
+  ]
 }
