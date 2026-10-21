@@ -1283,10 +1283,14 @@ __device__ void hip_block_wmma(const uint32_t* tr, int ld, int tc0, int k0, int 
     const size_t stride = (size_t) ld * W;
     HipF8 acc[Rows / 16] = {};
     for (int q = k0; q < k1; q += kCols) {
-        for (int row = warp; row < nc; row += kWarps) {
-            float v[4], scales[4];
-            chunk_load(x[row / kWarps], suh, q, lane, v, scales);
-            chunk_store(v, scales, lane, sm.xb + row * kCols);
+#pragma unroll
+        for (int j = 0; j < Rows / kWarps; ++j) {
+            const int row = warp + j * kWarps;
+            if (row < nc) {
+                float v[4], scales[4];
+                chunk_load(x[j], suh, q, lane, v, scales);
+                chunk_store(v, scales, lane, sm.xb + row * kCols);
+            }
         }
         __syncthreads();
         uint32_t words[8][R];
