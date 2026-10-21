@@ -1,0 +1,12 @@
+{
+  "logits-0.f32": {
+    "actual_sha256": "5d014b33dd4a4b7b4d3204fd29cb3fdec79df336c3584aa37e89a5a7e3d1d5da",
+    "accepted_sha256": "5d014b33dd4a4b7b4d3204fd29cb3fdec79df336c3584aa37e89a5a7e3d1d5da",
+    "accepted_path": "/home/rkuo/research/llm-weight-compression/_meta/maya-peer-prefill-20261020/logits-0.f32"
+  },
+  "warm-reference.f32": {
+    "actual_sha256": "0b2c07909739f5e34a1a2401ef817f26308f5b251d4e6a446ec45dcbe01930de",
+    "accepted_sha256": "0b2c07909739f5e34a1a2401ef817f26308f5b251d4e6a446ec45dcbe01930de",
+    "accepted_path": "/home/rkuo/research/llm-weight-compression/_meta/maya-peer-prefill-20261020/warm-reference.f32"
+  }
+}

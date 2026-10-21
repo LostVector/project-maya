@@ -1,0 +1,16 @@
+{
+  "flag": "DS4_EXL3_COMPRESSED_PREPARED",
+  "default_off": true,
+  "baseline": "Accepted peer-prefill build, all3 GPUs,TP2,256K context",
+  "dispatch": "Frozen R9700-training selector: >=256 rows, D5120,FF1152/2304,cb2,equalK3/4; existing predecode branch retained",
+  "prior_gates": "R9700 and RX9070XT each passed33 unit and110 captured-shape cases; frozen-policy selected held-outs all faster",
+  "scratch": "40MiB per exercised GPU after expert placement, temporary FP16 activations only",
+  "full_gates": [
+    "cold2069/warm2048/repeat full finite bit-exact independent accepted logits",
+    "greedy80 exact independent accepted",
+    "counter path-use proof plus all3 GPU allocation markers",
+    "cache moves0 and unchanged placement",
+    "cold8 and warm24 balanced timings"
+  ],
+  "activation": "No automatic activation until results reviewed"
+}
