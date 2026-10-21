@@ -1,0 +1,8 @@
+{
+  "status": "frozen_before_native_launch",
+  "chunk": 4096,
+  "parity": "3cases,64teacherforcedsteps;combine0/2/0,layout1/pruning1 throughout;195candidate+195repeatstatesexact plus195independentselectedb49references;3expectedanswers",
+  "performance": "After external rawfullvocab/answer gate whilemodelstaysresident:32K-only nativefeed screen;oneexcludedwarmup/mode,4timedpairedblocks alternatingAB/BA. All10prefilllastlogits mustexactlymatch preflightbaseline. Frozenexpertprofile1e30;noAPIorindependentloadspeedclaim.",
+  "selection": "Mode2fixed6 guard/unroll winsquickprimary;30+90operatorcomparisons exact across3GPUs. Lazy mode1notchosen.",
+  "api_next": "Onlypromisingnativefeedscreen getsmatchedproductionAPI;futuregate setbeforeAPImeasurements,notnativeinferencehere."
+}
