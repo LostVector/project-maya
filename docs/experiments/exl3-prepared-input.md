@@ -13,3 +13,11 @@ The identical public kernel/header/test sources were executed on the dedicated R
 For905 routed rows, latency reduction versus weight predecode plus GEMMs was8.16%/8.57% forK3/K4. For2048 rows it was9.12%/9.13% (K3 medians7.3584→6.6870ms). Small sets still lose to the compressed path, so this is not a universal dispatch rule. Full raw timing observations are included.
 
 These are isolated synthetic kernel results, not full-model or additional serving gains. Before model integration: captured55-group train/held-out coverage, padded-stride/guard tests, capacity/negative API cases, actual shape dispatch decisions, then finite full cold/warm/repeat independent accepted logits and80 greedy tokens, followed by balanced end-to-end timings. Existing serving remains on the peer-prefill build fromPR15.
+
+## Captured-group shape replay
+
+All55 captured groups passed contiguous and padded stride variants (110 cases), with bit-exact gate/up and down outputs compared against compressed FMA16 and the decoded path. Hidden/output padding, boundary/workspace guards, finite outputs, nonzero row0=29, gathered input and invalid API arguments were checked. Replay uses captured shapes/blob strides/counts with synthetic deterministic weights and activations, not captured model weights. The 27train/28held-out partition remains fixed.
+
+440 interleaved timing observations include weight decoding and preparation. With the existing selector unchanged, only three captured groups are predecode-eligible: training group4 improved8.97%; held-out groups3/8 improved8.47%/8.97%. These are descriptive kernel medians, not full-model gains or independent-trial confidence intervals.
+
+Build excluded HIP target `exl3_prepared_replay`, then run it with `docs/experiments/exl3-prepared-groups.txt` while inference is idle. The raw fixture and replay observations are included. Actual Maya run_set caps submitted pieces to C sorted routed rows; C2048 bounds the added input workspace to40MiB/main GPU. Full-model integration/parity/timing validation is a separate gate.
