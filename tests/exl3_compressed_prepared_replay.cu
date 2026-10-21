@@ -16,6 +16,7 @@ int main(int argc,char**argv) {
     if(argc!=2)return 2;
     std::ifstream input(argv[1]);int cases=0;input>>cases;require_replay(cases==55,"fixture count");
     test_env("DS4_EXL3_FMA16","1",1);
+    const bool check_only = std::getenv("EXL3_COMPRESSED_CHECK_ONLY") != nullptr;
     for(int ci=0;ci<cases;++ci){
         int id,heldout,E,F,T,K,ne;size_t recorded_stride;
         input>>id>>heldout>>E>>F>>T>>recorded_stride>>K>>ne;
@@ -45,6 +46,18 @@ int main(int argc,char**argv) {
             require_replay(!ex::set_down_prepared(a,decoded,h,ldh,y,E-1,ws,nr,0),"bad output stride rejection");
             require_replay(!ex::set_down_prepared(a,decoded,h,ldh,y,ldy,nullptr,nr,0),"null workspace rejection");
             if(mr>1)require_replay(!ex::set_down_prepared(a,decoded,h,ldh,y,ldy,ws,mr-1,0),"small capacity rejection");
+            require_replay(!ex::set_gate_up_compressed_prepared(a,d_x,E-1,d_idx,h,ldh,ws,nr,0),"compressed bad input stride");
+            require_replay(!ex::set_gate_up_compressed_prepared(a,d_x,ldx,d_idx,h,F-1,ws,nr,0),"compressed bad hidden stride");
+            require_replay(!ex::set_down_compressed_prepared(a,h,ldh,y,E-1,ws,nr,0),"compressed bad output stride");
+            require_replay(!ex::set_down_compressed_prepared(a,h,ldh,y,ldy,nullptr,nr,0),"compressed null workspace");
+            if(mr>1)require_replay(!ex::set_down_compressed_prepared(a,h,ldh,y,ldy,ws,mr-1,0),"compressed small capacity");
+            auto invalid=a;invalid.lay.K[1]=K==3?4:3;
+            require_replay(!ex::set_gate_up_compressed_prepared(invalid,d_x,ldx,d_idx,h,ldh,ws,nr,0),"compressed mixed gate/up K");
+            invalid=a;invalid.lay.cb=3;
+            require_replay(!ex::set_down_compressed_prepared(invalid,h,ldh,y,ldy,ws,nr,0),"compressed invalid codebook");
+            invalid=a;invalid.lay.K[2]=0;
+            require_replay(!ex::set_down_compressed_prepared(invalid,h,ldh,y,ldy,ws,nr,0),"compressed invalid K");
+            std::printf("COMPRESSED_API_REJECTION id=%d padded=%d passed=1\n",ci,padded);
             ex::set_gate_up(a,d_x,ldx,d_idx,h,ldh,0);ex::set_down(a,h,ldh,y,ldy,0);CK(cudaDeviceSynchronize());
             const auto hr=host_copy(h_storage,hb+16);const auto yr=host_copy(y_storage,yb+8);
             auto check=[&](){
@@ -60,7 +73,7 @@ int main(int argc,char**argv) {
             require_replay(ex::set_gate_up_prepared(a,decoded,d_x,ldx,d_idx,h,ldh,ws,nr,0)&&ex::set_down_prepared(a,decoded,h,ldh,y,ldy,ws,nr,0),"prepared path");check();
             require_replay(ex::set_gate_up_compressed_prepared(a,d_x,ldx,d_idx,h,ldh,ws,nr,0)&&ex::set_down_compressed_prepared(a,h,ldh,y,ldy,ws,nr,0),"compressed prepared path");check();
             std::printf("COMPRESSED_GROUP id=%d heldout=%d K=%d E=%d F=%d T=%d ne=%d rows=%d max_rows=%d padded=%d row0=29 exact=1 guards=1 negatives=1 workspace=%zu\n",ci,heldout,K,E,F,T,ne,nr,mr,padded,wsb);std::fflush(stdout);
-            if(!padded){
+            if(!padded && !check_only){
                 for(int trial=0;trial<8;++trial){const int order[8]={0,1,1,0,1,0,0,1};int mode=order[trial];auto run=[&](){if(mode==0){ex::set_gate_up(a,d_x,ldx,d_idx,h,ldh,0);ex::set_down(a,h,ldh,y,ldy,0);}else require_replay(ex::set_gate_up_compressed_prepared(a,d_x,ldx,d_idx,h,ldh,ws,nr,0)&&ex::set_down_compressed_prepared(a,h,ldh,y,ldy,ws,nr,0),"timed compressed prepared");};
                     cudaEvent_t begin,end;CK(cudaEventCreate(&begin));CK(cudaEventCreate(&end));run();CK(cudaEventRecord(begin));for(int j=0;j<5;++j)run();CK(cudaEventRecord(end));CK(cudaEventSynchronize(end));float calibration;CK(cudaEventElapsedTime(&calibration,begin,end));const int reps=std::min(2000,std::max(3,int(std::ceil(100/std::max(0.001,double(calibration)/5)))));for(int j=0;j<reps;++j)run();CK(cudaEventRecord(begin));for(int j=0;j<reps;++j)run();CK(cudaEventRecord(end));CK(cudaEventSynchronize(end));float ms;CK(cudaEventElapsedTime(&ms,begin,end));check();std::printf("COMPRESSED_GROUP_BENCH id=%d heldout=%d trial=%d mode=%d reps=%d mean_ms=%.9f exact=1\n",ci,heldout,trial,mode,reps,double(ms)/reps);std::fflush(stdout);CK(cudaEventDestroy(begin));CK(cudaEventDestroy(end));}
             }
@@ -69,6 +82,6 @@ int main(int argc,char**argv) {
         cudaFree(decoded);cudaFree(d_bounds);cudaFree(d_blob);
     }
     std::string trailing;require_replay(!(input>>trailing),"no trailing fixture data");
-    std::printf("COMPRESSED_REPLAY_COMPLETE groups=55 padded_cases=110 trials=440 launch_errors=%d\n",ex::launch_errors());return ex::launch_errors()?1:0;
+    std::printf("COMPRESSED_REPLAY_COMPLETE groups=55 padded_cases=110 trials=%d launch_errors=%d\n",check_only?0:440,ex::launch_errors());return ex::launch_errors()?1:0;
 #endif
 }
