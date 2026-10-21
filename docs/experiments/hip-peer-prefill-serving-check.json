@@ -1,0 +1,21 @@
+{
+  "health": {
+    "status": "ok",
+    "max_context": 262144,
+    "model": "deepseek-v4.1-flash-exl3-3.5bpw",
+    "images": false,
+    "api_key": false,
+    "defaults": {
+      "temperature": 1.0,
+      "top_p": 1.0,
+      "reasoning_effort": "high"
+    },
+    "version": "1.1.16",
+    "mcp_tools": false
+  },
+  "all_features_verified": true,
+  "peer_transport_initialized": true,
+  "rollback_config": "/home/rkuo/research/llm-weight-compression/_meta/maya-hip-host-copy-wait-20261020/serving-config.json",
+  "uncached_smoke_matches": true,
+  "exe_sha256": "170912eba65dc4755fada62b5a91ec5ced8b69aba3958feadf4133a4539d914f"
+}
