@@ -30,7 +30,7 @@ int main(int argc,char** argv) {
     const int chunk=argc>=4?std::atoi(argv[3]):2048;
     const int steps=argc==5?std::atoi(argv[4]):16;
     if(steps<1 || steps>128)return 2;
-    if(chunk!=2048 && chunk!=1024)return 2;
+    if(chunk!=4096 && chunk!=2048 && chunk!=1024)return 2;
     for(const char* name:{"DS4_SKIP_UNPICKED","DS4_EXL3_FMA16","DS4_EXL3_PACKED_HOST","DS4_EXL3_PREDECODE","DS4_HIP_HOST_COPY_WAIT","DS4_HIP_PEER_AR","DS4_YOCO_MULTIGPU","DS4_YOCO_STATS"})setenv(name,"1",1);
     for(const char* name:{"DS4_EXL3_MATRIX_RELAXED","DS4_EXL3_MATRIX_DECODED","DS4_YOCO_KEEP","DS4_PATH_PICK"})setenv(name,"0",1);
     const char* matrix_opt=std::getenv("DS4_YOCO_TEST_MATRIX");
@@ -51,14 +51,21 @@ int main(int argc,char** argv) {
     {std::ofstream f(root+"/allocation.txt");f<<m.describe();}
     std::fprintf(stderr,"YOCO_LOAD_READY chunk=%d\n",chunk);std::fflush(stderr);
     // With pruning off, compare independent accepted full-logit references before
-    // interpreting any new long-prompt result. These references use chunk2048.
-    if(chunk==2048){
+    // interpreting any new long-prompt result. References use chunk2048; chunk4096
+    // saves complete logits for an explicit cross-chunk drift report, not exact acceptance.
+    if(chunk==2048 || chunk==4096){
         if(!m.benchmark_prompt_skip_mode(0))return 1;
         for(const char* kind:{"code","database"}){
             const auto input=ids(root+"/baseline-"+kind+"-ids.json");m.reset();
             if(!m.feed(input.data(),int(input.size()),int(input.size()),err)){std::fprintf(stderr,"%s\n",err.c_str());return 1;}
             std::vector<float> actual;if(!m.logits(actual)||actual.size()!=input.size()*size_t(m.vocab()))return 1;
             std::ifstream expected(root+"/independent-"+kind+"-reference.f32",std::ios::binary);if(!expected)return 1;
+            if(chunk==4096){
+                for(float v:actual)if(!std::isfinite(v))return 1;
+                if(!save(root+"/cross-chunk-"+kind+"-actual.f32",actual))return 1;
+                std::fprintf(stderr,"YOCO_CROSS_CHUNK kind=%s rows=%zu finite=1 saved=1 reference_chunk=2048 actual_chunk=4096\n",kind,input.size());std::fflush(stderr);
+                continue;
+            }
             std::array<float,16384> block;size_t at=0;
             while(at<actual.size()){
                 const size_t n=std::min(block.size(),actual.size()-at);expected.read(reinterpret_cast<char*>(block.data()),n*sizeof(float));

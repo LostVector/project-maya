@@ -1,0 +1,261 @@
+{
+  "source_base": "8dfabf91799f438eec5686306cf17d209097aea5",
+  "status": "Native process and numerical analysis passed; launcher restoration recovered separately. No runtime selection.",
+  "model": "DeepSeek-V4.1-Flash-1017 EXL3 3.5bpw",
+  "settings": {
+    "chunk": 4096,
+    "TP": 2,
+    "layer_split": [
+      36,
+      4
+    ],
+    "context": 262144,
+    "matrix_rows": 16,
+    "whole_chunks": true,
+    "expert_weights": "RAM",
+    "profile_sha256": "1002e2cffa1847f46c38874e01dc1720232d050fea85a6fb8edaa08895748b2b",
+    "cache_bonus": "1e30 (freeze admissions for numerical fixture)"
+  },
+  "protocol": "Unpruned/pruned/unpruned at 4K for 8K, 32K, and an 8192-token pruned prefix plus 512-token append. Each trial records 64 teacher-forced steps plus the initial state. Candidate prefix pruning is enabled. Full code/database logits at 4K are compared with validated 2K matrix references.",
+  "cases": [
+    {
+      "id": "study_8k",
+      "snapshots": 65,
+      "candidate_exact_snapshots": 65,
+      "baseline_repeat_exact_snapshots": 65,
+      "expected_answer": {
+        "region": "Lima",
+        "codes": [
+          959232,
+          481329,
+          469193,
+          231455,
+          954798,
+          167933
+        ]
+      },
+      "answers": [
+        {
+          "trial": 0,
+          "source": "baseline_greedy_path",
+          "text": "{\"region\":\"Lima\",\"codes\":[959232,481329,469193,231455,954798,167933]}",
+          "correct": true,
+          "stopped_at_EOS": true
+        },
+        {
+          "trial": 1,
+          "source": "matching_decisions_through_EOS",
+          "text": "{\"region\":\"Lima\",\"codes\":[959232,481329,469193,231455,954798,167933]}",
+          "correct": true,
+          "stopped_at_EOS": true
+        },
+        {
+          "trial": 2,
+          "source": "baseline_greedy_path",
+          "text": "{\"region\":\"Lima\",\"codes\":[959232,481329,469193,231455,954798,167933]}",
+          "correct": true,
+          "stopped_at_EOS": true
+        }
+      ]
+    },
+    {
+      "id": "study_32k",
+      "snapshots": 65,
+      "candidate_exact_snapshots": 65,
+      "baseline_repeat_exact_snapshots": 65,
+      "expected_answer": {
+        "region": "Kyoto",
+        "codes": [
+          573434,
+          756268,
+          683001,
+          459330,
+          582363,
+          259332
+        ]
+      },
+      "answers": [
+        {
+          "trial": 0,
+          "source": "baseline_greedy_path",
+          "text": "{\"region\":\"Kyoto\",\"codes\":[573434,756268,683001,459330,582363,259332]}",
+          "correct": true,
+          "stopped_at_EOS": true
+        },
+        {
+          "trial": 1,
+          "source": "matching_decisions_through_EOS",
+          "text": "{\"region\":\"Kyoto\",\"codes\":[573434,756268,683001,459330,582363,259332]}",
+          "correct": true,
+          "stopped_at_EOS": true
+        },
+        {
+          "trial": 2,
+          "source": "baseline_greedy_path",
+          "text": "{\"region\":\"Kyoto\",\"codes\":[573434,756268,683001,459330,582363,259332]}",
+          "correct": true,
+          "stopped_at_EOS": true
+        }
+      ]
+    },
+    {
+      "id": "resume_pruned_prefix",
+      "snapshots": 65,
+      "candidate_exact_snapshots": 65,
+      "baseline_repeat_exact_snapshots": 65,
+      "expected_answer": {
+        "region": "Tallinn",
+        "codes": [
+          436018,
+          713477,
+          235885,
+          578295,
+          702925,
+          193092
+        ]
+      },
+      "answers": [
+        {
+          "trial": 0,
+          "source": "baseline_greedy_path",
+          "text": "{\"region\":\"Tallinn\",\"codes\":[436018,713477,235885,578295,702925,193092]}",
+          "correct": true,
+          "stopped_at_EOS": true
+        },
+        {
+          "trial": 1,
+          "source": "matching_decisions_through_EOS",
+          "text": "{\"region\":\"Tallinn\",\"codes\":[436018,713477,235885,578295,702925,193092]}",
+          "correct": true,
+          "stopped_at_EOS": true
+        },
+        {
+          "trial": 2,
+          "source": "baseline_greedy_path",
+          "text": "{\"region\":\"Tallinn\",\"codes\":[436018,713477,235885,578295,702925,193092]}",
+          "correct": true,
+          "stopped_at_EOS": true
+        }
+      ]
+    }
+  ],
+  "cross_chunk_reference_comparison": [
+    {
+      "kind": "code",
+      "rows": 2069,
+      "bit_exact_rows": 0,
+      "top1_matches": 2002,
+      "top1_agreement": 0.9676172063798937,
+      "mean_kl": 0.013710752649133674,
+      "max_kl": 1.6767701297756932,
+      "max_abs_error": 81.13576889038086,
+      "relative_l2": 0.12320257903988877,
+      "mean_next_token_nll_delta_4k_minus_2k": 0.003221634335204407,
+      "labelled_positions": 2068,
+      "scope": "Unpruned4Kversusvalidated2Kmatrixreference;samefrozenprofile. Changesinworkspace/residentcapacityanddispatcharepartofconfigurationdifference;notisolatedarithmeticorpruningdrift."
+    },
+    {
+      "kind": "database",
+      "rows": 2048,
+      "bit_exact_rows": 0,
+      "top1_matches": 2034,
+      "top1_agreement": 0.9931640625,
+      "mean_kl": 0.00632201692186539,
+      "max_kl": 1.7236235826761412,
+      "max_abs_error": 17.78067135810852,
+      "relative_l2": 0.159488120691229,
+      "mean_next_token_nll_delta_4k_minus_2k": 0.0017987441866278648,
+      "labelled_positions": 2047,
+      "scope": "Unpruned4Kversusvalidated2Kmatrixreference;samefrozenprofile. Changesinworkspace/residentcapacityanddispatcharepartofconfigurationdifference;notisolatedarithmeticorpruningdrift."
+    }
+  ],
+  "input_manifest": {
+    "scope": "4K-specific whole-chunk pruning numerical and pruned-prefix-resume validation;compare modeoff/on/off within4K,notcrosschunkbitparity;no timingclaim",
+    "decode_steps": 64,
+    "chunk": 4096,
+    "construction": "3000 unique generated reference records. Preserve first(total-256) and last256 token IDs, deleting only unrelated middle records; verify complete needle and final question survive.",
+    "seed": 20261020,
+    "template_sha256": "2561a5200b62f7816c667ee6f7a3b9483beb62ce27b79acc70e39b60fad33bd0",
+    "cases": [
+      {
+        "id": "study_8k",
+        "new_tokens": 8192,
+        "prefix_tokens": 0,
+        "expected_skipping": true,
+        "expected_prefix_skipping_in_candidate": false,
+        "needle_record_position": 0,
+        "expected_answer": {
+          "region": "Lima",
+          "codes": [
+            959232,
+            481329,
+            469193,
+            231455,
+            954798,
+            167933
+          ]
+        },
+        "prompt_sha256": "239dc4ee2db4337ec79acd3e1dfbd8794357c5a6fe1a30ad3054af0fb7c2851f",
+        "prefix_sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+        "needle_text": "Authoritative deployment entry QX-study_8k: backup region is Lima; authorization codes in order are [959232, 481329, 469193, 231455, 954798, 167933]."
+      },
+      {
+        "id": "study_32k",
+        "new_tokens": 32768,
+        "prefix_tokens": 0,
+        "expected_skipping": true,
+        "expected_prefix_skipping_in_candidate": false,
+        "needle_record_position": 64,
+        "expected_answer": {
+          "region": "Kyoto",
+          "codes": [
+            573434,
+            756268,
+            683001,
+            459330,
+            582363,
+            259332
+          ]
+        },
+        "prompt_sha256": "9f6357805c4e420d7cbc0a025298a37dc863bc4777683573ec3d9e7f86a8199f",
+        "prefix_sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+        "needle_text": "Authoritative deployment entry QX-study_32k: backup region is Kyoto; authorization codes in order are [573434, 756268, 683001, 459330, 582363, 259332]."
+      },
+      {
+        "id": "resume_pruned_prefix",
+        "new_tokens": 512,
+        "prefix_tokens": 8192,
+        "expected_skipping": false,
+        "expected_prefix_skipping_in_candidate": true,
+        "needle_record_position": 0,
+        "expected_answer": {
+          "region": "Tallinn",
+          "codes": [
+            436018,
+            713477,
+            235885,
+            578295,
+            702925,
+            193092
+          ]
+        },
+        "prompt_sha256": "4a244c71072197d49418ab63fa43f030f776d6f73070c8377d859f2dd72ba760",
+        "prefix_sha256": "6635cce08062e2e1bace4fbbbe38466713412c97b6e331ba042af322169e056e",
+        "needle_text": "Authoritative deployment entry QX-resume_pruned_prefix: backup region is Tallinn; authorization codes in order are [436018, 713477, 235885, 578295, 702925, 193092]."
+      }
+    ]
+  },
+  "native_process_exit": {
+    "exit_code": 0,
+    "pid": 249776,
+    "swap_peak_kib": 0
+  },
+  "limits": [
+    "195 exact snapshot comparisons establish whole-chunk pruning equivalence within these 4K fixtures, not bit-exact 4K-versus-2K behavior.",
+    "The cross-chunk probes have no bit-exact rows; top-1 agreement and next-token loss changes are reported. Workspace/resident-capacity/dispatch differences are part of the configuration change.",
+    "Three synthetic expected answers and two full-position fixtures are not broad quality evidence. The API sorting task varied across 2K loads; see PR36.",
+    "Numerical fixtures freeze cache admissions; actual serving learns normally. These runtimes are not a serving speed comparison.",
+    "The native process exited0 and analysis passed. The launcher then failed because its restore helper was omitted. The helper was restored and captured2Kserving was verified healthy; original failed receipts are preserved.",
+    "No chunk size is activated by this checkpoint. Quick intermediate-cap screening is a separate experiment."
+  ]
+}
