@@ -1,0 +1,110 @@
+{
+  "parity_checks": 39,
+  "all_exact_finite_guards": true,
+  "cases": {
+    "sparse1": {
+      "medians_ms": {
+        "0": 0.1970615015,
+        "2": 0.1311010045,
+        "3": 0.0131000001
+      },
+      "mode3_latency_reduction_vs_selected_mode2_percent": 90.0077042506566
+    },
+    "sparse10": {
+      "medians_ms": {
+        "0": 0.211401999,
+        "2": 0.1491815,
+        "3": 0.0507405009
+      },
+      "mode3_latency_reduction_vs_selected_mode2_percent": 65.98740400116637
+    },
+    "half": {
+      "medians_ms": {
+        "0": 0.29396249350000003,
+        "2": 0.251941994,
+        "3": 0.22266200149999998
+      },
+      "mode3_latency_reduction_vs_selected_mode2_percent": 11.621719759826943
+    },
+    "full1": {
+      "medians_ms": {
+        "0": 0.424263999,
+        "2": 0.4268429875,
+        "3": 0.4267840085
+      },
+      "mode3_latency_reduction_vs_selected_mode2_percent": 0.013817493019030458
+    },
+    "sparse10x3": {
+      "medians_ms": {
+        "0": 0.225301996,
+        "2": 0.1633410005,
+        "3": 0.0929009989
+      },
+      "mode3_latency_reduction_vs_selected_mode2_percent": 43.124507248258226
+    },
+    "sparse1x6": {
+      "medians_ms": {
+        "0": 0.200422004,
+        "2": 0.133740999,
+        "3": 0.0245199995
+      },
+      "mode3_latency_reduction_vs_selected_mode2_percent": 81.66605627044852
+    },
+    "dense6": {
+      "medians_ms": {
+        "0": 1.1183090199999999,
+        "2": 1.11828899,
+        "3": 1.118689005
+      },
+      "mode3_latency_reduction_vs_selected_mode2_percent": -0.035770270795576486
+    },
+    "no_hits": {
+      "medians_ms": {
+        "0": 0.19856149699999998,
+        "2": 0.1328215,
+        "3": 0.00873999996
+      },
+      "mode3_latency_reduction_vs_selected_mode2_percent": 93.41974005714437
+    },
+    "ragged_cpu": {
+      "medians_ms": {
+        "0": 0.009899999945,
+        "2": 0.00964100007,
+        "3": 0.009740000124999999
+      },
+      "mode3_latency_reduction_vs_selected_mode2_percent": -1.0268649961745924
+    },
+    "ragged_one_cpu": {
+      "medians_ms": {
+        "0": 0.00872000027,
+        "2": 0.008619999980000001,
+        "3": 0.00887999963
+      },
+      "mode3_latency_reduction_vs_selected_mode2_percent": -3.016237245977327
+    },
+    "ragged_six_cpu": {
+      "medians_ms": {
+        "0": 0.009920000095,
+        "2": 0.00968000013,
+        "3": 0.009899999945
+      },
+      "mode3_latency_reduction_vs_selected_mode2_percent": -2.27272533104812
+    },
+    "other_k": {
+      "medians_ms": {
+        "0": 0.00876050023,
+        "2": 0.008760000109999999,
+        "3": 0.00872000027
+      },
+      "mode3_latency_reduction_vs_selected_mode2_percent": 0.45661917234838256
+    },
+    "empty_range": {
+      "medians_ms": {
+        "0": 0.00443999982,
+        "2": 0.00445999997,
+        "3": 0.00443999982
+      },
+      "mode3_latency_reduction_vs_selected_mode2_percent": 0.44843385951860437
+    }
+  }
+}

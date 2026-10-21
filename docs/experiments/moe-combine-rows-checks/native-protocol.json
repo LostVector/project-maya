@@ -1,0 +1,11 @@
+{
+  "status": "frozen_before_native_launch",
+  "control": 2,
+  "candidate": 3,
+  "chunk": 4096,
+  "pruning": 1,
+  "steps": 64,
+  "cases": 3,
+  "gate": "195candidate+195repeat states exact;195priorindependentreferencesexact;9answerscorrect;VmSwap0;no newnumericalrelaxation.",
+  "performance": "No extra native timing screen;operator90%/66%sparse improvement justifies direct4freshload matchedAPI afterfullnative gate. CurrenttimedAPI gatewillbefrozenbeforelaunch."
+}
