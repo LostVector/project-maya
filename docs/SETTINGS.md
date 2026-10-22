@@ -1273,3 +1273,23 @@ Engine options, in the config's `"args"`:
 |---|---|---|
 | `MAYA_EXPERT_RAM_GB` | unset (what the RAM allows) | caps the experts' RAM tier, in GB (the dashboard's Models page: Experts in RAM) |
 | `MAYA_EXPERT_STAGERS` | a quarter of the CPU threads, 2 to 8 | the threads that read a layer's experts from the file while the CPU prepares the layer (their reads overlap); `0`: read one by one when the CPU needs them |
+
+## HIP EXL3 single-row matrix jobs (experimental)
+
+Set `DS4_EXL3_MV1=1` in the engine configuration's `env` and restart to use a smaller EXL3 matrix-vector kernel for
+one-token jobs on HIP. It keeps workspace for one activation row instead of eight. A batch containing any job with
+multiple rows keeps the generic kernel. The option is off by default; unset it or use `0` to select the generic path.
+
+The input-split planner stays unchanged, preserving the order of partial sums. This does not expand weights, reserve
+another expert cache, or change model quantization. It affects native EXL3 matrix jobs; GGUF jobs use their own path.
+
+Validation command after building `exl3_test` on an idle GPU:
+
+```sh
+ctest --test-dir build-hip -R '^exl3(_mv1)?_test$' --output-on-failure
+```
+
+The opt-in test runs the existing CPU-reference and exact multi-row checks, plus mixed one-/three-row batches with
+strided inputs and guarded outputs. It includes integer EXL3 bitrates with all three codebooks and the supported
+half-integer bitrates. Results from a custom older serving build do not establish performance on current main;
+this port requires its own whole-model validation before deployment.
