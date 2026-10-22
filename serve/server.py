@@ -1496,6 +1496,14 @@ def child_env(cfg: dict) -> dict:
         env["CUDA_VISIBLE_DEVICES"] = ",".join(str(i) for i in gpu_list(cfg))
     for k, v in (cfg.get("env") or {}).items():      # engine settings the config carries (AMD: the GEMM tuning table)
         env[str(k)] = str(v)
+    # ROCr reads this before HIP initializes, so translate the opt-in in the child environment.
+    # Keep a directly supplied ROCr setting authoritative (including an inherited one).
+    settings = maya_names.env_in({"env": dict(cfg.get("env") or {})})["env"]
+    disable_svm = settings.get("STRATA_HIP_DISABLE_SVM",
+                               os.environ.get("MAYA_HIP_DISABLE_SVM", os.environ.get("STRATA_HIP_DISABLE_SVM")))
+    if (sys.platform == "linux" and cfg.get("backend") == "hip"
+            and str(disable_svm) == "1"):
+        env.setdefault("HSA_USE_SVM", "0")
     dirs = [d for d in cfg.get("lib_dirs") or [] if Path(d).is_dir()]
     if dirs:
         var = "PATH" if os.name == "nt" else "LD_LIBRARY_PATH"

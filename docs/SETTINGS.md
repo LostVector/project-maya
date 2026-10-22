@@ -12,6 +12,27 @@ server settings under `MAYA_GLM_RESPONSES_*`, with defaults and units in
 [Responses settings](RESPONSES.md#settings-and-metrics). They can be set in the same
 config `env` block; response storage and background work remain request opt-ins.
 
+## Linux AMD: optional ROCr stall workaround
+
+`MAYA_HIP_DISABLE_SVM=1` sets `HSA_USE_SVM=0` in a Linux HIP engine's environment **before it starts**.
+For example, save it with `./maya.sh --setup --env MAYA_HIP_DISABLE_SVM=1`, then restart the engine.
+Alternatively, add `"MAYA_HIP_DISABLE_SVM": "1"` to the config's `"env"` object.
+Remove the option or set it to `0` to return to the runtime's default on the next engine start.
+An explicit `HSA_USE_SVM` in the shell or config takes precedence; this option never clears it.
+
+This switches ROCr's host-memory registration path. On a Linux setup with two Radeon AI PRO R9700s
+and a third RX 9070 XT, KFD queue evictions coincided with long decode pauses, including a captured
+3.68-second pause. With the workaround, a small paired screen showed about 3.2% higher warm decode
+throughput; an approximately 8K-token prefill stayed at 17.5 seconds. Five fixed-chain logit checkpoints
+(646,400 values) matched bit for bit, and the existing peer-transport checks passed in both modes.
+A subsequent 1,152-token serving smoke test recorded no increase in KFD eviction time.
+
+The option is **off by default**: these measurements cover one machine and a short workload, not all
+ROCm versions or models. Other eviction causes can remain; this is not a guarantee of stall-free
+inference. CUDA and Windows launches are unaffected. An independent
+[R9700 report](https://github.com/ROCm/legacy-rocm-build/issues/6386#issuecomment-5985165175)
+describes the same runtime workaround. It does not change the system-wide transparent hugepage setting.
+
 The engine sizes itself: it splits the layers across the GPUs it is given (up to 16; with more than two, each GPU
 takes layers in proportion to its free VRAM), fills each GPU's free VRAM with experts, sizes its RAM tier from the
 free RAM, and measures the CPU against the PCIe link at start to decide how many RAM experts the CPU computes itself.
