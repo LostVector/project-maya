@@ -1291,5 +1291,9 @@ ctest --test-dir build-hip -R '^exl3(_mv1)?_test$' --output-on-failure
 
 The opt-in test runs the existing CPU-reference and exact multi-row checks, plus mixed one-/three-row batches with
 strided inputs and guarded outputs. It includes integer EXL3 bitrates with all three codebooks and the supported
-half-integer bitrates. Results from a custom older serving build do not establish performance on current main;
-this port requires its own whole-model validation before deployment.
+half-integer bitrates. A controlled DS4 native-driver screen on three R9700s, based on v1.1.27, measured 3.4-5.0% higher generation
+throughput with draft proposals disabled, and about 0.7% with MTP. Expert placement was frozen and adjacent on/off
+requests shared one loaded model; the drafter stayed loaded in both modes. A separate fresh-load comparison was
+inconclusive because the controls drifted. These are limited model measurements, not production API acceptance or
+a general speed guarantee. Full-vocabulary diagnostic dumps matched across settings and repeats on the tested
+states; other GPU architectures and broader workloads remain unvalidated.
