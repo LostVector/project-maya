@@ -1092,6 +1092,20 @@ choices. Opt-in until measured on GPUs.
 | --- | --- | --- |
 | `MAYA_DS4_MARKOV_Q8` | off (0) | `1`: the DSpark markov head as Q8_0 blocks (half its bytes and memory; the drafts may change, the verified answers do not) |
 
+`MAYA_DS4_DRAFT_GPU` instead names the GPU IDs printed at startup, including GPUs in different target TP groups.
+For a target split over a two-card group and a third card, `2` puts every drafter block on GPU 2; `0,1,2` puts one
+of three blocks on each GPU. Blocks still run whole and in order. Their dense weights, attention state and expert
+storage belong to the chosen GPU; expert placement charges its target group, preserving the target's shared-slot
+budget. The existing pinned-host handoff carries rows between blocks on different GPUs.
+
+| Setting | Default | |
+| --- | --- | --- |
+| `MAYA_DS4_DRAFT_GPU` | off (existing placement) | one selected GPU ID for all DSpark blocks, or one ID per block; cannot be combined with `MAYA_DS4_DRAFT_DEV` |
+
+This is an opt-in placement experiment, not a speed recommendation. Moving blocks changes the target's available
+expert-cache room and adds transfers at device boundaries; compare end-to-end throughput and draft acceptance.
+It requires loaded DSpark blocks. An unknown/unselected ID, malformed list or wrong block count fails loading.
+
 ## DeepSeek: a helper GPU for the experts VRAM leaves over
 
 A GGUF pack's routed experts that do not fit the layer GPUs' VRAM run on the CPU lane. A GPU that is not one of the
