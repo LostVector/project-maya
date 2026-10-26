@@ -13,6 +13,7 @@
 #include "ds4_model.hpp"
 #include "ds4_engram_io.hpp"
 #include "ds4_draft_placement.hpp"
+#include "ds4_draft_cache.hpp"
 
 #include "ds4_gguf.cuh"
 #include "ds4_gguf_cpu.hpp"
@@ -1028,6 +1029,7 @@ struct Model::Impl {
     int d_dev = 0;                    // the drafter's first block's device
     std::vector<int> draft_dev;       // DS4_DRAFT_DEV: each block's member of the drafter's group (draft_devs; empty: the lead)
     std::vector<int> draft_gpu;       // DS4_DRAFT_GPU: each block's selected device, across TP groups
+    double draft_coverage = 0;        // opt-in profile coverage cap for a one-GPU drafter group
     bool spec_win = false;            // the window being run is a draft's verification (layer() keeps backups)
     float* h_taps = nullptr;          // pinned [kWin][targets][dim]: the last window's taps (each block device's seeding
                                       // read it: Dev::ev_seed; the next window's taps wait for every one, wait_seed)
@@ -2439,6 +2441,11 @@ struct Model::Impl {
     // ---- loading
     bool load(const Options& opt, std::string& err) {
         o = opt;
+        if (!draft_cache_coverage(ds4_env("DS4_DRAFT_CACHE_COVERAGE"), draft_coverage, err)) return false;
+        if (draft_coverage > 0 && (!o.dspark || std::getenv("DS4_PLACE_UNIFORM") != nullptr)) {
+            err = "DS4_DRAFT_CACHE_COVERAGE requires DSpark and cannot be combined with DS4_PLACE_UNIFORM";
+            return false;
+        }
         const double t0 = now_ms();
         if (!pk.load(o.pack, err)) return false;
         // (AMD: the prompt GEMMs' measured kernels) the pack's lt-picks.txt, or MAYA_DS4_LT_STORE's file - empty: none,
@@ -2447,6 +2454,10 @@ struct Model::Impl {
         if (lt_store == nullptr) lt_store = std::getenv("DS4_LT_STORE");
         lt::set_store(lt_store != nullptr ? lt_store : (o.pack + "/lt-picks.txt").c_str());
         g.from(pk);
+        if (draft_coverage > 0 && g.n_mtp == 0) {
+            err = "DS4_DRAFT_CACHE_COVERAGE requires loaded DSpark blocks";
+            return false;
+        }
         if (g.dim == 0 || g.nl == 0 || (int) g.ratios.size() < g.nl) {
             err = o.pack + "/ds4.txt: incomplete geometry";
             return false;
@@ -4926,7 +4937,8 @@ struct Model::Impl {
             for (const Layer& l : L)
                 if (l.grp == (int) gi && l.mtp && l.n_cls == 1)
                     for (int e = 0; e < l.n_exp; ++e) dseen = dseen || prof[(size_t) l.il * g.n_exp + e] > 0;
-            if (mroom.size() == 1 || !dseen || std::getenv("DS4_PLACE_UNIFORM") != nullptr) {   // all of them, as room goes
+            const bool cap_single = mroom.size() == 1 && draft_coverage > 0;
+            if ((mroom.size() == 1 && !cap_single) || !dseen || std::getenv("DS4_PLACE_UNIFORM") != nullptr) {   // all of them, as room goes
                 for (Layer& l : L)
                     if (l.grp == (int) gi && l.mtp && l.n_cls == 1) {
                         double& r = mroom[bm(l)];
@@ -4934,7 +4946,9 @@ struct Model::Impl {
                         r -= (double) l.n_vram * ucount(l);
                     }
             } else {
-                // by the profile: each block's experts that take 99% of its routes always, the others only while its
+                // by the profile: each block's experts that take 99% of its routes always (a one-GPU group may opt
+                // into a different coverage). For one member, others() is unbounded: no extras past its coverage.
+                // For several members, the others only while its
                 // member keeps the room of the next tightest member (past it, each drafter expert's bytes on that
                 // member are as many trunk experts lost on every member: a trunk expert in VRAM takes its part on each)
                 std::vector<std::vector<double>> sh(L.size());
@@ -4950,9 +4964,14 @@ struct Model::Impl {
                     std::sort(s.begin(), s.end(), std::greater<double>());
                     int keep = 0;
                     for (double c = 0; keep < l.n_exp && c < 0.99; ++keep) c += s[(size_t) keep];
+                    if (cap_single) keep = draft_cache_keep(p, l.n_exp, draft_coverage);
                     double& r = mroom[bm(l)];
                     l.n_vram = std::min(keep, (int) std::floor(r / (double) ucount(l)));
                     r -= (double) l.n_vram * ucount(l);
+                    if (cap_single)
+                        std::fprintf(stderr, "ds4: drafter cache coverage %.6g, block %d on CUDA%d: %d of %d experts "
+                                             "in VRAM (profile routes %.0f; misses use CPU)\n",
+                                     draft_coverage, l.il - g.nl, devs[(size_t) l.dev].id, l.n_vram, l.n_exp, sum);
                     if (l.n_vram < l.n_exp) pq.push({s[(size_t) l.n_vram] / ucount(l), l.il});
                 }
                 while (!pq.empty()) {
