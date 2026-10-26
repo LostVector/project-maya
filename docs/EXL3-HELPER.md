@@ -16,7 +16,7 @@ arithmetic, so bitwise output equivalence is not guaranteed.
 For three visible GPUs, target TP2 on GPUs 0 and 1, and DSpark on GPU 2:
 
 ```sh
-DS4_SPLIT=40,0 DS4_DRAFT_GPU=2 \
+DS4_SPLIT=40,0 DS4_DRAFT_GPU=2 DS4_RECENT=0 \
 DS4_HELPER=2 DS4_HELPER_GB=20 DS4_HELPER_EXL3=1 DS4_HELPER_SHARED=1 \
 DS4_WARM_CAP_GB=200 maya-ds4 --tp 2 --dspark on ...
 ```
@@ -27,6 +27,12 @@ drafter, so subsequent memory estimates include that allocation. The example
 uses decimal GB and requires enough remaining VRAM for drafter weights, scratch
 space, context buffers, and the requested reserve. It is an experimental budget,
 not an automatic recommendation for every model or GPU.
+
+The measured three-R9700 configuration explicitly disables the recent-expert
+cache with `DS4_RECENT=0`. The engine otherwise defaults to 32 recent slots on
+eligible layers. That changes the primary/helper partition, RAM use, and copy
+traffic; treat it as a separate tuning choice. Do not omit the setting when
+reproducing the reported helper measurements.
 
 Leave all helper settings unset to disable this feature. `DS4_HELPER_EXL3=1` is
 required for EXL3. Mixed-format EXL3 layers are not selected for the helper.
