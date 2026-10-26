@@ -11,14 +11,37 @@ the normal TP cache stores shards. Router selections and weights remain
 authoritative. Moving a contribution from CPU to GPU changes floating-point
 arithmetic, so bitwise output equivalence is not guaranteed.
 
-## Sharing the third GPU with DSpark
+## Selecting a helper and its budget
 
-For three visible GPUs, target TP2 on GPUs 0 and 1, and DSpark on GPU 2:
+The native executable accepts the `DS4_*` names below; Maya's public settings
+use the corresponding `MAYA_DS4_*` names. GPU IDs are visible IDs printed at
+startup, after any visibility filtering. Budgets are explicit decimal GB;
+there is no default GPU or pool size.
+
+For a dedicated helper, choose a visible GPU outside the target's `--gpus`
+selection. For example, with target GPUs 0 and 1 and helper GPU 2:
 
 ```sh
-DS4_SPLIT=40,0 DS4_DRAFT_GPU=2 DS4_RECENT=0 \
-DS4_HELPER=2 DS4_HELPER_GB=20 DS4_HELPER_EXL3=1 DS4_HELPER_SHARED=1 \
-DS4_WARM_CAP_GB=200 maya-ds4 --tp 2 --dspark on ...
+DS4_HELPER=2 DS4_HELPER_GB="$helper_gb" DS4_HELPER_EXL3=1 \
+DS4_WARM_CAP_GB="$host_warm_gb" \
+maya-ds4 --pack /path/to/pack --gpus 0,1 --tp 2 ...
+```
+
+Set `helper_gb` and `host_warm_gb` to budgets suitable for the machine before
+running this example. The helper executes existing router selections;
+it does not predict experts or alter their routing weights.
+
+## Sharing a helper GPU with DSpark
+
+For three visible GPUs, target TP2 on GPUs 0 and 1, and DSpark on GPU 2,
+also select GPU 2 and give its target group zero layers. Set `target_layers`
+to the model's number of target layers (40 for the measured Flash model):
+
+```sh
+DS4_SPLIT="$target_layers,0" DS4_DRAFT_GPU=2 \
+DS4_HELPER=2 DS4_HELPER_GB="$helper_gb" DS4_HELPER_EXL3=1 DS4_HELPER_SHARED=1 \
+DS4_WARM_CAP_GB="$host_warm_gb" \
+maya-ds4 --pack /path/to/pack --gpus 0,1,2 --tp 2 --dspark on ...
 ```
 
 Shared mode requires loaded DSpark blocks, TP2, and zero target layers on the
@@ -28,7 +51,10 @@ uses decimal GB and requires enough remaining VRAM for drafter weights, scratch
 space, context buffers, and the requested reserve. It is an experimental budget,
 not an automatic recommendation for every model or GPU.
 
-The measured three-R9700 configuration explicitly disables the recent-expert
+The measured three-R9700 configuration used `target_layers=40`, `helper_gb=20`
+and `host_warm_gb=200`. These are benchmark settings, not new defaults or
+universal recommendations. CPU worker count is independently configurable.
+That configuration explicitly disables the recent-expert
 cache with `DS4_RECENT=0`. The engine otherwise defaults to 32 recent slots on
 eligible layers. That changes the primary/helper partition, RAM use, and copy
 traffic; treat it as a separate tuning choice. Do not omit the setting when
