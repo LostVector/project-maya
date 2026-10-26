@@ -24,7 +24,7 @@ selection. For example, with target GPUs 0 and 1 and helper GPU 2:
 ```sh
 DS4_HELPER=2 DS4_HELPER_GB="$helper_gb" DS4_HELPER_EXL3=1 \
 DS4_WARM_CAP_GB="$host_warm_gb" \
-maya-ds4 --pack /path/to/pack --gpus 0,1 --tp 2 ...
+maya-ds4 --pack /path/to/pack --gpus 0,1 --tp 2
 ```
 
 Set `helper_gb` and `host_warm_gb` to budgets suitable for the machine before
@@ -41,7 +41,7 @@ to the model's number of target layers (40 for the measured Flash model):
 DS4_SPLIT="$target_layers,0" DS4_DRAFT_GPU=2 \
 DS4_HELPER=2 DS4_HELPER_GB="$helper_gb" DS4_HELPER_EXL3=1 DS4_HELPER_SHARED=1 \
 DS4_WARM_CAP_GB="$host_warm_gb" \
-maya-ds4 --pack /path/to/pack --gpus 0,1,2 --tp 2 --dspark on ...
+maya-ds4 --pack /path/to/pack --gpus 0,1,2 --tp 2 --dspark on
 ```
 
 Shared mode requires loaded DSpark blocks, TP2, and zero target layers on the
