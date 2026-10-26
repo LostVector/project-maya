@@ -596,6 +596,18 @@ This is an opt-in placement experiment, not a speed recommendation. Moving block
 expert-cache room and adds transfers at device boundaries; compare end-to-end throughput and draft acceptance.
 It requires loaded DSpark blocks. An unknown/unselected ID, malformed list or wrong block count fails loading.
 
+`MAYA_DS4_DRAFT_CACHE_COVERAGE=0.99` optionally caps a one-GPU target group's DSpark expert residency at the
+smallest set covering 99% of that block's saved routing counts, leaving the remaining room for target experts.
+It keeps the existing device placement. The router still selects from every expert; a selected expert outside
+VRAM executes through the normal CPU lane. This changes cache allocation, not the quantization or expert count.
+
+The default is unset, preserving existing allocation. Fractions must be greater than zero and at most one;
+unset the variable to disable it. A block with no profile counts keeps all its experts as room allows. Multi-GPU
+groups retain their existing placement rule, and mixed-precision expert blocks still require full residency.
+DSpark must be enabled; combining the setting with `DS4_PLACE_UNIFORM` fails loading. Historical coverage is not
+a promise about new prompts. Compare end-to-end speed and draft acceptance before retaining a setting; CPU/GPU
+execution can differ numerically. No speed or quality recommendation is established by this option alone.
+
 ## DeepSeek: a helper GPU for the experts VRAM leaves over
 
 A GGUF pack's routed experts that do not fit the layer GPUs' VRAM run on the CPU lane. A GPU that is not one of the
