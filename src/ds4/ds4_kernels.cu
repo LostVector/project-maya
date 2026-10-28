@@ -2812,7 +2812,7 @@ __global__ void wait_seq_kernel(const unsigned* seq_ptr, unsigned seq) {
 __global__ void __launch_bounds__(256) helper_take_kernel(const Req* req, unsigned seq, int k, int dim,
                                                           const unsigned long long* __restrict__ tab, int n,
                                                           unsigned long long* plan, float* w, float* x, unsigned* ack,
-                                                          const unsigned* quit) {
+                                                          const unsigned* quit, bool vector_input) {
     __shared__ int live;
     if (threadIdx.x == 0) {   // (the request in host-mapped memory: read as the host's answers are, volatile)
         unsigned v;
@@ -2837,7 +2837,15 @@ __global__ void __launch_bounds__(256) helper_take_kernel(const Req* req, unsign
         plan[j] = p;
         w[j] = p != 0ull ? r->w[t][i] : 0.0f;
     }
-    for (int j = threadIdx.x; j < T * dim; j += blockDim.x) x[j] = r->x[j / dim][j % dim];
+    const float* host_x = const_cast<const float*>(&r->x[0][0]);
+    if (vector_input && dim % 4 == 0 && (((uintptr_t) host_x | (uintptr_t) x) & 15) == 0) {
+        // The same host mailbox and ready/ack lifetime, but four floats per PCIe read instead of one.
+        const int d4 = dim / 4;
+        for (int j = threadIdx.x; j < T * d4; j += blockDim.x)
+            ((float4*) x)[j] = ld_fresh_v((const float4*) (host_x + (size_t) (j / d4) * kMaxDim + (j % d4) * 4));
+    } else {
+        for (int j = threadIdx.x; j < T * dim; j += blockDim.x) x[j] = r->x[j / dim][j % dim];
+    }
     __syncthreads();
     if (threadIdx.x == 0 && live) {
         __threadfence_system();
@@ -3379,8 +3387,9 @@ bool route_pair(const RoutePair& a, cudaStream_t s) {
 }
 void wait_seq(const unsigned* seq_ptr, unsigned seq, cudaStream_t s) { pdl_launch(wait_seq_kernel, 1, 32, 0, s, seq_ptr, seq); }
 void helper_take(const Req* req, unsigned seq, int k, int dim, const unsigned long long* tab, int n,
-                 unsigned long long* plan, float* w, float* x, unsigned* ack, const unsigned* quit, cudaStream_t s) {
-    helper_take_kernel<<<1, 256, 0, s>>>(req, seq, k, dim, tab, n, plan, w, x, ack, quit);
+                 unsigned long long* plan, float* w, float* x, unsigned* ack, const unsigned* quit, cudaStream_t s,
+                 bool vector_input) {
+    helper_take_kernel<<<1, 256, 0, s>>>(req, seq, k, dim, tab, n, plan, w, x, ack, quit, vector_input);
 }
 void signal_seq(unsigned* flag, unsigned seq, cudaStream_t s) { signal_seq_kernel<<<1, 1, 0, s>>>(flag, seq); }
 void init_pre(float* pre, int T, cudaStream_t s) { pdl_launch(init_pre_kernel, cdiv(T * 8, 128), 128, 0, s, pre, T); }

@@ -1,0 +1,517 @@
+{
+  "model": {
+    "canonical_plan": "/home/rkuo/research/llm-weight-compression/_meta/maya-decode-memory-goal-20261026/plan.json",
+    "canonical_work_item": "p2p-helper-exchange",
+    "timed_requests": 21,
+    "clean_timed_requests": 21,
+    "numeric": {
+      "passed": true,
+      "bit_exact_under_matched_residency": true,
+      "historical_reference_matches": {
+        "code": true,
+        "async_workers": true,
+        "agent4k": true
+      },
+      "score_values": 1551360,
+      "all_gathered_row_values": 31027200,
+      "gather_row_counts": [
+        1,
+        2,
+        3,
+        4,
+        6,
+        8,
+        16
+      ]
+    },
+    "results": [
+      {
+        "case": "code",
+        "scalar_tps": 39.710034022398936,
+        "vector_tps": 39.83237210074271,
+        "gain_pct": 0.30807850296670214,
+        "matched_tokens_drafts_hits_and_helper_work": true,
+        "blocks": [
+          {
+            "block": 0,
+            "gain_pct": 0.15596730925198088,
+            "saved_ms": 5.0
+          },
+          {
+            "block": 1,
+            "gain_pct": 0.07754342431760541,
+            "saved_ms": 2.5
+          },
+          {
+            "block": 2,
+            "gain_pct": 0.6914595402728541,
+            "saved_ms": 22.200000000000273
+          }
+        ],
+        "scalar_tail_drift_pct": 0.3632551815757168,
+        "whole_request_copy_counts": {
+          "calls": 2080,
+          "rows": 5440
+        }
+      },
+      {
+        "case": "async_workers",
+        "scalar_tps": 36.42779896408447,
+        "vector_tps": 36.48074785533103,
+        "gain_pct": 0.14535297973607975,
+        "matched_tokens_drafts_hits_and_helper_work": true,
+        "blocks": [
+          {
+            "block": 0,
+            "gain_pct": 0.6155599886007224,
+            "saved_ms": 21.59999999999991
+          },
+          {
+            "block": 1,
+            "gain_pct": -0.32433355145238263,
+            "saved_ms": -11.400000000000091
+          },
+          {
+            "block": 2,
+            "gain_pct": 0.14562275141341008,
+            "saved_ms": 5.100000000000364
+          }
+        ],
+        "scalar_tail_drift_pct": 0.9161664608403397,
+        "whole_request_copy_counts": {
+          "calls": 2240,
+          "rows": 5800
+        }
+      },
+      {
+        "case": "long",
+        "scalar_tps": 29.000611731653713,
+        "vector_tps": 29.069767441860467,
+        "gain_pct": 0.23846293604652402,
+        "matched_tokens_drafts_hits_and_helper_work": true,
+        "blocks": [
+          {
+            "block": 0,
+            "gain_pct": 0.38574994327207346,
+            "saved_ms": 17.0
+          },
+          {
+            "block": 1,
+            "gain_pct": 0.38789583522367277,
+            "saved_ms": 17.100000000000364
+          },
+          {
+            "block": 2,
+            "gain_pct": -0.05916890446496792,
+            "saved_ms": -2.5999999999994543
+          }
+        ],
+        "scalar_tail_drift_pct": 0.08163080202261419,
+        "whole_request_copy_counts": {
+          "calls": 2560,
+          "rows": 5640
+        }
+      }
+    ],
+    "scope": "One initialized engine, fixed startup placements, no added VRAM, MTP5/conf.65,21timed128-output requests; helper drained between requests. No independent-load CI or normal adaptive-cache serving claim."
+  },
+  "operator_evidence": "ds4_helper_input_20261028.json",
+  "requests": [
+    {
+      "case": "code",
+      "block": -1,
+      "mode": 0,
+      "kind": "warmup",
+      "done": "DONE 128 43 956.0 3369.9 length 76 84 0 27427 34335",
+      "tps": 37.98332294726846,
+      "timing_clean": true,
+      "KFD_delta_ms": {
+        "stats_43138": 0,
+        "stats_28209": 0,
+        "stats_6080": 0,
+        "stats_44339": 0
+      },
+      "token_sha256": "488bc5a78d1769200f9f29b5d531caf693b69316d2f7cf32adf5538bbd5e65f6"
+    },
+    {
+      "case": "code",
+      "block": 0,
+      "mode": 0,
+      "kind": "primary",
+      "done": "DONE 128 43 43.7 3210.8 length 76 84 42 27427 34335",
+      "tps": 39.86545409243802,
+      "timing_clean": true,
+      "KFD_delta_ms": {
+        "stats_43138": 0,
+        "stats_28209": 0,
+        "stats_6080": 0,
+        "stats_44339": 0
+      },
+      "token_sha256": "488bc5a78d1769200f9f29b5d531caf693b69316d2f7cf32adf5538bbd5e65f6"
+    },
+    {
+      "case": "code",
+      "block": 0,
+      "mode": 1,
+      "kind": "primary",
+      "done": "DONE 128 43 44.4 3205.8 length 76 84 42 27427 34335",
+      "tps": 39.92763116850708,
+      "timing_clean": true,
+      "KFD_delta_ms": {
+        "stats_43138": 0,
+        "stats_28209": 0,
+        "stats_6080": 0,
+        "stats_44339": 0
+      },
+      "token_sha256": "488bc5a78d1769200f9f29b5d531caf693b69316d2f7cf32adf5538bbd5e65f6"
+    },
+    {
+      "case": "code",
+      "block": 1,
+      "mode": 1,
+      "kind": "primary",
+      "done": "DONE 128 43 44.3 3224.0 length 76 84 42 27427 34335",
+      "tps": 39.702233250620345,
+      "timing_clean": true,
+      "KFD_delta_ms": {
+        "stats_43138": 0,
+        "stats_28209": 0,
+        "stats_6080": 0,
+        "stats_44339": 0
+      },
+      "token_sha256": "488bc5a78d1769200f9f29b5d531caf693b69316d2f7cf32adf5538bbd5e65f6"
+    },
+    {
+      "case": "code",
+      "block": 1,
+      "mode": 0,
+      "kind": "primary",
+      "done": "DONE 128 43 45.0 3226.5 length 76 84 42 27427 34335",
+      "tps": 39.67147063381373,
+      "timing_clean": true,
+      "KFD_delta_ms": {
+        "stats_43138": 0,
+        "stats_28209": 0,
+        "stats_6080": 0,
+        "stats_44339": 0
+      },
+      "token_sha256": "488bc5a78d1769200f9f29b5d531caf693b69316d2f7cf32adf5538bbd5e65f6"
+    },
+    {
+      "case": "code",
+      "block": 2,
+      "mode": 0,
+      "kind": "primary",
+      "done": "DONE 128 43 44.6 3232.8 length 76 84 42 27427 34335",
+      "tps": 39.59415986142044,
+      "timing_clean": true,
+      "KFD_delta_ms": {
+        "stats_43138": 0,
+        "stats_28209": 0,
+        "stats_6080": 0,
+        "stats_44339": 0
+      },
+      "token_sha256": "488bc5a78d1769200f9f29b5d531caf693b69316d2f7cf32adf5538bbd5e65f6"
+    },
+    {
+      "case": "code",
+      "block": 2,
+      "mode": 1,
+      "kind": "primary",
+      "done": "DONE 128 43 44.4 3210.6 length 76 84 42 27427 34335",
+      "tps": 39.86793745717311,
+      "timing_clean": true,
+      "KFD_delta_ms": {
+        "stats_43138": 0,
+        "stats_28209": 0,
+        "stats_6080": 0,
+        "stats_44339": 0
+      },
+      "token_sha256": "488bc5a78d1769200f9f29b5d531caf693b69316d2f7cf32adf5538bbd5e65f6"
+    },
+    {
+      "case": "code",
+      "block": 3,
+      "mode": 0,
+      "kind": "tail_control",
+      "done": "DONE 128 43 44.8 3211.7 length 76 84 42 27427 34335",
+      "tps": 39.85428277859078,
+      "timing_clean": true,
+      "KFD_delta_ms": {
+        "stats_43138": 0,
+        "stats_28209": 0,
+        "stats_6080": 0,
+        "stats_44339": 0
+      },
+      "token_sha256": "488bc5a78d1769200f9f29b5d531caf693b69316d2f7cf32adf5538bbd5e65f6"
+    },
+    {
+      "case": "async_workers",
+      "block": -1,
+      "mode": 0,
+      "kind": "warmup",
+      "done": "DONE 128 80 1624.5 3617.1 length 72 89 0 29275 36720",
+      "tps": 35.3874650963479,
+      "timing_clean": true,
+      "KFD_delta_ms": {
+        "stats_43138": 0,
+        "stats_28209": 0,
+        "stats_6080": 0,
+        "stats_44339": 0
+      },
+      "token_sha256": "c4d2ac2b24e9bd6d1240f8d22d9fe5e0fc29ff0537c06c6af311c35a17961176"
+    },
+    {
+      "case": "async_workers",
+      "block": 0,
+      "mode": 0,
+      "kind": "primary",
+      "done": "DONE 128 80 45.3 3530.6 length 72 89 79 29275 36720",
+      "tps": 36.25446099813063,
+      "timing_clean": true,
+      "KFD_delta_ms": {
+        "stats_43138": 0,
+        "stats_28209": 0,
+        "stats_6080": 0,
+        "stats_44339": 0
+      },
+      "token_sha256": "c4d2ac2b24e9bd6d1240f8d22d9fe5e0fc29ff0537c06c6af311c35a17961176"
+    },
+    {
+      "case": "async_workers",
+      "block": 0,
+      "mode": 1,
+      "kind": "primary",
+      "done": "DONE 128 80 46.4 3509.0 length 72 89 79 29275 36720",
+      "tps": 36.47762895411798,
+      "timing_clean": true,
+      "KFD_delta_ms": {
+        "stats_43138": 0,
+        "stats_28209": 0,
+        "stats_6080": 0,
+        "stats_44339": 0
+      },
+      "token_sha256": "c4d2ac2b24e9bd6d1240f8d22d9fe5e0fc29ff0537c06c6af311c35a17961176"
+    },
+    {
+      "case": "async_workers",
+      "block": 1,
+      "mode": 1,
+      "kind": "primary",
+      "done": "DONE 128 80 45.7 3514.9 length 72 89 79 29275 36720",
+      "tps": 36.41639875956642,
+      "timing_clean": true,
+      "KFD_delta_ms": {
+        "stats_43138": 0,
+        "stats_28209": 0,
+        "stats_6080": 0,
+        "stats_44339": 0
+      },
+      "token_sha256": "c4d2ac2b24e9bd6d1240f8d22d9fe5e0fc29ff0537c06c6af311c35a17961176"
+    },
+    {
+      "case": "async_workers",
+      "block": 1,
+      "mode": 0,
+      "kind": "primary",
+      "done": "DONE 128 80 45.4 3503.5 length 72 89 79 29275 36720",
+      "tps": 36.53489367775082,
+      "timing_clean": true,
+      "KFD_delta_ms": {
+        "stats_43138": 0,
+        "stats_28209": 0,
+        "stats_6080": 0,
+        "stats_44339": 0
+      },
+      "token_sha256": "c4d2ac2b24e9bd6d1240f8d22d9fe5e0fc29ff0537c06c6af311c35a17961176"
+    },
+    {
+      "case": "async_workers",
+      "block": 2,
+      "mode": 0,
+      "kind": "primary",
+      "done": "DONE 128 80 45.8 3507.3 length 72 89 79 29275 36720",
+      "tps": 36.49530978245374,
+      "timing_clean": true,
+      "KFD_delta_ms": {
+        "stats_43138": 0,
+        "stats_28209": 0,
+        "stats_6080": 0,
+        "stats_44339": 0
+      },
+      "token_sha256": "c4d2ac2b24e9bd6d1240f8d22d9fe5e0fc29ff0537c06c6af311c35a17961176"
+    },
+    {
+      "case": "async_workers",
+      "block": 2,
+      "mode": 1,
+      "kind": "primary",
+      "done": "DONE 128 80 45.7 3502.2 length 72 89 79 29275 36720",
+      "tps": 36.548455256695796,
+      "timing_clean": true,
+      "KFD_delta_ms": {
+        "stats_43138": 0,
+        "stats_28209": 0,
+        "stats_6080": 0,
+        "stats_44339": 0
+      },
+      "token_sha256": "c4d2ac2b24e9bd6d1240f8d22d9fe5e0fc29ff0537c06c6af311c35a17961176"
+    },
+    {
+      "case": "async_workers",
+      "block": 3,
+      "mode": 0,
+      "kind": "tail_control",
+      "done": "DONE 128 80 45.5 3481.9 length 72 89 79 29275 36720",
+      "tps": 36.76153824061576,
+      "timing_clean": true,
+      "KFD_delta_ms": {
+        "stats_43138": 0,
+        "stats_28209": 0,
+        "stats_6080": 0,
+        "stats_44339": 0
+      },
+      "token_sha256": "c4d2ac2b24e9bd6d1240f8d22d9fe5e0fc29ff0537c06c6af311c35a17961176"
+    },
+    {
+      "case": "long",
+      "block": -1,
+      "mode": 0,
+      "kind": "warmup",
+      "done": "DONE 128 16442 25338.5 4514.2 length 64 77 0 25899 35850",
+      "tps": 28.35496876522972,
+      "timing_clean": true,
+      "KFD_delta_ms": {
+        "stats_43138": 0,
+        "stats_28209": 0,
+        "stats_6080": 0,
+        "stats_44339": 0
+      },
+      "token_sha256": "71cd67893b627c73df2292ab31908970bd6fcf62b44326cbc2688055ce3d24ed"
+    },
+    {
+      "case": "long",
+      "block": 0,
+      "mode": 0,
+      "kind": "primary",
+      "done": "DONE 128 16442 51.3 4424.0 length 64 77 16441 25899 35850",
+      "tps": 28.933092224231466,
+      "timing_clean": true,
+      "KFD_delta_ms": {
+        "stats_43138": 0,
+        "stats_28209": 0,
+        "stats_6080": 0,
+        "stats_44339": 0
+      },
+      "token_sha256": "71cd67893b627c73df2292ab31908970bd6fcf62b44326cbc2688055ce3d24ed"
+    },
+    {
+      "case": "long",
+      "block": 0,
+      "mode": 1,
+      "kind": "primary",
+      "done": "DONE 128 16442 50.6 4407.0 length 64 77 16441 25899 35850",
+      "tps": 29.044701611073293,
+      "timing_clean": true,
+      "KFD_delta_ms": {
+        "stats_43138": 0,
+        "stats_28209": 0,
+        "stats_6080": 0,
+        "stats_44339": 0
+      },
+      "token_sha256": "71cd67893b627c73df2292ab31908970bd6fcf62b44326cbc2688055ce3d24ed"
+    },
+    {
+      "case": "long",
+      "block": 1,
+      "mode": 1,
+      "kind": "primary",
+      "done": "DONE 128 16442 51.4 4408.4 length 64 77 16441 25899 35850",
+      "tps": 29.035477724344435,
+      "timing_clean": true,
+      "KFD_delta_ms": {
+        "stats_43138": 0,
+        "stats_28209": 0,
+        "stats_6080": 0,
+        "stats_44339": 0
+      },
+      "token_sha256": "71cd67893b627c73df2292ab31908970bd6fcf62b44326cbc2688055ce3d24ed"
+    },
+    {
+      "case": "long",
+      "block": 1,
+      "mode": 0,
+      "kind": "primary",
+      "done": "DONE 128 16442 51.3 4425.5 length 64 77 16441 25899 35850",
+      "tps": 28.923285504462772,
+      "timing_clean": true,
+      "KFD_delta_ms": {
+        "stats_43138": 0,
+        "stats_28209": 0,
+        "stats_6080": 0,
+        "stats_44339": 0
+      },
+      "token_sha256": "71cd67893b627c73df2292ab31908970bd6fcf62b44326cbc2688055ce3d24ed"
+    },
+    {
+      "case": "long",
+      "block": 2,
+      "mode": 0,
+      "kind": "primary",
+      "done": "DONE 128 16442 50.5 4391.6 length 64 77 16441 25899 35850",
+      "tps": 29.146552509336004,
+      "timing_clean": true,
+      "KFD_delta_ms": {
+        "stats_43138": 0,
+        "stats_28209": 0,
+        "stats_6080": 0,
+        "stats_44339": 0
+      },
+      "token_sha256": "71cd67893b627c73df2292ab31908970bd6fcf62b44326cbc2688055ce3d24ed"
+    },
+    {
+      "case": "long",
+      "block": 2,
+      "mode": 1,
+      "kind": "primary",
+      "done": "DONE 128 16442 50.5 4394.2 length 64 77 16441 25899 35850",
+      "tps": 29.129306813526924,
+      "timing_clean": true,
+      "KFD_delta_ms": {
+        "stats_43138": 0,
+        "stats_28209": 0,
+        "stats_6080": 0,
+        "stats_44339": 0
+      },
+      "token_sha256": "71cd67893b627c73df2292ab31908970bd6fcf62b44326cbc2688055ce3d24ed"
+    },
+    {
+      "case": "long",
+      "block": 3,
+      "mode": 0,
+      "kind": "tail_control",
+      "done": "DONE 128 16442 52.3 4410.1 length 64 77 16441 25899 35850",
+      "tps": 29.02428516360173,
+      "timing_clean": true,
+      "KFD_delta_ms": {
+        "stats_43138": 0,
+        "stats_28209": 0,
+        "stats_6080": 0,
+        "stats_44339": 0
+      },
+      "token_sha256": "71cd67893b627c73df2292ab31908970bd6fcf62b44326cbc2688055ce3d24ed"
+    }
+  ],
+  "numeric_scope": "31,027,200 scalar/vector/scalar full-vocabulary values exact at matched state/residency; additional1,551,360 saved canonical-reference values exact across all3fixtures.",
+  "build_scope": "Current-upstream Release HIP production build in prior operator phase; current-base CMake helper probe built here and1,512 dynamic checks passed. Model tests use private serving backport, not a fresh public-current-base model run.",
+  "hardware": "3 R9700 32GB; targetTP2 on0/1,20GB helper and DSpark on2; CPU8, context262144, prefill4096, MTP5/conf.65, RAM4000MT/s user-reported.",
+  "permanent_artifacts": "/home/rkuo/research/llm-weight-compression/_meta/maya-helper-input-runtime-20261028",
+  "canonical_plan": "/home/rkuo/research/llm-weight-compression/_meta/maya-decode-memory-goal-20261026/plan.json",
+  "unvalidated": [
+    "Current-base production model startup/performance",
+    "Normal adaptive-cache serving confirmation",
+    "Temperature1/sampled-drafter performance",
+    "CUDA and broader GPU hardware"
+  ],
+  "decision": "Preserve small positive observations with control drift; default-off draft. No extended adaptive replay or default promotion justified by this small screen alone."
+}
