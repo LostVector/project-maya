@@ -850,6 +850,7 @@ lead's requests take them and each pick's sum joins the lead's CPU part once, be
 | --- | --- | --- |
 | `MAYA_DS4_HELPER` | off | the helper's visible GPU index (not one of `--gpus`); with `MAYA_DS4_HELPER_GB`. Linux only (tested); Windows + AMD untested |
 | `MAYA_DS4_HELPER_GB` | - | its experts' pool, GB |
+| `MAYA_DS4_HELPER_INPUT_VEC` | off (0) | `1`: copy aligned helper activation rows from the existing host mailbox four floats at a time. Other widths or alignments use the existing scalar copy. Adds no VRAM or transfers; request/acknowledgement, expert math, result merging and CPU fallback stay the same. Standalone HIP copy results do not establish a whole-model speedup. |
 | `MAYA_DS4_WARM_CAP_GB` | - | required with the helper: the load's experts in host RAM, GB, beside the pool (an integrated GPU's pool is host RAM too); ignored under `DS4_REQUIRE_ALL_RAM=1` (every expert in RAM) |
 | `MAYA_DS4_HELPER_CHECK` | off | `1`: at load, two tokens per expert format through the helper against the CPU lane, and its grouped window path against its per-token one, bit for bit |
 

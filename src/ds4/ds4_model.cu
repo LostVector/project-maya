@@ -1359,6 +1359,8 @@ struct Model::Impl {
     cudaStream_t helper_st = nullptr;
     unsigned long long* helper_plan = nullptr;    // device [kWin][kPicks]: a request's picks it holds (0: not its)
     float *helper_w = nullptr, *helper_x = nullptr, *helper_h = nullptr;   // device: their weights, the tokens' x, h
+    bool helper_input_vec = ds4_env("DS4_HELPER_INPUT_VEC") != nullptr &&
+                            std::atoi(ds4_env("DS4_HELPER_INPUT_VEC")) != 0;
     // (a window of T > 1: its picks grouped by expert, each read once for its tokens - gg::win_experts' scratch)
     float *helper_hw = nullptr, *helper_part = nullptr;                    // [kWin * kPicks][n_ff], [..][dim]
     unsigned long long* helper_grp_ptr = nullptr;                          // [kWin * kPicks]
@@ -11950,7 +11952,7 @@ struct Model::Impl {
         if (ok) {
             const size_t D = (size_t) g.dim;
             helper_take(reqs + slot, sq, l.k_exp, g.dim, l.helper_tab, l.n_exp, helper_plan, helper_w, helper_x,
-                        helper_flags + slot, helper_flags + 2 * kRing, helper_st);
+                        helper_flags + slot, helper_flags + 2 * kRing, helper_st, helper_input_vec);
             if (T > 1 && !tokens) {
                 gf::MoeWin mw;
                 mw.plan_ptr = helper_plan;
