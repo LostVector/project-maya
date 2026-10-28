@@ -669,6 +669,11 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
     add_executable(ds4_attention_layout_bench EXCLUDE_FROM_ALL tests/ds4_attention_layout_bench.cu src/ds4/ds4_kernels.cu)
     target_include_directories(ds4_attention_layout_bench PRIVATE ${_strata_gpu_include_directories} third_party/ggml)
     target_link_libraries(ds4_attention_layout_bench PRIVATE strata_kernels_cpu ${_strata_gpu_runtime_target})
+    # Standalone two-GPU logits-gather probe; select an idle peer-capable pair explicitly.
+    add_executable(ds4_logits_gather_test EXCLUDE_FROM_ALL tests/ds4_logits_gather_test.cu src/ds4/ds4_kernels.cu
+      src/ds4/ds4_host_ar.cpp)
+    target_include_directories(ds4_logits_gather_test PRIVATE ${_strata_gpu_include_directories} third_party/ggml)
+    target_link_libraries(ds4_logits_gather_test PRIVATE strata_kernels_cpu ${_strata_gpu_runtime_target})
     add_executable(hip_expert_cache_staging tests/hip/expert_cache_staging.cpp)
     target_link_libraries(hip_expert_cache_staging PRIVATE strata_engine)
     add_test(NAME hip_expert_cache_staging COMMAND hip_expert_cache_staging)

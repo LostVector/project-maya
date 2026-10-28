@@ -981,6 +981,7 @@ struct Group {
     // the head group: the members' logits shares on their way to the lead, two slots (by seq), their flags and the
     // lead's acknowledgements (host-mapped)
     float* lg_stage = nullptr;
+    float* lg_peer = nullptr;   // optional HIP copy-engine staging on the head lead, same two-slot lifetime
     unsigned *lg_flag = nullptr, *lg_ack = nullptr;
     std::shared_ptr<HostReducer> hred;   // a chunk's all-reduces summed on the host (5 members or more)
 };
@@ -2083,6 +2084,42 @@ struct Model::Impl {
         return true;
     }
     static Layer& member(Layer& l, int m) { return m == 0 ? l : l.mates[(size_t) m - 1]; }
+    void init_peer_logits(Group& G) {
+#if defined(STRATA_USE_HIP)
+        const char* on = ds4_env("DS4_HIP_PEER_LOGITS");
+        if (on == nullptr || std::atoi(on) == 0 || G.mem.size() < 2 || G.lg_stage == nullptr) return;
+        Dev& lead = devs[(size_t) G.mem[0]];
+        bool capable = true;
+        for (size_t m = 1; m < G.mem.size(); ++m) {
+            const Dev& source = devs[(size_t) G.mem[m]];
+            int access = 0;
+            if (cudaSetDevice(source.id) != cudaSuccess ||
+                cudaDeviceCanAccessPeer(&access, source.id, lead.id) != cudaSuccess || !access) {
+                capable = false;
+                break;
+            }
+            const auto e = cudaDeviceEnablePeerAccess(lead.id, 0);
+            if (e != cudaSuccess && e != cudaErrorPeerAccessAlreadyEnabled) {
+                capable = false;
+                break;
+            }
+            (void) cudaGetLastError();
+        }
+        std::string why;
+        const size_t floats = (size_t) 2 * (G.mem.size() - 1) * kWin *
+                              ((g.vocab / 128 + G.mem.size() - 1) / G.mem.size() * 128);
+        if (!capable || !dalloc(lead, G.lg_peer, floats, why)) {
+            (void) cudaGetLastError();
+            std::fprintf(stderr, "ds4: MAYA_DS4_HIP_PEER_LOGITS: host fallback (%s)\n",
+                         capable ? why.c_str() : "head peers unavailable");
+            return;
+        }
+        std::fprintf(stderr, "ds4: MAYA_DS4_HIP_PEER_LOGITS: %zu peers -> GPU%d, %.2f MiB staging\n",
+                     G.mem.size() - 1, lead.id, (double) (floats * sizeof(float)) / (1 << 20));
+#else
+        (void) G;
+#endif
+    }
     // abliteration: the T rows of y (a write about to enter hc_post, all-reduced already) lose their component along
     // the direction - what the rank-1 LoRA does to attn_output_b / ffn_down_shexp / ffn_down_exps
     void ablate(const Dev& d, float* y, int T, cudaStream_t s) const {
@@ -3538,6 +3575,7 @@ struct Model::Impl {
                 (!hmap(G.lg_stage, (size_t) 2 * (G.ar.nm - 1) * kWin * ((g.vocab / 128 + G.ar.nm - 1) / G.ar.nm * 128), err) ||
                  !hmap(G.lg_flag, (size_t) 2 * (G.ar.nm - 1) * 32, err) || !hmap(G.lg_ack, (size_t) 2 * 32, err)))
                 return false;
+            init_peer_logits(G);   // optional; unsupported links/allocation keep the existing host path
             G.arb = G.ar;   // (a chunk's: two slots of chunk rows)
             G.arb.slots = 2;
             G.arb.stride = (size_t) chunk * g.dim;
@@ -16486,10 +16524,19 @@ struct Model::Impl {
         if (nm == 1 || !gather) return true;
         const unsigned seq = ++d.head_seq;
         const int slot = (int) (seq % 2);
-        auto stage = [&](int m) { return G.lg_stage + ((size_t) slot * (nm - 1) + (m - 1)) * kWin * Vmax; };
+        auto stage = [&](int m) {
+            float* base = G.lg_peer != nullptr ? G.lg_peer : G.lg_stage;
+            return base + ((size_t) slot * (nm - 1) + (m - 1)) * kWin * Vmax;
+        };
         auto flag = [&](int m) { return G.lg_flag + ((size_t) slot * (nm - 1) + (m - 1)) * 32; };
         if (mi > 0) {
             if (seq > 2) wait_flags(G.lg_ack + (size_t) slot * 32, 1, 32, seq - 2, d.st);
+            if (G.lg_peer != nullptr) {
+                const Dev& lead = devs[(size_t) G.mem[0]];
+                CK(cudaMemcpyPeerAsync(stage(mi), lead.id, d.logits_part, d.id, (size_t) rows * vn * 4, d.st));
+                set_flag(flag(mi), seq, d.st);   // publish after the copy, not merely after host submission
+                return true;
+            }
             Xfer x;
             x.n = 1;
             x.src[0] = d.logits_part;

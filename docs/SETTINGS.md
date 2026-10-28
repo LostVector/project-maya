@@ -807,6 +807,7 @@ unchanged. `ds4_gguf_test --ar <GPU> <GPU>` checks both against the host's sums 
 | --- | --- | --- |
 | `MAYA_DS4_AR2` | off (0) | a group of two's prompt-chunk all-reduces: `1` pipelined in one launch, the same sums; `2` FP16 on the wire (half the bytes, the sums FP16's) |
 | `MAYA_DS4_AR2_DECODE` | off (0) | `1`: a group of two's decode-window all-reduces in the same kernel, exact |
+| `MAYA_DS4_HIP_PEER_LOGITS` | off (0) | HIP: `1` gathers tensor-parallel vocabulary-logit shares through peer copies into two staging slots on the head group's lead GPU. The copy completes before the existing ready flag is published; the lead retains the existing scatter and acknowledges each slot after consuming it. The transport copies logits bit for bit; sampling code and weight precision stay the same. Unsupported peer links or a staging allocation failure retain host staging. Adds about 7.89 MiB of lead-GPU scratch per peer at 129,280 vocabulary entries and TP2. This can reduce expert-cache capacity and expose existing CPU/GPU numerical differences, so compare transports with the same reserved memory. Single-GPU heads and drafter paths that bypass gathering do not benefit. Standalone transfer savings are not end-to-end model speedups. |
 
 ## DeepSeek: the DSpark drafter's blocks on a group's members
 
