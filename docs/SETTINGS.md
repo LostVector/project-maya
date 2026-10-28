@@ -537,9 +537,17 @@ experts' outputs are added in), long prompts are read faster, and the experts ar
 serving goes further and runs layers 20-39 on the last 128 tokens only, which shifts the answers a little; `2` does
 that. It applies to prompts of ~3,700 new tokens or more, on one GPU (several GPUs read prompts as before).
 
+`MAYA_DS4_YOCO_WHOLE_CHUNKS=1` retains the complete chunk containing the skip boundary and keeps the original
+balanced chunks, including between GPU groups. For example, with 8192 rows and a 4096-row cap, a 5524-row skip becomes
+4096 rows skipped and 4096 retained. Ragged prompts use their actual balanced width, which can be smaller than the
+configured cap. This does more work than cutting inside a chunk, but preserves its row shapes relative to no skip.
+It applies only to mode 1 and does not enable skipping on unsupported placements. Preserving shapes alone does not
+guarantee bit-exact model outputs: expert grouping, arithmetic and other runtime choices still matter.
+
 | Setting | Default | |
 | --- | --- | --- |
 | `MAYA_DS4_PROMPT_SKIP` | on (1) | `0`: every layer on every token of a prompt, as before; `2`: DeepSeek's own (the last 128 tokens only) |
+| `MAYA_DS4_YOCO_WHOLE_CHUNKS` | off | `1`: in exact prompt-skip mode, round the skip down to an original balanced-chunk boundary and retain the original chunk schedule. Computes up to one extra chunk minus one row; useful when preserving chunk shapes matters. Does not change skip eligibility, mode 2 or the configured chunk cap |
 | `MAYA_DS4_YOCO_TP` | off | `1`: the skip also for one tensor-parallel group that holds every layer and reads its prompts on the flow (`DS4_FLOW_TP=1`), its rows cut anywhere in a chunk as on one GPU (off the flow a group skips already) |
 | `MAYA_DS4_DSPARK_CUM` | 0.5 | DSpark drafting: a draft is verified only while the chance that it and every draft before it are kept (the product of their confidences) stays at least this, so a window whose later drafts would likely be lost is not verified whole. The same tokens; a Radeon 8065S with Maya-S decoded 12.04 -> 12.82 tok/s (+6.5%). `0` = off (only each draft's own floor, `--dspark-conf`); a request's `strata_tune` `spec_cum` sets it for that request |
 | `--suffix-draft` (maya-ds4) | 3 (on, NVIDIA and AMD) | prompt lookup beside DSpark: where the answer repeats earlier context (code edits, quoted text), a round verifies the tokens that followed that earlier occurrence (up to 15, past DSpark's block) instead of DSpark's drafts, when its first token agrees with DSpark's and the measured round times and acceptance say it commits more tokens a millisecond. The same tokens (greedy: identical; sampled: every token still the model's own draw). 9 GPUs (RTX 3090 + 8x RTX 5060 Ti), Mix-256G, `--tp 8`: whole-file edits 84 -> 111 and 96 -> 144 tok/s, ordinary answers unchanged. Without DSpark (`--dspark none` or `off`, or a round after DSpark's drafts all fell below their confidence) the lookup's drafts are weighed against a plain step the same way: EXL3 3.5 bpw, `--tp 8`, no DSpark, a whole-file edit 48 -> 166 tok/s, a JSON list 57 -> 154, prose unchanged. The value is the shortest match it proposes from; `--suffix-draft 0` turns it off; a request's `strata_tune` `suffix_draft` (0/1) sets it for that request. On AMD its long verify windows (up to 16 tokens) do not always give the same bits as the short ones, so a greedy answer can take another word at a near-tie (the same quality); a Strix Halo with DSpark: a whole-file edit 46 -> 58 tok/s, ordinary answers unchanged |

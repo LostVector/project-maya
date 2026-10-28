@@ -11,6 +11,7 @@
 //   h = post * moe + comb^T h;  pre = f_pre
 // and after the last layer logits = head(rmsnorm(sum_s pre[s] h[s])).
 #include "ds4_model.hpp"
+#include "ds4_prompt_skip.hpp"
 #include "ds4_borrow.hpp"
 #include "ds4_cpu_exl3.hpp"
 #include "ds4_ablate.hpp"
@@ -16045,8 +16046,15 @@ struct Model::Impl {
         const int keep = yl <= 0 ? 0
                          : keep_env > 0 ? std::max(keep_env, g.win)
                          : yoco_mode() == 2 ? g.win : (g.nl - yl) * (g.win - 1) + g.win;
-        const int a = yl > 0 && n - keep >= kYocoMin ? n - keep : 0;
-        const bool cut_rows = a > 0 && (yoco_one_gpu() || yoco_suffix_gpu(yl) || yoco_tp_group());
+        int a = yl > 0 && n - keep >= kYocoMin ? n - keep : 0;
+        static const bool whole_opt = [] {
+            const char* v = ds4_env("DS4_YOCO_WHOLE_CHUNKS");
+            return v != nullptr && std::atoi(v) != 0;
+        }();
+        const bool whole_chunks = whole_opt && yoco_mode() == 1;
+        if (a > 0 && whole_chunks) a = whole_chunk_skip_cut(n, chunk, a);
+        // Whole chunks retain the normal unsplit schedule even between GPU groups. The cut is then a chunk boundary.
+        const bool cut_rows = a > 0 && (whole_chunks || yoco_one_gpu() || yoco_suffix_gpu(yl) || yoco_tp_group());
         if (a > 0 && yoco_tp_group()) {   // (DS4_YOCO_TP: once)
             static bool said = false;
             if (!said)
@@ -16082,8 +16090,9 @@ struct Model::Impl {
             }
         }
         if (run.yoco >= 0 && o.verbose)
-            std::fprintf(stderr, "ds4: prompt skip: layers %d-%d from CUDA%d, %d early rows KV-only, %d kept\n",
-                         yl, g.nl - 1, devs[(size_t) L[(size_t) yl].dev].id, a, n - a);
+            std::fprintf(stderr, "ds4: prompt skip: layers %d-%d from CUDA%d, %d early rows KV-only, %d kept%s\n",
+                         yl, g.nl - 1, devs[(size_t) L[(size_t) yl].dev].id, a, n - a,
+                         whole_chunks ? ", whole chunks" : "");
         logits_all = logits_rows > kWin;
         if (logits_all) chunk_logits.resize((size_t) n * g.vocab);
         for (int t = 0; t < n; ++t) {
