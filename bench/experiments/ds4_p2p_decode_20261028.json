@@ -1,0 +1,874 @@
+{
+  "model": "DeepSeek-V4.1-Flash-1017 EXL3 3.5bpw + DSpark4bpw",
+  "hardware": "3xR9700, primary TP2 pair on PCIe5x8; helper+drafter on PCIe4x4 GPU. CPU8 threads, user-reported DDR5-4000.",
+  "model_source_scope": "Private backport onto preserved optimized serving snapshot, Maya1.1.29. Operator source:249f9a8 + PR592 transport API.",
+  "model_variant": {
+    "peer_min_rows": 4,
+    "work_per_thread": 1,
+    "scratch_reserved_all_arms": true,
+    "rows_below_threshold": "upstream exact host AR2",
+    "error_polling": "included after every forward window when peer is enabled"
+  },
+  "model_rates": {
+    "code": {
+      "rates": {
+        "ar2a": 36.329577384838075,
+        "peer4a": 35.94294058182635,
+        "peer4b": 37.03703703703704,
+        "ar2b": 36.59966259686043
+      },
+      "peer_pooled_vs_ar2_pct": 0.048452374166352286,
+      "ar2_control_drift_pct": 0.7434306464987328,
+      "all_four_clean": true,
+      "all_outputs_identical": true
+    },
+    "async_workers": {
+      "rates": {
+        "ar2a": 36.04922972934914,
+        "peer4a": 37.031679444524805,
+        "peer4b": 37.14235970053973,
+        "ar2b": 36.878043158834885
+      },
+      "peer_pooled_vs_ar2_pct": 1.7225143784316277,
+      "ar2_control_drift_pct": 2.299115503183602,
+      "all_four_clean": true,
+      "all_outputs_identical": false
+    },
+    "long": {
+      "rates": {
+        "ar2a": 28.54848782228566,
+        "peer4a": 28.185141145902147,
+        "peer4b": 28.67255051296985,
+        "ar2b": 28.9973268089348
+      },
+      "peer_pooled_vs_ar2_pct": -1.1970329572710159,
+      "ar2_control_drift_pct": 1.5721988129219433,
+      "all_four_clean": true,
+      "all_outputs_identical": false
+    }
+  },
+  "fixed_logit_values_exact": 1551360,
+  "initial_operator_medians": {
+    "1": {
+      "median_gpu_us": {
+        "0": 14.676312445312501,
+        "1": 8.3440938046875,
+        "2": 8.955351539062502
+      },
+      "peer_vs_ar2_median_reduction_pct": -7.325633540116883
+    },
+    "2": {
+      "median_gpu_us": {
+        "0": 22.177585390624998,
+        "1": 10.9388204296875,
+        "2": 11.853796898437501
+      },
+      "peer_vs_ar2_median_reduction_pct": -8.364489339881608
+    },
+    "3": {
+      "median_gpu_us": {
+        "0": 28.795749921875,
+        "1": 14.0791251328125,
+        "2": 14.809734195312501
+      },
+      "peer_vs_ar2_median_reduction_pct": -5.18930725885276
+    },
+    "4": {
+      "median_gpu_us": {
+        "0": 38.540780546875,
+        "1": 17.693546640625,
+        "2": 16.90537484375
+      },
+      "peer_vs_ar2_median_reduction_pct": 4.454572126683365
+    },
+    "6": {
+      "median_gpu_us": {
+        "0": 47.9837171875,
+        "1": 24.181655625,
+        "2": 22.704468125
+      },
+      "peer_vs_ar2_median_reduction_pct": 6.108711177214953
+    },
+    "8": {
+      "median_gpu_us": {
+        "0": 67.1515315625,
+        "1": 29.49798390625,
+        "2": 28.8504296875
+      },
+      "peer_vs_ar2_median_reduction_pct": 2.195249074675898
+    },
+    "16": {
+      "median_gpu_us": {
+        "0": 115.19921203125,
+        "1": 52.323639375,
+        "2": 44.991420625
+      },
+      "peer_vs_ar2_median_reduction_pct": 14.013204810641088
+    }
+  },
+  "grain_sweeps": {
+    "runs": {
+      "grain": [
+        {
+          "index": 0,
+          "work_per_thread": 1,
+          "rows": {
+            "1": {
+              "median_gpu_us": [
+                47.073703281250005,
+                41.204914453125,
+                47.092461953125
+              ],
+              "peer_vs_ar2_reduction_pct": -14.288459466886462
+            },
+            "2": {
+              "median_gpu_us": [
+                53.479999296875,
+                48.009025,
+                44.302757812500005
+              ],
+              "peer_vs_ar2_reduction_pct": 7.719938464694909
+            },
+            "3": {
+              "median_gpu_us": [
+                31.903617109375002,
+                15.027898359375,
+                15.217578507812501
+              ],
+              "peer_vs_ar2_reduction_pct": -1.2621867935323827
+            },
+            "4": {
+              "median_gpu_us": [
+                68.9554065625,
+                53.37499078125,
+                46.75464890625
+              ],
+              "peer_vs_ar2_reduction_pct": 12.403452961954697
+            },
+            "6": {
+              "median_gpu_us": [
+                47.188086484375,
+                23.74450765625,
+                23.530452578125
+              ],
+              "peer_vs_ar2_reduction_pct": 0.9014930156644341
+            },
+            "8": {
+              "median_gpu_us": [
+                62.908180078125,
+                28.656734140624998,
+                30.739867109374998
+              ],
+              "peer_vs_ar2_reduction_pct": -7.2692615932004045
+            },
+            "16": {
+              "median_gpu_us": [
+                120.35664921875,
+                51.143109765625,
+                45.0672190625
+              ],
+              "peer_vs_ar2_reduction_pct": 11.880174535668942
+            }
+          }
+        },
+        {
+          "index": 1,
+          "work_per_thread": 4,
+          "rows": {
+            "1": {
+              "median_gpu_us": [
+                46.754328515625005,
+                45.35712484375,
+                49.496531484375
+              ],
+              "peer_vs_ar2_reduction_pct": -9.126254485672902
+            },
+            "2": {
+              "median_gpu_us": [
+                57.793771875,
+                44.509781484375,
+                48.719665
+              ],
+              "peer_vs_ar2_reduction_pct": -9.458333371290228
+            },
+            "3": {
+              "median_gpu_us": [
+                28.543655781250003,
+                14.011335562500001,
+                12.548828499999999
+              ],
+              "peer_vs_ar2_reduction_pct": 10.438027524044625
+            },
+            "4": {
+              "median_gpu_us": [
+                34.223647734375,
+                16.854164140625002,
+                13.493211007812498
+              ],
+              "peer_vs_ar2_reduction_pct": 19.941381279842396
+            },
+            "6": {
+              "median_gpu_us": [
+                46.42777328125,
+                22.790797031249998,
+                16.42698421875
+              ],
+              "peer_vs_ar2_reduction_pct": 27.92273040637475
+            },
+            "8": {
+              "median_gpu_us": [
+                56.44626546875,
+                28.26485125,
+                20.3482425
+              ],
+              "peer_vs_ar2_reduction_pct": 28.00866942471526
+            },
+            "16": {
+              "median_gpu_us": [
+                108.969062578125,
+                51.006859140625,
+                29.556741953125
+              ],
+              "peer_vs_ar2_reduction_pct": 42.053397423202256
+            }
+          }
+        },
+        {
+          "index": 2,
+          "work_per_thread": 2,
+          "rows": {
+            "1": {
+              "median_gpu_us": [
+                47.995891406249996,
+                37.12832921875,
+                40.1114765625
+              ],
+              "peer_vs_ar2_reduction_pct": -8.03469320198631
+            },
+            "2": {
+              "median_gpu_us": [
+                49.570906953125004,
+                40.813663984375,
+                44.69307140625
+              ],
+              "peer_vs_ar2_reduction_pct": -9.505168228366333
+            },
+            "3": {
+              "median_gpu_us": [
+                33.868633203125,
+                15.0763434375,
+                12.5182033515625
+              ],
+              "peer_vs_ar2_reduction_pct": 16.967908011265752
+            },
+            "4": {
+              "median_gpu_us": [
+                38.48990617187499,
+                17.226038515625,
+                13.773515359375
+              ],
+              "peer_vs_ar2_reduction_pct": 20.042467414190234
+            },
+            "6": {
+              "median_gpu_us": [
+                51.35217125,
+                24.102640390625,
+                16.83884390625
+              ],
+              "peer_vs_ar2_reduction_pct": 30.13693257938802
+            },
+            "8": {
+              "median_gpu_us": [
+                63.374437421875,
+                28.031421875,
+                22.948265078124997
+              ],
+              "peer_vs_ar2_reduction_pct": 18.133781509700896
+            },
+            "16": {
+              "median_gpu_us": [
+                111.161265546875,
+                48.3815315625,
+                36.358023046875
+              ],
+              "peer_vs_ar2_reduction_pct": 24.85144253875645
+            }
+          }
+        },
+        {
+          "index": 3,
+          "work_per_thread": 8,
+          "rows": {
+            "1": {
+              "median_gpu_us": [
+                44.763382500000006,
+                25.998897890625003,
+                42.0327503125
+              ],
+              "peer_vs_ar2_reduction_pct": -61.67127733386222
+            },
+            "2": {
+              "median_gpu_us": [
+                22.680445546875,
+                11.162265671875002,
+                12.23103096875
+              ],
+              "peer_vs_ar2_reduction_pct": -9.57480612173487
+            },
+            "3": {
+              "median_gpu_us": [
+                28.989546953125,
+                14.0350856796875,
+                15.241344000000002
+              ],
+              "peer_vs_ar2_reduction_pct": -8.594591781212134
+            },
+            "4": {
+              "median_gpu_us": [
+                35.04051640625,
+                16.74103921875,
+                15.255711046875
+              ],
+              "peer_vs_ar2_reduction_pct": 8.87237735045402
+            },
+            "6": {
+              "median_gpu_us": [
+                55.014077578125,
+                24.199827578125,
+                17.920109453125
+              ],
+              "peer_vs_ar2_reduction_pct": 25.94943333677483
+            },
+            "8": {
+              "median_gpu_us": [
+                56.14346078125,
+                28.027030625000002,
+                20.109179453125
+              ],
+              "peer_vs_ar2_reduction_pct": 28.250767189058934
+            },
+            "16": {
+              "median_gpu_us": [
+                124.020729140625,
+                48.511225703125,
+                28.793656249999998
+              ],
+              "peer_vs_ar2_reduction_pct": 40.64537468871836
+            }
+          }
+        },
+        {
+          "index": 4,
+          "work_per_thread": 16,
+          "rows": {
+            "1": {
+              "median_gpu_us": [
+                40.17585890625,
+                35.1805165625,
+                44.075258046875
+              ],
+              "peer_vs_ar2_reduction_pct": -25.28314633633373
+            },
+            "2": {
+              "median_gpu_us": [
+                22.179265546875,
+                11.486937289062501,
+                16.6801009375
+              ],
+              "peer_vs_ar2_reduction_pct": -45.2092974633218
+            },
+            "3": {
+              "median_gpu_us": [
+                28.300835703125003,
+                13.676015656250001,
+                22.5229840625
+              ],
+              "peer_vs_ar2_reduction_pct": -64.68966275427516
+            },
+            "4": {
+              "median_gpu_us": [
+                37.701781796875,
+                17.3470396875,
+                17.611038828125
+              ],
+              "peer_vs_ar2_reduction_pct": -1.5218685457625059
+            },
+            "6": {
+              "median_gpu_us": [
+                46.8515940625,
+                22.597944375,
+                24.893898593750002
+              ],
+              "peer_vs_ar2_reduction_pct": -10.160013586412763
+            },
+            "8": {
+              "median_gpu_us": [
+                58.632532187500004,
+                28.4282890625,
+                25.73301546875
+              ],
+              "peer_vs_ar2_reduction_pct": 9.48095605692063
+            },
+            "16": {
+              "median_gpu_us": [
+                99.68526289062501,
+                50.96341484375,
+                35.977076796875
+              ],
+              "peer_vs_ar2_reduction_pct": 29.4060711842446
+            }
+          }
+        },
+        {
+          "index": 5,
+          "work_per_thread": 1,
+          "rows": {
+            "1": {
+              "median_gpu_us": [
+                42.739009453125,
+                35.720523437500006,
+                41.84899109375
+              ],
+              "peer_vs_ar2_reduction_pct": -17.15671291036074
+            },
+            "2": {
+              "median_gpu_us": [
+                22.985132421875,
+                11.213835796875,
+                12.0997577890625
+              ],
+              "peer_vs_ar2_reduction_pct": -7.90025829015959
+            },
+            "3": {
+              "median_gpu_us": [
+                30.499242265625,
+                16.327000234375,
+                15.432905875
+              ],
+              "peer_vs_ar2_reduction_pct": 5.476170432658945
+            },
+            "4": {
+              "median_gpu_us": [
+                36.41282765625,
+                16.49322640625,
+                17.578226484375
+              ],
+              "peer_vs_ar2_reduction_pct": -6.5784586435668535
+            },
+            "6": {
+              "median_gpu_us": [
+                61.718797265625,
+                24.362015546875,
+                23.85419515625
+              ],
+              "peer_vs_ar2_reduction_pct": 2.0844760961912234
+            },
+            "8": {
+              "median_gpu_us": [
+                58.235023125,
+                29.343976640625,
+                30.43830484375
+              ],
+              "peer_vs_ar2_reduction_pct": -3.729311185485229
+            },
+            "16": {
+              "median_gpu_us": [
+                117.11506921875,
+                53.26093734375,
+                45.548476328125
+              ],
+              "peer_vs_ar2_reduction_pct": 14.48052062217421
+            }
+          }
+        }
+      ],
+      "grain-unrestricted": [
+        {
+          "index": 0,
+          "work_per_thread": 1,
+          "rows": {
+            "1": {
+              "median_gpu_us": [
+                14.672586234375,
+                8.33879690625,
+                9.1416090703125
+              ],
+              "peer_vs_ar2_reduction_pct": -9.627433946266105
+            },
+            "2": {
+              "median_gpu_us": [
+                23.68387484375,
+                10.74287528125,
+                12.136937578125
+              ],
+              "peer_vs_ar2_reduction_pct": -12.97662181099799
+            },
+            "3": {
+              "median_gpu_us": [
+                28.829530859374998,
+                14.344476164062499,
+                14.957265929687502
+              ],
+              "peer_vs_ar2_reduction_pct": -4.271956386669862
+            },
+            "4": {
+              "median_gpu_us": [
+                35.793624843749996,
+                17.023530781250003,
+                17.729155703125
+              ],
+              "peer_vs_ar2_reduction_pct": -4.144997479912815
+            },
+            "6": {
+              "median_gpu_us": [
+                45.107750234375004,
+                23.543562734375,
+                23.74607046875
+              ],
+              "peer_vs_ar2_reduction_pct": -0.8601405686121
+            },
+            "8": {
+              "median_gpu_us": [
+                65.574116953125,
+                28.683288984375,
+                30.280163515625
+              ],
+              "peer_vs_ar2_reduction_pct": -5.567264382128156
+            },
+            "16": {
+              "median_gpu_us": [
+                101.38543695312501,
+                50.101211328125004,
+                45.214625078124996
+              ],
+              "peer_vs_ar2_reduction_pct": 9.75342934923582
+            }
+          }
+        },
+        {
+          "index": 1,
+          "work_per_thread": 4,
+          "rows": {
+            "1": {
+              "median_gpu_us": [
+                14.671328007812502,
+                8.488172195312501,
+                9.3316170390625
+              ],
+              "peer_vs_ar2_reduction_pct": -9.936707507133068
+            },
+            "2": {
+              "median_gpu_us": [
+                21.15824171875,
+                11.186312414062499,
+                11.055702804687499
+              ],
+              "peer_vs_ar2_reduction_pct": 1.167584138011457
+            },
+            "3": {
+              "median_gpu_us": [
+                29.22735921875,
+                14.666023195312501,
+                12.0728751640625
+              ],
+              "peer_vs_ar2_reduction_pct": 17.681330492364232
+            },
+            "4": {
+              "median_gpu_us": [
+                37.766773203125,
+                17.288249921875,
+                13.5635156171875
+              ],
+              "peer_vs_ar2_reduction_pct": 21.544889283296143
+            },
+            "6": {
+              "median_gpu_us": [
+                51.982155078125,
+                24.341077578125002,
+                16.427594218750002
+              ],
+              "peer_vs_ar2_reduction_pct": 32.510817707128716
+            },
+            "8": {
+              "median_gpu_us": [
+                67.67361984375,
+                30.743304609375002,
+                20.722311875000003
+              ],
+              "peer_vs_ar2_reduction_pct": 32.59569152276217
+            },
+            "16": {
+              "median_gpu_us": [
+                115.554090546875,
+                52.827484921875,
+                29.176726953124998
+              ],
+              "peer_vs_ar2_reduction_pct": 44.769797395667055
+            }
+          }
+        },
+        {
+          "index": 2,
+          "work_per_thread": 2,
+          "rows": {
+            "1": {
+              "median_gpu_us": [
+                15.165710828125,
+                8.9322421640625,
+                8.796616921875
+              ],
+              "peer_vs_ar2_reduction_pct": 1.5183784731359729
+            },
+            "2": {
+              "median_gpu_us": [
+                20.990421953125,
+                11.1425779765625,
+                9.83098428125
+              ],
+              "peer_vs_ar2_reduction_pct": 11.77100755382937
+            },
+            "3": {
+              "median_gpu_us": [
+                28.817343515625,
+                14.121328007812501,
+                12.1256872109375
+              ],
+              "peer_vs_ar2_reduction_pct": 14.132104259393529
+            },
+            "4": {
+              "median_gpu_us": [
+                38.70801625,
+                16.830718125,
+                13.918515765625001
+              ],
+              "peer_vs_ar2_reduction_pct": 17.30290019562074
+            },
+            "6": {
+              "median_gpu_us": [
+                46.481585156250006,
+                23.1129378125,
+                17.367281015625
+              ],
+              "peer_vs_ar2_reduction_pct": 24.85905012805261
+            },
+            "8": {
+              "median_gpu_us": [
+                58.61313265625,
+                27.357640703125,
+                22.914195468750002
+              ],
+              "peer_vs_ar2_reduction_pct": 16.242062985597418
+            },
+            "16": {
+              "median_gpu_us": [
+                101.53524210937499,
+                51.05100015625,
+                36.5342646875
+              ],
+              "peer_vs_ar2_reduction_pct": 28.43575135515296
+            }
+          }
+        },
+        {
+          "index": 3,
+          "work_per_thread": 8,
+          "rows": {
+            "1": {
+              "median_gpu_us": [
+                15.711663281249999,
+                8.628492242187498,
+                10.9885311640625
+              ],
+              "peer_vs_ar2_reduction_pct": -27.351695471614445
+            },
+            "2": {
+              "median_gpu_us": [
+                19.92292140625,
+                10.647249875,
+                11.6731873671875
+              ],
+              "peer_vs_ar2_reduction_pct": -9.635704094786268
+            },
+            "3": {
+              "median_gpu_us": [
+                28.51583625,
+                13.723828367187501,
+                14.693851578125
+              ],
+              "peer_vs_ar2_reduction_pct": -7.068167751622001
+            },
+            "4": {
+              "median_gpu_us": [
+                36.380829296875,
+                17.024156640625,
+                15.1742030859375
+              ],
+              "peer_vs_ar2_reduction_pct": 10.866638469907697
+            },
+            "6": {
+              "median_gpu_us": [
+                47.695586484375,
+                23.391382734375,
+                18.051039453125
+              ],
+              "peer_vs_ar2_reduction_pct": 22.830387334913958
+            },
+            "8": {
+              "median_gpu_us": [
+                62.854101875,
+                29.687976484375,
+                20.094172109375002
+              ],
+              "peer_vs_ar2_reduction_pct": 32.31545396854274
+            },
+            "16": {
+              "median_gpu_us": [
+                104.7734059375,
+                53.326251015625004,
+                28.671101718750002
+              ],
+              "peer_vs_ar2_reduction_pct": 46.23454457664923
+            }
+          }
+        },
+        {
+          "index": 4,
+          "work_per_thread": 16,
+          "rows": {
+            "1": {
+              "median_gpu_us": [
+                15.020398421875,
+                8.5138045234375,
+                10.993499773437499
+              ],
+              "peer_vs_ar2_reduction_pct": -29.125583552848667
+            },
+            "2": {
+              "median_gpu_us": [
+                20.825749218749998,
+                10.780374984375,
+                15.69821125
+              ],
+              "peer_vs_ar2_reduction_pct": -45.6184156186856
+            },
+            "3": {
+              "median_gpu_us": [
+                29.73611,
+                14.030702875000001,
+                22.227047031250002
+              ],
+              "peer_vs_ar2_reduction_pct": -58.41720282491549
+            },
+            "4": {
+              "median_gpu_us": [
+                34.05994546875,
+                16.56634359375,
+                17.641969062500003
+              ],
+              "peer_vs_ar2_reduction_pct": -6.492835686178866
+            },
+            "6": {
+              "median_gpu_us": [
+                46.555569375,
+                22.639499999999998,
+                24.438570234375
+              ],
+              "peer_vs_ar2_reduction_pct": -7.946598795799376
+            },
+            "8": {
+              "median_gpu_us": [
+                56.084062890625006,
+                27.59328109375,
+                25.693265703125
+              ],
+              "peer_vs_ar2_reduction_pct": 6.885790001448444
+            },
+            "16": {
+              "median_gpu_us": [
+                107.35591124999999,
+                49.42808671875,
+                36.0633284375
+              ],
+              "peer_vs_ar2_reduction_pct": 27.038793464324463
+            }
+          }
+        },
+        {
+          "index": 5,
+          "work_per_thread": 1,
+          "rows": {
+            "1": {
+              "median_gpu_us": [
+                14.86507803125,
+                8.5647343671875,
+                8.898179976562501
+              ],
+              "peer_vs_ar2_reduction_pct": -3.893239358974987
+            },
+            "2": {
+              "median_gpu_us": [
+                20.983554453125002,
+                11.0944374453125,
+                11.7591246953125
+              ],
+              "peer_vs_ar2_reduction_pct": -5.991175787654157
+            },
+            "3": {
+              "median_gpu_us": [
+                29.05044515625,
+                13.757281,
+                14.7872655625
+              ],
+              "peer_vs_ar2_reduction_pct": -7.48683233627343
+            },
+            "4": {
+              "median_gpu_us": [
+                33.9040775,
+                16.39371828125,
+                17.75907078125
+              ],
+              "peer_vs_ar2_reduction_pct": -8.328510204799588
+            },
+            "6": {
+              "median_gpu_us": [
+                44.88462585937501,
+                23.1291875,
+                23.71293765625
+              ],
+              "peer_vs_ar2_reduction_pct": -2.5238679752585202
+            },
+            "8": {
+              "median_gpu_us": [
+                64.596615703125,
+                28.926421875,
+                30.6395553125
+              ],
+              "peer_vs_ar2_reduction_pct": -5.922382812858706
+            },
+            "16": {
+              "median_gpu_us": [
+                121.161296953125,
+                53.70163171875,
+                45.57900875
+              ],
+              "peer_vs_ar2_reduction_pct": 15.125467716307728
+            }
+          }
+        }
+      ]
+    },
+    "preferred_quick_screen": "grain-unrestricted",
+    "pinned_limit": "Two-CPU process affinity made small-window controls unstable; retain raw results without treating them as isolated transport estimates.",
+    "candidate": "work_per_thread4 above the small-row regime; grain2 may help2-row payloads. No automatic/default policy or model gain claimed.",
+    "next": "Model-validate improved-granularity transport and remove redundant error checks after non-peer windows; prefer interleaved modes in one warmed engine to reduce reload cost, explicitly accounting adaptive-cache carryover."
+  },
+  "optimized_grain_model_tested": false,
+  "serving_restored": true,
+  "limitations": [
+    "All timed requests retained; no time subtraction. Clean status is a sensitivity indicator, not a reason to erase a positive observation.",
+    "One128-token request per fixture per arm; small or conflicting changes cannot establish a general benefit.",
+    "Adaptive-cache natural outputs may differ even across controls, changing route/MTP work; report that confound.",
+    "Fixed-reference exactness is separate from timed natural-output identity and broad quality.",
+    "Transport scratch is reserved in all arms; peer synchronization/error-copy overhead is included only when enabled."
+  ]
+}

@@ -646,6 +646,10 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
   if(STRATA_ENABLE_HIP)
     enable_testing()
     set(_strata_hip_tests)
+    add_executable(ds4_decode_transport_test EXCLUDE_FROM_ALL tests/ds4_decode_transport_test.cu
+                       src/ds4/ds4_kernels.cu src/ds4/ds4_host_ar.cpp)
+    target_include_directories(ds4_decode_transport_test PRIVATE ${_strata_gpu_include_directories} third_party/ggml)
+    target_link_libraries(ds4_decode_transport_test PRIVATE strata_kernels_cpu ${_strata_gpu_runtime_target})
     add_executable(ds4_peer_allreduce_test EXCLUDE_FROM_ALL tests/ds4_peer_allreduce_test.cu
                        src/ds4/ds4_kernels.cu src/ds4/ds4_host_ar.cpp)
     target_include_directories(ds4_peer_allreduce_test PRIVATE ${_strata_gpu_include_directories} third_party/ggml)

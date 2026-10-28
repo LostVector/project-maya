@@ -4229,8 +4229,9 @@ void allreduce(float* x, int n, const ArGroup& a, int mi, unsigned seq, unsigned
 bool allreduce_peer(float* x, int n, const PeerAr& a, int mi, unsigned seq, cudaStream_t s) {
     if (!x || (reinterpret_cast<uintptr_t>(x) & 15u) || n <= 0 || n % 4 || mi < 0 || mi > 1 || !a.recv || !a.peer_recv ||
         (reinterpret_cast<uintptr_t>(a.recv) & 15u) || (reinterpret_cast<uintptr_t>(a.peer_recv) & 15u) || !a.flags ||
-        !a.peer_flags || !a.error || !a.timeout_ticks || a.stride < size_t(n) || a.stride % 4) return false;
-    const int blocks = std::max(1, std::min(kPeerArBlocks, cdiv(n / 4, kThreads)));
+        !a.peer_flags || !a.error || !a.timeout_ticks || a.stride < size_t(n) || a.stride % 4 ||
+        a.work_per_thread < 1 || a.work_per_thread > 16 || (a.work_per_thread & (a.work_per_thread - 1))) return false;
+    const int blocks = std::max(1, std::min(kPeerArBlocks, cdiv(n / 4, kThreads * a.work_per_thread)));
     ar_peer_kernel<<<blocks, kThreads, 0, s>>>(x, n / 4, a, mi, seq);
     return cudaPeekAtLastError() == cudaSuccess;
 }
