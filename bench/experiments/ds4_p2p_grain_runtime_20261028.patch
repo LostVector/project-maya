@@ -1,0 +1,217 @@
+--- a/src/ds4/ds4_kernels.cuh
++++ b/src/ds4/ds4_kernels.cuh
+@@ -380,6 +380,7 @@
+     unsigned* error = nullptr;
+     PeerArFailure* failure = nullptr; // optional first-timeout record; read only after stream synchronization
+     size_t stride = 0;
++    int work_per_thread = 1;
+     uint64_t timeout_ticks = 0; // HIP wall_clock64 ticks, calibrated with hipDeviceAttributeWallClockRate.
+ };
+ bool allreduce_peer(float* x, int n, const PeerAr& a, int mi, unsigned seq, cudaStream_t s);
+--- a/src/ds4/ds4_kernels.cu
++++ b/src/ds4/ds4_kernels.cu
+@@ -3751,8 +3751,9 @@
+ bool allreduce_peer(float* x, int n, const PeerAr& a, int mi, unsigned seq, cudaStream_t s) {
+     if (!x || (reinterpret_cast<uintptr_t>(x) & 15u) || n <= 0 || n % 4 || mi < 0 || mi > 1 || !a.recv || !a.peer_recv ||
+         (reinterpret_cast<uintptr_t>(a.recv) & 15u) || (reinterpret_cast<uintptr_t>(a.peer_recv) & 15u) || !a.flags ||
+-        !a.peer_flags || !a.error || !a.timeout_ticks || a.stride < size_t(n) || a.stride % 4) return false;
+-    const int blocks = std::max(1, std::min(kPeerArBlocks, cdiv(n / 4, kThreads)));
++        !a.peer_flags || !a.error || !a.timeout_ticks || a.stride < size_t(n) || a.stride % 4 ||
++        a.work_per_thread < 1 || a.work_per_thread > 16 || (a.work_per_thread & (a.work_per_thread - 1))) return false;
++    const int blocks = std::max(1, std::min(kPeerArBlocks, cdiv(n / 4, kThreads * a.work_per_thread)));
+     ar_peer_kernel<<<blocks, kThreads, 0, s>>>(x, n / 4, a, mi, seq);
+     return cudaPeekAtLastError() == cudaSuccess;
+ }
+--- a/src/ds4/ds4_model.cu
++++ b/src/ds4/ds4_model.cu
+@@ -65,6 +65,24 @@
+ #endif
+ 
+ namespace strata::ds4 {
++
++// Private experiment control; no changes to Model's public layout or normal serving.
++static std::atomic<int> experiment_peer_mode{[] {
++    const char* v=std::getenv("DS4_EXPERIMENT_PEER_MODE");
++    const int m=v?std::atoi(v):0;return m>=0&&m<=2?m:0;
++}()};
++static std::array<std::atomic<uint64_t>,kWin+1> experiment_rows{};
++static std::atomic<uint64_t> experiment_peer_calls{0}, experiment_checks{0};
++extern "C" bool ds4_experiment_transport(int mode) {
++    if(mode<0||mode>2)return false;
++    const int old=experiment_peer_mode.load(std::memory_order_relaxed);
++    std::fprintf(stderr,"EXP_TRANSPORT from=%d to=%d peer_calls=%llu checks=%llu",old,mode,
++                 (unsigned long long)experiment_peer_calls.exchange(0),(unsigned long long)experiment_checks.exchange(0));
++    for(int t=1;t<=kWin;++t)std::fprintf(stderr," T%d=%llu",t,(unsigned long long)experiment_rows[(size_t)t].exchange(0));
++    std::fprintf(stderr,"\n");
++    experiment_peer_mode.store(mode,std::memory_order_relaxed);return true;
++}
++
+ namespace x3 = strata::kernels::exl3;
+ namespace kc = strata::kernels::cpu;
+ namespace gf = strata::kernels::glmf;
+@@ -942,6 +960,14 @@
+ #if defined(STRATA_USE_HIP)
+     std::atomic<bool> peer_ar_failed{false};
+ #endif
++    bool peer_valid(std::string& err) const {
++#if defined(STRATA_USE_HIP)
++        if(peer_ar_failed.load(std::memory_order_relaxed)) {
++            err="peer decode failed; model reload required";return false;
++        }
++#endif
++        return true;
++    }
+     Pack pk;
+     Geo g;
+     std::vector<Dev> devs;
+@@ -1732,6 +1758,9 @@
+ 
+     ~Impl() {
+ #if defined(STRATA_USE_HIP)
++        std::fprintf(stderr,"EXP_TRANSPORT_FINAL mode=%d peer_calls=%llu checks=%llu\n",
++            experiment_peer_mode.load(),(unsigned long long)experiment_peer_calls.load(),
++            (unsigned long long)experiment_checks.load());
+         for(const auto& G:groups) if(G.peer_ar_on) {
+             std::fprintf(stderr,"DECODE_AR_ROWS use=%d",int(G.peer_ar_use));
+             for(int t=1;t<=kWin;++t)std::fprintf(stderr," T%d=%llu",t,(unsigned long long)G.decode_ar_hist[(size_t)t]);
+@@ -11141,11 +11170,14 @@
+ #if defined(STRATA_USE_HIP)
+         Group& G=groups[(size_t)d.grp];
+         if(mi==0 && G.peer_ar_on && T>0 && T<=kWin) ++G.decode_ar_hist[(size_t)T];
+-        static const int min_rows=[] { const char* v=ds4_env("DS4_HIP_PEER_DECODE_MIN_ROWS");
+-            return v?std::max(1,std::min(kWin,std::atoi(v))):4; }();
+-        if(G.peer_ar_use && T>=min_rows) {
++        const int mode=experiment_peer_mode.load(std::memory_order_relaxed);
++        if(mi==0 && G.peer_ar_on) experiment_rows[(size_t)T].fetch_add(1,std::memory_order_relaxed);
++        const int min_rows=mode==2?3:4;
++        if(G.peer_ar_use && mode>0 && T>=min_rows) {
++            if(mi==0)experiment_peer_calls.fetch_add(1,std::memory_order_relaxed);
++            auto transport=G.peer_ar[(size_t)mi];transport.work_per_thread=mode==2?4:1;
+             if(peer_ar_failed.load(std::memory_order_relaxed) ||
+-               !allreduce_peer(buf,T*g.dim,G.peer_ar[(size_t)mi],mi,++d.ar_seq,s)) {
++               !allreduce_peer(buf,T*g.dim,transport,mi,++d.ar_seq,s)) {
+                 peer_ar_failed=true;err="peer decode launch failed; reload required";return false;
+             }
+             return true;
+@@ -12619,6 +12651,7 @@
+     // n tokens at positions pos .. in chunks of equal size (at most `chunk`), pipelined over the groups; the logits of
+     // the last min(logits_rows, 16) rows (logits_rows > 16: a run of one chunk, every row's into chunk_logits)
+     bool forward_chunks(const int* tk, int n, int logits_rows, std::string& err, int snap_slot = -1) {
++        if(!peer_valid(err))return false;
+         if (n < 1) return true;
+         if (pos + n > o.max_context) {
+             err = "the context is full";
+@@ -13055,7 +13088,11 @@
+         CK(cudaStreamSynchronize(d.st));
+         st.head_ms += now_ms() - th;
+ #if defined(STRATA_USE_HIP)
+-        if(!check_peer_decode(err)) return false;
++        const int mode=experiment_peer_mode.load(std::memory_order_relaxed);
++        if(mode==1 || (mode==2 && T>=3)) {
++            experiment_checks.fetch_add(1,std::memory_order_relaxed);
++            if(!check_peer_decode(err)) return false;
++        }
+ #endif
+         prof_collect();
+         pos += T;
+@@ -13941,6 +13978,7 @@
+ bool Model::load(const Options& o, std::string& err) { return p_->load(o, err); }
+ bool Model::step(int token, bool logits, std::string& err) { return p_->step(token, logits, err); }
+ bool Model::feed(const int* tokens, int n, int logits_rows, std::string& err) {
++        if(!p_->peer_valid(err))return false;
+     Impl& p = *p_;
+     p.pm.last = -1;
+     p.halted = false;
+@@ -13954,6 +13992,7 @@
+     return p.feed_windows(tokens, n, logits_rows, err);
+ }
+ bool Model::feed_mark(const int* tokens, int n, int logits_rows, int slot, std::string& err) {
++        if(!p_->peer_valid(err))return false;
+     Impl& p = *p_;
+     p.pm.last = -1;
+     p.halted = false;
+@@ -13997,16 +14036,44 @@
+ int Model::draft_block() const { return p_->g.n_mtp > 0 ? p_->g.d_block : 0; }
+ bool Model::draft(int y, std::vector<int>& d, std::vector<float>& c, std::string& err, float t, float tp, int tk,
+                   float mp, uint64_t seed, uint64_t counter) {
++    if(!p_->peer_valid(err))return false;
+     return p_->draft(y, d, c, err, t, tp, tk, mp, seed, counter);
+ }
+ bool Model::verify(int y, const std::vector<int>& d, float t, float tp, int tk, float mp, uint64_t seed, uint64_t counter,
+                    int& accepted, int& next, std::string& err) {
++    if(!p_->peer_valid(err))return false;
+     return p_->verify(y, d, t, tp, tk, mp, seed, counter, accepted, next, err);
+ }
+ int64_t Model::pos() const { return p_->pos; }
+ int64_t Model::max_context() const { return p_->o.max_context; }
+ int Model::vocab() const { return p_->g.vocab; }
+ const std::vector<int32_t>& Model::tokens() const { return p_->toks; }
++bool Model::experiment_failure_test(std::string& err) {
++#if defined(STRATA_USE_HIP)
++    // Idle host-state injection, not a GPU hang/timeout: all timing is already complete.
++    p_->peer_ar_failed=true;
++    const int token=0;
++    for(int mode:{0,2}) {
++        p_->reset();ds4_experiment_transport(mode);
++        std::string e;
++        if(feed(&token,1,1,e) || e.find("reload")==std::string::npos) {err="feed accepted poisoned state";return false;}
++        e.clear();
++        if(feed_mark(&token,1,1,0,e) || e.find("reload")==std::string::npos) {err="feed_mark accepted poisoned state";return false;}
++        e.clear();
++        if(p_->forward(&token,1,1,e) || e.find("reload")==std::string::npos) {err="forward accepted poisoned state";return false;}
++        e.clear();
++        if(p_->forward_chunks(&token,1,1,e) || e.find("reload")==std::string::npos) {err="chunk feed accepted poisoned state";return false;}
++        std::vector<int> drafts;std::vector<float> conf;e.clear();
++        if(draft(token,drafts,conf,e) || e.find("reload")==std::string::npos) {err="draft accepted poisoned state";return false;}
++        int accepted=0,next=0;e.clear();
++        if(verify(token,drafts,0.f,1.f,1,0.f,1,0,accepted,next,e) || e.find("reload")==std::string::npos) {err="verify accepted poisoned state";return false;}
++    }
++    return true;
++#else
++    err="private failure test requires HIP";return false;
++#endif
++}
++
+ void Model::reset() { p_->reset(); }
+ void Model::checkpoint(int slot) { p_->checkpoint(slot); }
+ bool Model::restore(int64_t limit) { return p_->restore(limit); }
+--- a/src/ds4/ds4_model.hpp
++++ b/src/ds4/ds4_model.hpp
+@@ -146,6 +146,7 @@
+     const std::vector<int32_t>& tokens() const;   // what the state has consumed, in order
+ 
+     void reset();
++    bool experiment_failure_test(std::string& err); // Private research harness only; invalidates this instance.
+     /// Keep the state at the current position in checkpoint slot 0 or 1 (the end of a prompt, the position before it);
+     /// restore(limit) goes back to the latest one at or before limit (-1: none).
+     void checkpoint(int slot = 0);
+--- a/src/ds4/ds4_main.cpp
++++ b/src/ds4/ds4_main.cpp
+@@ -15,6 +15,7 @@
+ // compressed KV included), and across runs in MAYA_DS4_SLOT_DIR - so a request that does not continue the state but
+ // does continue a kept conversation reads only its new tokens.
+ #include "ds4_model.hpp"
++extern "C" bool ds4_experiment_transport(int mode);
+ #include "strata/platform/env_alias.hpp"
+ 
+ #include <cuda_profiler_api.h>
+@@ -744,6 +745,19 @@
+     }
+     while (in.next(line)) {
+         if (line == "QUIT") break;
++        if(line=="EXP_FAILURE_TEST") {
++            std::string e;
++            if(m.experiment_failure_test(e))std::printf("EXP_FAILURE_TEST_READY reset_mode_switch_sticky=1\n");
++            else std::printf("ERR experimental failure test: %s\n",e.c_str());
++            std::fflush(stdout);continue;
++        }
++        if(line.rfind("EXP_TRANSPORT ",0)==0) {
++            const std::string value=line.substr(14);
++            if(value.size()!=1 || value[0]<'0' || value[0]>'2' || !ds4_experiment_transport(value[0]-'0'))
++                std::printf("ERR invalid experimental transport mode\n");
++            else std::printf("EXP_TRANSPORT_READY %s\n",value.c_str());
++            std::fflush(stdout);continue;
++        }
+         const bool geni = line.rfind("GENI ", 0) == 0;
+         if (!geni && line.rfind("GEN ", 0) != 0) {
+             std::printf("ERR unsupported command '%s' (GEN, GENI, STOP and QUIT)\n", line.substr(0, line.find(' ')).c_str());
