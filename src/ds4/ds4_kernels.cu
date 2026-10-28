@@ -3325,6 +3325,31 @@ __global__ void moe_combine_kernel(float* acc, const float* __restrict__ y, cons
     acc[(size_t) t * dim + e] = a;
 }
 
+#if defined(STRATA_USE_HIP)
+// One CTA per routed row; only the row named by the token's first matching pick owns its accumulator write.
+// The owning CTA then adds all matching picks in their original order, not sorted-row order.
+__global__ void moe_combine_sparse_rows_kernel(float* acc, const float* __restrict__ y,
+        const int* __restrict__ pos, const float* __restrict__ w, const int* __restrict__ row_tok,
+        int k, int r0, int r1, int dim) {
+    const int e = blockIdx.x * blockDim.x + threadIdx.x;
+    if (e >= dim) return;
+    const int row = r0 + int(blockIdx.y), t = row_tok[row];
+    int owner = -1;
+    for (int i = 0; i < k; ++i) {
+        const int r = pos[(size_t) t * kPicks + i];
+        if (r >= r0 && r < r1) { owner = r; break; }
+    }
+    if (owner != row) return;
+    float a = acc[(size_t) t * dim + e];
+    for (int i = 0; i < k; ++i) {
+        const int r = pos[(size_t) t * kPicks + i];
+        if (r >= r0 && r < r1)
+            a = __fmaf_rn(w[(size_t) t * kPicks + i], y[(size_t) (r - r0) * dim + e], a);
+    }
+    acc[(size_t) t * dim + e] = a;
+}
+#endif
+
 int cdiv(int a, int b) { return (a + b - 1) / b; }
 
 }  // namespace
@@ -3449,8 +3474,22 @@ void moe_sort(const int* idx, int T, int k, const int* vs, int n_vs, int* bounds
     pdl_launch(moe_sort_kernel<true>, n_vs, kThreads, 0, s, idx, T, k, vs, bounds, row_tok, pos);
 }
 void moe_combine(float* acc, const float* y, const int* pos, const float* w, int T, int k, int r0, int r1, int dim,
-                 cudaStream_t s) {
-    if (r1 > r0 && T > 0) pdl_launch(moe_combine_kernel, dim3(cdiv(dim, kThreads), T), kThreads, 0, s, acc, y, pos, w, k, r0, r1, dim);
+                 cudaStream_t s, const int* row_tok) {
+    if (r1 <= r0 || T <= 0) return;
+#if defined(STRATA_USE_HIP)
+    if (row_tok != nullptr && r1 - r0 < T && k > 0 && k <= kPicks) {
+        const char* opt = std::getenv("STRATA_DS4_SPARSE_COMBINE");
+        if (opt == nullptr) opt = std::getenv("MAYA_DS4_SPARSE_COMBINE");
+        if (opt == nullptr) opt = std::getenv("DS4_SPARSE_COMBINE");
+        if (opt != nullptr && std::strcmp(opt, "1") == 0) {
+            moe_combine_sparse_rows_kernel<<<dim3(cdiv(dim, kThreads), r1 - r0), kThreads, 0, s>>>
+                (acc, y, pos, w, row_tok, k, r0, r1, dim);
+            return;
+        }
+    }
+#endif
+    (void) row_tok;
+    pdl_launch(moe_combine_kernel, dim3(cdiv(dim, kThreads), T), kThreads, 0, s, acc, y, pos, w, k, r0, r1, dim);
 }
 
 void gemv_f16(const uint16_t* W, const float* x, int n, int k, int T, float alpha, float* y, cudaStream_t s) {

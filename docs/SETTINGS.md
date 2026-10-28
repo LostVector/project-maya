@@ -805,6 +805,25 @@ unchanged. `ds4_gguf_test --ar <GPU> <GPU>` checks both against the host's sums 
 | `MAYA_DS4_AR2` | off (0) | a group of two's prompt-chunk all-reduces: `1` pipelined in one launch, the same sums; `2` FP16 on the wire (half the bytes, the sums FP16's) |
 | `MAYA_DS4_AR2_DECODE` | off (0) | `1`: a group of two's decode-window all-reduces in the same kernel, exact |
 
+## DeepSeek: optional HIP sparse expert combination
+
+`MAYA_DS4_SPARSE_COMBINE=1` launches the prompt path's expert-result combination through its existing
+sorted row-to-token map when an expert batch has fewer rows than the prompt has tokens. Upstream's token-grid
+kernel already avoids reading untouched accumulators; this option also avoids launching work for every token.
+When a token has several rows in the batch, its first matching routing pick owns the write and adds all matching
+picks in their original order. No additional workspace, transfers or expert-cache slots are needed.
+
+The token-grid kernel remains the fallback for dense batches and callers without a row map. This option affects
+HIP prompt batches; CUDA and the CPU/decode expert paths keep their existing behavior. It is off by default.
+`STRATA_DS4_SPARSE_COMBINE` and `DS4_SPARSE_COMBINE` are aliases (in that precedence order around the public name).
+
+| Setting | Default | |
+| --- | --- | --- |
+| `MAYA_DS4_SPARSE_COMBINE` | off | `1`: combine sparse HIP prompt expert batches through the existing sorted rows |
+
+Build `ds4_sparse_combine_test` for exact comparisons with the token-grid kernel, guard checks, independent CPU
+references on small cases, and alternating operator timings. `--parity-only` omits timing and its cache-eviction buffer.
+
 ## DeepSeek: the DSpark drafter's blocks on a group's members
 
 The drafter's blocks run whole on the drafter's group's lead, and their VRAM experts come out of the lead's room. A

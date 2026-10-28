@@ -365,8 +365,9 @@ void signal_seq(unsigned* flag, unsigned seq, cudaStream_t s);
 void moe_sort(const int* idx, int T, int k, const int* vs, int n_vs, int* bounds, int* row_tok, int* pos,
               cudaStream_t s);
 /// acc[t] += w[t][i] * y[pos[t][i] - r0] for each pick of t (in pick order) whose sorted row is in [r0, r1).
+// Optional row_tok is moe_sort's global sorted-row -> token map (duplicates permitted); null retains token-grid dispatch.
 void moe_combine(float* acc, const float* y, const int* pos, const float* w, int T, int k, int r0, int r1, int dim,
-                 cudaStream_t s);
+                 cudaStream_t s, const int* row_tok = nullptr);
 /// rows[t][0] = 1, the rest 0 (the first layer's pre-mix: stream 0).
 void init_pre(float* pre, int T, cudaStream_t s);
 

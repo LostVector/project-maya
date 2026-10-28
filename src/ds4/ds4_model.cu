@@ -5356,7 +5356,7 @@ struct Model::Impl {
                     std::fwrite(yv.data(), 4, yv.size(), dump_y);
                     std::fflush(dump_y);
                 }
-                moe_combine(c.acc, c.y, c.pos, c.rw, T, l.k_exp, a, a + nrows, D, d.st);
+                moe_combine(c.acc, c.y, c.pos, c.rw, T, l.k_exp, a, a + nrows, D, d.st, c.row_tok);
             }
             i0 = j;
         }
