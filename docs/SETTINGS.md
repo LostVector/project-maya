@@ -1059,6 +1059,7 @@ unchanged. `ds4_gguf_test --ar <GPU> <GPU>` checks both against the host's sums 
 | --- | --- | --- |
 | `MAYA_DS4_AR2` | off (0) | a group of two's prompt-chunk all-reduces: `1` pipelined in one launch, the same sums; `2` FP16 on the wire (half the bytes, the sums FP16's) |
 | `MAYA_DS4_AR2_DECODE` | off (0) | `1`: a group of two's decode-window all-reduces in the same kernel, exact |
+| `MAYA_DS4_HIP_PEER_AR` | off (0) | HIP: `1` uses peer-VRAM transfers for eligible two-member prompt groups, retaining rank-order F32 sums; requires bidirectional peer access and spare VRAM. AR2 and flow groups retain their existing paths. See [HIP_PEER_PREFILL.md](HIP_PEER_PREFILL.md) |
 
 ## DeepSeek: the DSpark drafter's blocks on a group's members
 
