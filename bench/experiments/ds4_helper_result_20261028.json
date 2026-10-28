@@ -1,0 +1,909 @@
+{
+  "canonical_plan": "/home/rkuo/research/llm-weight-compression/_meta/maya-decode-memory-goal-20261026/plan.json",
+  "canonical_work_item": "p2p-helper-exchange",
+  "component": "peer-result-delivery-and-exact-merge",
+  "status": "result_store_transport_audit_complete",
+  "dynamic_checks": 700,
+  "timed_batches": 294,
+  "timed_transfers": 18816,
+  "KFD_PSI_clean": true,
+  "no_serving_requests": true,
+  "modes": {
+    "0": "Host-mapped result + system-fence ready signal",
+    "1": "Helper-local result + same signal; no delivery to primary",
+    "2": "Direct peer fine-grained result + signal",
+    "3": "Helper-local result then peer copy engine into primary ordinary memory + signal",
+    "4": "Direct peer ordinary result + signal"
+  },
+  "results": [
+    {
+      "pair": "0,2",
+      "rows": 1,
+      "modes": {
+        "0": {
+          "device_us": 9.039234,
+          "wall_us": 9.787781
+        },
+        "1": {
+          "device_us": 8.135094,
+          "wall_us": 8.88325
+        },
+        "2": {
+          "device_us": 9.094234,
+          "wall_us": 9.845859
+        },
+        "3": {
+          "device_us": 20.169016,
+          "wall_us": 20.918391
+        },
+        "4": {
+          "device_us": 9.04075,
+          "wall_us": 9.781828
+        }
+      },
+      "blocks": [
+        {
+          "block": 0,
+          "host_control_us": 9.046525666666668,
+          "host_tail_drift_pct": 0.40828261771217456,
+          "saved_device_us": {
+            "1": 0.8023216666666677,
+            "2": -0.047708333333332575,
+            "3": -11.039553333333334,
+            "4": 0.050416666666667
+          }
+        },
+        {
+          "block": 1,
+          "host_control_us": 9.016275666666667,
+          "host_tail_drift_pct": -0.2115045421222428,
+          "saved_device_us": {
+            "1": 0.8827136666666675,
+            "2": -0.08795833333333292,
+            "3": -11.452333333333334,
+            "4": -0.03483333333333327
+          }
+        },
+        {
+          "block": 2,
+          "host_control_us": 9.10012,
+          "host_tail_drift_pct": 1.3927457692894052,
+          "saved_device_us": {
+            "1": 0.9650259999999999,
+            "2": 0.02813599999999994,
+            "3": -11.068895999999999,
+            "4": 0.059370000000001255
+          }
+        }
+      ]
+    },
+    {
+      "pair": "0,2",
+      "rows": 2,
+      "modes": {
+        "0": {
+          "device_us": 11.658813,
+          "wall_us": 12.383922
+        },
+        "1": {
+          "device_us": 7.642547,
+          "wall_us": 8.372453
+        },
+        "2": {
+          "device_us": 11.656312,
+          "wall_us": 12.389391
+        },
+        "3": {
+          "device_us": 22.417,
+          "wall_us": 23.151187
+        },
+        "4": {
+          "device_us": 11.663813,
+          "wall_us": 12.371391
+        }
+      },
+      "blocks": [
+        {
+          "block": 0,
+          "host_control_us": 11.974083333333333,
+          "host_tail_drift_pct": -4.189275340385112,
+          "saved_device_us": {
+            "1": 3.9027233333333324,
+            "2": 0.1345523333333336,
+            "3": -10.467275666666666,
+            "4": 0.3452713333333328
+          }
+        },
+        {
+          "block": 1,
+          "host_control_us": 11.642562666666667,
+          "host_tail_drift_pct": -0.1395130754120122,
+          "saved_device_us": {
+            "1": 4.000015666666666,
+            "2": -0.008124333333332956,
+            "3": -10.768797333333332,
+            "4": -0.021250333333332705
+          }
+        },
+        {
+          "block": 2,
+          "host_control_us": 11.669229666666666,
+          "host_tail_drift_pct": 0.0214166001609728,
+          "saved_device_us": {
+            "1": 4.084197666666666,
+            "2": 0.012917666666666605,
+            "3": -10.747770333333335,
+            "4": -0.0070823333333329686
+          }
+        }
+      ]
+    },
+    {
+      "pair": "0,2",
+      "rows": 3,
+      "modes": {
+        "0": {
+          "device_us": 15.090094,
+          "wall_us": 15.836656
+        },
+        "1": {
+          "device_us": 7.857547,
+          "wall_us": 8.768203
+        },
+        "2": {
+          "device_us": 14.776343,
+          "wall_us": 15.514953
+        },
+        "3": {
+          "device_us": 25.623281,
+          "wall_us": 26.348906
+        },
+        "4": {
+          "device_us": 14.776343,
+          "wall_us": 15.502422
+        }
+      },
+      "blocks": [
+        {
+          "block": 0,
+          "host_control_us": 14.874885333333333,
+          "host_tail_drift_pct": 2.8948412333239304,
+          "saved_device_us": {
+            "1": 7.181088333333333,
+            "2": 0.07541633333333309,
+            "3": -10.748395666666665,
+            "4": 0.10791633333333372
+          }
+        },
+        {
+          "block": 1,
+          "host_control_us": 16.263854666666667,
+          "host_tail_drift_pct": -20.3247540682302,
+          "saved_device_us": {
+            "1": 8.248807666666668,
+            "2": 1.4881356666666665,
+            "3": -10.027567333333334,
+            "4": 1.4875116666666663
+          }
+        },
+        {
+          "block": 2,
+          "host_control_us": 16.409458666666666,
+          "host_tail_drift_pct": 29.973958211496576,
+          "saved_device_us": {
+            "1": 8.551911666666665,
+            "2": 1.633115666666665,
+            "3": -9.145072333333335,
+            "4": 1.6312396666666658
+          }
+        }
+      ]
+    },
+    {
+      "pair": "0,2",
+      "rows": 4,
+      "modes": {
+        "0": {
+          "device_us": 18.963203,
+          "wall_us": 19.703297
+        },
+        "1": {
+          "device_us": 7.781297,
+          "wall_us": 8.507719
+        },
+        "2": {
+          "device_us": 18.033844,
+          "wall_us": 18.751031
+        },
+        "3": {
+          "device_us": 29.397017,
+          "wall_us": 30.121484
+        },
+        "4": {
+          "device_us": 17.979452,
+          "wall_us": 18.709703
+        }
+      },
+      "blocks": [
+        {
+          "block": 0,
+          "host_control_us": 18.634037333333332,
+          "host_tail_drift_pct": 5.509349365873906,
+          "saved_device_us": {
+            "1": 10.852740333333331,
+            "2": -1.422931666666667,
+            "3": -10.72921366666667,
+            "4": 0.6552093333333318
+          }
+        },
+        {
+          "block": 1,
+          "host_control_us": 20.236338333333332,
+          "host_tail_drift_pct": 0.2801425476487207,
+          "saved_device_us": {
+            "1": 12.454416333333333,
+            "2": 2.2487613333333307,
+            "3": -9.16067866666667,
+            "4": 2.2356343333333335
+          }
+        },
+        {
+          "block": 2,
+          "host_control_us": 19.036344,
+          "host_tail_drift_pct": -1.166275173513609,
+          "saved_device_us": {
+            "1": 11.292562,
+            "2": 1.0025000000000013,
+            "3": -16.478811999999998,
+            "4": 1.0568920000000013
+          }
+        }
+      ]
+    },
+    {
+      "pair": "0,2",
+      "rows": 6,
+      "modes": {
+        "0": {
+          "device_us": 25.25325,
+          "wall_us": 25.982594
+        },
+        "1": {
+          "device_us": 7.981906,
+          "wall_us": 8.722484
+        },
+        "2": {
+          "device_us": 24.330109,
+          "wall_us": 25.055703
+        },
+        "3": {
+          "device_us": 35.647671,
+          "wall_us": 36.369141
+        },
+        "4": {
+          "device_us": 24.30761,
+          "wall_us": 25.040203
+        }
+      },
+      "blocks": [
+        {
+          "block": 0,
+          "host_control_us": 25.222608666666666,
+          "host_tail_drift_pct": 0.2878288330972145,
+          "saved_device_us": {
+            "1": 17.166936666666665,
+            "2": 0.8799996666666665,
+            "3": -10.425062333333337,
+            "4": 0.9224986666666659
+          }
+        },
+        {
+          "block": 1,
+          "host_control_us": 25.253036666666667,
+          "host_tail_drift_pct": 0.0766633997604238,
+          "saved_device_us": {
+            "1": 17.39175566666667,
+            "2": 0.9229276666666664,
+            "3": -10.33024233333333,
+            "4": 0.9454266666666662
+          }
+        },
+        {
+          "block": 2,
+          "host_control_us": 25.827620333333332,
+          "host_tail_drift_pct": 6.9007790052850515,
+          "saved_device_us": {
+            "1": 17.845714333333333,
+            "2": 1.5025113333333309,
+            "3": -16.04319466666667,
+            "4": 1.401246333333333
+          }
+        }
+      ]
+    },
+    {
+      "pair": "0,2",
+      "rows": 8,
+      "modes": {
+        "0": {
+          "device_us": 31.455141,
+          "wall_us": 32.188953
+        },
+        "1": {
+          "device_us": 8.113781,
+          "wall_us": 8.841156
+        },
+        "2": {
+          "device_us": 30.612017,
+          "wall_us": 31.344234
+        },
+        "3": {
+          "device_us": 42.50708,
+          "wall_us": 43.207953
+        },
+        "4": {
+          "device_us": 30.635765,
+          "wall_us": 31.366156
+        }
+      },
+      "blocks": [
+        {
+          "block": 0,
+          "host_control_us": 31.439099,
+          "host_tail_drift_pct": 0.4582414997191586,
+          "saved_device_us": {
+            "1": 23.441567999999997,
+            "2": 0.8270819999999972,
+            "3": -11.287978000000003,
+            "4": 0.8033339999999995
+          }
+        },
+        {
+          "block": 1,
+          "host_control_us": 31.467442666666667,
+          "host_tail_drift_pct": 0.12915981642740437,
+          "saved_device_us": {
+            "1": 23.353661666666667,
+            "2": 0.857287666666668,
+            "3": -11.039637333333335,
+            "4": 0.8291766666666653
+          }
+        },
+        {
+          "block": 2,
+          "host_control_us": 31.469448333333332,
+          "host_tail_drift_pct": -0.0023790404062640214,
+          "saved_device_us": {
+            "1": 23.273026333333334,
+            "2": 0.8450743333333328,
+            "3": -10.71080366666667,
+            "4": 0.8644483333333319
+          }
+        }
+      ]
+    },
+    {
+      "pair": "0,2",
+      "rows": 16,
+      "modes": {
+        "0": {
+          "device_us": 56.347157,
+          "wall_us": 57.076984
+        },
+        "1": {
+          "device_us": 8.415031,
+          "wall_us": 9.142969
+        },
+        "2": {
+          "device_us": 56.070278,
+          "wall_us": 56.855797
+        },
+        "3": {
+          "device_us": 67.709526,
+          "wall_us": 68.430063
+        },
+        "4": {
+          "device_us": 56.050282,
+          "wall_us": 56.776594
+        }
+      },
+      "blocks": [
+        {
+          "block": 0,
+          "host_control_us": 56.38824833333333,
+          "host_tail_drift_pct": -0.17496077153463796,
+          "saved_device_us": {
+            "1": 47.99557633333333,
+            "2": -6.810562666666669,
+            "3": -11.321277666666667,
+            "4": 0.33271733333332776
+          }
+        },
+        {
+          "block": 1,
+          "host_control_us": 56.352145,
+          "host_tail_drift_pct": -0.06985785073457818,
+          "saved_device_us": {
+            "1": 47.937114,
+            "2": 0.2818669999999983,
+            "3": -11.447561,
+            "4": 0.31312799999999896
+          }
+        },
+        {
+          "block": 2,
+          "host_control_us": 56.33424,
+          "host_tail_drift_pct": -0.05768170344424561,
+          "saved_device_us": {
+            "1": 47.824193,
+            "2": 0.27272800000000075,
+            "3": -11.284839999999996,
+            "4": 0.2839579999999984
+          }
+        }
+      ]
+    },
+    {
+      "pair": "1,2",
+      "rows": 1,
+      "modes": {
+        "0": {
+          "device_us": 9.052563,
+          "wall_us": 9.775719
+        },
+        "1": {
+          "device_us": 8.107547,
+          "wall_us": 8.853984
+        },
+        "2": {
+          "device_us": 8.996938,
+          "wall_us": 9.730641
+        },
+        "3": {
+          "device_us": 20.160767,
+          "wall_us": 20.887859
+        },
+        "4": {
+          "device_us": 9.045063,
+          "wall_us": 9.795125
+        }
+      },
+      "blocks": [
+        {
+          "block": 0,
+          "host_control_us": 9.166516,
+          "host_tail_drift_pct": -1.451822353896659,
+          "saved_device_us": {
+            "1": 0.8658289999999997,
+            "2": 0.17084399999999889,
+            "3": -11.063609000000001,
+            "4": 0.1614539999999991
+          }
+        },
+        {
+          "block": 1,
+          "host_control_us": 9.051104333333333,
+          "host_tail_drift_pct": 0.5903258170483205,
+          "saved_device_us": {
+            "1": 0.9435573333333327,
+            "2": 0.04854133333333266,
+            "3": -10.831521666666665,
+            "4": -0.02645766666666738
+          }
+        },
+        {
+          "block": 2,
+          "host_control_us": 9.036521,
+          "host_tail_drift_pct": 0.7341066557274845,
+          "saved_device_us": {
+            "1": 0.9464590000000008,
+            "2": 0.03958300000000037,
+            "3": -11.124246,
+            "4": -0.008542000000000272
+          }
+        }
+      ]
+    },
+    {
+      "pair": "1,2",
+      "rows": 2,
+      "modes": {
+        "0": {
+          "device_us": 11.709422,
+          "wall_us": 12.440266
+        },
+        "1": {
+          "device_us": 7.670047,
+          "wall_us": 8.414875
+        },
+        "2": {
+          "device_us": 11.701313,
+          "wall_us": 12.4365
+        },
+        "3": {
+          "device_us": 22.390108,
+          "wall_us": 23.12675
+        },
+        "4": {
+          "device_us": 11.673188,
+          "wall_us": 12.398625
+        }
+      },
+      "blocks": [
+        {
+          "block": 0,
+          "host_control_us": 12.044859,
+          "host_tail_drift_pct": -4.040199232031072,
+          "saved_device_us": {
+            "1": 3.671063,
+            "2": 0.11418700000000115,
+            "3": -10.571516,
+            "4": 0.3841720000000013
+          }
+        },
+        {
+          "block": 1,
+          "host_control_us": 11.685057666666667,
+          "host_tail_drift_pct": 0.005354436724824829,
+          "saved_device_us": {
+            "1": 4.056885666666667,
+            "2": 0.03001166666666677,
+            "3": -10.705050333333334,
+            "4": 0.011869666666667555
+          }
+        },
+        {
+          "block": 2,
+          "host_control_us": 11.690469,
+          "host_tail_drift_pct": 0.20892087594617248,
+          "saved_device_us": {
+            "1": 4.020422,
+            "2": -0.01084400000000052,
+            "3": -10.694016000000001,
+            "4": 0.016030999999999906
+          }
+        }
+      ]
+    },
+    {
+      "pair": "1,2",
+      "rows": 3,
+      "modes": {
+        "0": {
+          "device_us": 14.783843,
+          "wall_us": 15.515266
+        },
+        "1": {
+          "device_us": 7.698156,
+          "wall_us": 8.433047
+        },
+        "2": {
+          "device_us": 14.783813,
+          "wall_us": 15.518234
+        },
+        "3": {
+          "device_us": 25.557625,
+          "wall_us": 26.290531
+        },
+        "4": {
+          "device_us": 14.785687,
+          "wall_us": 15.521062
+        }
+      },
+      "blocks": [
+        {
+          "block": 0,
+          "host_control_us": 14.782573,
+          "host_tail_drift_pct": 0.03393514820626553,
+          "saved_device_us": {
+            "1": 7.084416999999999,
+            "2": -0.013755000000001516,
+            "3": -10.775052000000002,
+            "4": -0.003114000000000061
+          }
+        },
+        {
+          "block": 1,
+          "host_control_us": 14.789458333333334,
+          "host_tail_drift_pct": 0.24114870564071467,
+          "saved_device_us": {
+            "1": 7.136927333333334,
+            "2": 0.005645333333333724,
+            "3": -10.816899666666666,
+            "4": -0.0031206666666658833
+          }
+        },
+        {
+          "block": 2,
+          "host_control_us": 14.784051666666667,
+          "host_tail_drift_pct": 0.042275881852926744,
+          "saved_device_us": {
+            "1": 7.079004666666666,
+            "2": 0.0027086666666669146,
+            "3": -10.665480333333335,
+            "4": 0.0027086666666669146
+          }
+        }
+      ]
+    },
+    {
+      "pair": "1,2",
+      "rows": 4,
+      "modes": {
+        "0": {
+          "device_us": 18.002609,
+          "wall_us": 18.734125
+        },
+        "1": {
+          "device_us": 7.880031,
+          "wall_us": 8.607281
+        },
+        "2": {
+          "device_us": 17.981968,
+          "wall_us": 18.709406
+        },
+        "3": {
+          "device_us": 32.416435,
+          "wall_us": 33.143734
+        },
+        "4": {
+          "device_us": 18.01136,
+          "wall_us": 18.739453
+        }
+      },
+      "blocks": [
+        {
+          "block": 0,
+          "host_control_us": 18.193025333333335,
+          "host_tail_drift_pct": 3.60433974080967,
+          "saved_device_us": {
+            "1": 10.403603333333335,
+            "2": 0.214181333333336,
+            "3": -14.223409666666665,
+            "4": 0.1816653333333349
+          }
+        },
+        {
+          "block": 1,
+          "host_control_us": 18.320724666666667,
+          "host_tail_drift_pct": -5.426325793700382,
+          "saved_device_us": {
+            "1": 10.381302666666667,
+            "2": 0.3387566666666686,
+            "3": -11.025665333333333,
+            "4": 0.3281456666666678
+          }
+        },
+        {
+          "block": 2,
+          "host_control_us": 18.629468666666668,
+          "host_tail_drift_pct": 4.991463728641321,
+          "saved_device_us": {
+            "1": 10.749437666666669,
+            "2": 0.6450006666666681,
+            "3": -13.950685333333332,
+            "4": -2.228125333333331
+          }
+        }
+      ]
+    },
+    {
+      "pair": "1,2",
+      "rows": 6,
+      "modes": {
+        "0": {
+          "device_us": 25.2295,
+          "wall_us": 25.96975
+        },
+        "1": {
+          "device_us": 7.859406,
+          "wall_us": 8.578312
+        },
+        "2": {
+          "device_us": 27.088875,
+          "wall_us": 27.820906
+        },
+        "3": {
+          "device_us": 35.840172,
+          "wall_us": 36.572828
+        },
+        "4": {
+          "device_us": 24.308235,
+          "wall_us": 25.041766
+        }
+      },
+      "blocks": [
+        {
+          "block": 0,
+          "host_control_us": 25.24720333333333,
+          "host_tail_drift_pct": 0.1163018499211077,
+          "saved_device_us": {
+            "1": 17.38779733333333,
+            "2": 0.9289523333333314,
+            "3": -10.40109266666667,
+            "4": 0.9408273333333312
+          }
+        },
+        {
+          "block": 1,
+          "host_control_us": 25.069703333333333,
+          "host_tail_drift_pct": -0.1684535959888267,
+          "saved_device_us": {
+            "1": 17.216531333333332,
+            "2": -2.0191716666666686,
+            "3": -10.77046866666667,
+            "4": 0.7308433333333326
+          }
+        },
+        {
+          "block": 2,
+          "host_control_us": 25.255744333333332,
+          "host_tail_drift_pct": 0.34713904565426557,
+          "saved_device_us": {
+            "1": 17.21946333333333,
+            "2": -2.8612546666666674,
+            "3": -16.561943666666664,
+            "4": 0.9475093333333326
+          }
+        }
+      ]
+    },
+    {
+      "pair": "1,2",
+      "rows": 8,
+      "modes": {
+        "0": {
+          "device_us": 31.473282,
+          "wall_us": 32.212438
+        },
+        "1": {
+          "device_us": 8.005672,
+          "wall_us": 8.738609
+        },
+        "2": {
+          "device_us": 30.606422,
+          "wall_us": 31.334844
+        },
+        "3": {
+          "device_us": 42.349579,
+          "wall_us": 43.08725
+        },
+        "4": {
+          "device_us": 30.600157,
+          "wall_us": 31.330469
+        }
+      },
+      "blocks": [
+        {
+          "block": 0,
+          "host_control_us": 31.45411,
+          "host_tail_drift_pct": -0.194468576411011,
+          "saved_device_us": {
+            "1": 23.430329,
+            "2": 0.8664710000000007,
+            "3": -10.895468999999999,
+            "4": 0.8539530000000006
+          }
+        },
+        {
+          "block": 1,
+          "host_control_us": 31.491832666666667,
+          "host_tail_drift_pct": 0.14493795979300117,
+          "saved_device_us": {
+            "1": 23.486160666666667,
+            "2": 0.8816606666666686,
+            "3": -10.85151333333333,
+            "4": 0.8729266666666682
+          }
+        },
+        {
+          "block": 2,
+          "host_control_us": 31.453922333333335,
+          "host_tail_drift_pct": -0.09926248494647183,
+          "saved_device_us": {
+            "1": 23.526375333333334,
+            "2": 0.8475003333333362,
+            "3": -19.146968666666663,
+            "4": 0.869375333333334
+          }
+        }
+      ]
+    },
+    {
+      "pair": "1,2",
+      "rows": 16,
+      "modes": {
+        "0": {
+          "device_us": 56.36964,
+          "wall_us": 57.103281
+        },
+        "1": {
+          "device_us": 8.441922,
+          "wall_us": 9.180375
+        },
+        "2": {
+          "device_us": 56.065891,
+          "wall_us": 56.798812
+        },
+        "3": {
+          "device_us": 67.809074,
+          "wall_us": 68.538859
+        },
+        "4": {
+          "device_us": 56.059639,
+          "wall_us": 56.808828
+        }
+      },
+      "blocks": [
+        {
+          "block": 0,
+          "host_control_us": 56.43881366666667,
+          "host_tail_drift_pct": -0.32933307153582003,
+          "saved_device_us": {
+            "1": 47.99689166666667,
+            "2": 0.3729226666666676,
+            "3": -11.451498333333326,
+            "4": -3.373339333333334
+          }
+        },
+        {
+          "block": 1,
+          "host_control_us": 56.36130766666666,
+          "host_tail_drift_pct": -0.0310453710383074,
+          "saved_device_us": {
+            "1": 47.86877666666666,
+            "2": 0.3004176666666609,
+            "3": -11.328382333333337,
+            "4": 0.30166866666666436
+          }
+        },
+        {
+          "block": 2,
+          "host_control_us": 56.38005733333333,
+          "host_tail_drift_pct": -0.08863163141834551,
+          "saved_device_us": {
+            "1": 47.94002533333333,
+            "2": 0.30104333333333244,
+            "3": -11.429016666666662,
+            "4": 0.32166533333333547
+          }
+        }
+      ]
+    }
+  ],
+  "historical_service_volume_estimate": [
+    {
+      "historical_workload": "code",
+      "emitted": 256,
+      "service_saved_us_per_output_if_every_profiled_layer_call_took_one_helper_result_stage": {
+        "1": 107.462115625,
+        "2": 5.310524531250012,
+        "3": -175.5914653125,
+        "4": 5.708615468750015
+      }
+    },
+    {
+      "historical_workload": "agent16k",
+      "emitted": 512,
+      "service_saved_us_per_output_if_every_profiled_layer_call_took_one_helper_result_stage": {
+        "1": 100.77491484375,
+        "2": 4.5907524218750115,
+        "3": -190.9917596875,
+        "4": 5.078874453125018
+      }
+    }
+  ],
+  "limits": [
+    "Identical precomputed expert partials, ordered6-FMA reduction and final+0; no expert decompression or matmul in this probe.",
+    "Device timing includes combine/store/signal and host launch gaps; local-only mode is not an end-to-end transport.",
+    "Service-volume arithmetic reuses older layer-window counts, linearly interpolates T5, assumes every layer needs helper transfer and assumes no overlap. It is neither an actual model gain nor a rigorous bound.",
+    "First attempt lacked explicit initialization ordering across both devices and failed batched consistency. Its raw records are preserved; only synchronized runs are analyzed.",
+    "GPU-side fusion that overlaps primary down computation with helper completion is distinct from transport substitution and remains unprototyped."
+  ],
+  "decision": {
+    "pure_result_transport": "No runtime port from this screen: direct peer result writes were approximately host-store latency; local+copy-engine was slower. Small positive peer points and all raw blocks remain retained.",
+    "local_only": "The helper-local mode is a counterfactual that does not deliver the answer to the primary GPU; do not call its improvement a serving gain.",
+    "fusion_and_scheduling": "A separate fused read/merge or late-response-wait schedule is unprototyped. It is retained under canonical cpu-expert-critical-path with the earlier positive MOE_TOKEN screen and current T1/window source distinction."
+  },
+  "permanent_artifacts": "/home/rkuo/research/llm-weight-compression/_meta/maya-helper-result-audit-20261028"
+}
