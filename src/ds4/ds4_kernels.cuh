@@ -455,6 +455,7 @@ struct PeerAr {
     unsigned* error = nullptr;
     PeerArFailure* failure = nullptr; // optional first-timeout record; read only after stream synchronization
     size_t stride = 0;
+    int work_per_thread = 1; // Experimental 1/2/4/8/16 float4s per thread before adding another CTA; same on both ranks.
     uint64_t timeout_ticks = 0; // HIP wall_clock64 ticks, calibrated with hipDeviceAttributeWallClockRate.
 };
 bool allreduce_peer(float* x, int n, const PeerAr& a, int mi, unsigned seq, cudaStream_t s);
