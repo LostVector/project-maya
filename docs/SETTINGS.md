@@ -875,6 +875,24 @@ installs, or checked by hash before each start) can keep them elsewhere.
 | --- | --- | --- |
 | `MAYA_DS4_LT_STORE` | `<pack>/lt-picks.txt` | the picks in this file instead; empty: none kept, each start measures its own |
 
+## DeepSeek: temporary EXL3 fragment reuse on HIP
+
+For busy uniform EXL3 expert batches on gfx12, compressed tiles can be expanded once into temporary fragments and
+reused in scalar prompt kernels with the same output arithmetic. The workspace is reserved at startup after expert
+placement. Matrix kernels keep priority; unsupported layouts, batches exceeding the budget, and allocation failure
+keep compressed tiles. Small batches can regress, so both row thresholds apply. No request-time allocation, changed
+router or persistent expanded-weight cache. See [EXL3_HIP_PREDECODE.md](EXL3_HIP_PREDECODE.md).
+
+| Setting | Default | |
+| --- | --- | --- |
+| `MAYA_DS4_EXL3_PREDECODE` | off (0) | `1`: enable eligible prompt batches; decode/verification kernels are unchanged |
+| `MAYA_DS4_EXL3_PREDECODE_MIB` | 128 | workspace budget per eligible GPU at load (0 disables; at most4096 MiB); a batch needs6 x expert slots x model width x FFN width bytes |
+| `MAYA_DS4_EXL3_PREDECODE_MIN_ROWS` | 512 | minimum maximum routed rows in the batch |
+| `MAYA_DS4_EXL3_PREDECODE_MIN_TOTAL_ROWS` | 768 | minimum total routed rows in the batch |
+
+The limits are startup settings, not per-request toggles. Invalid/overflowing integer limits retain the documented
+defaults. They are opt-in starting points from a narrow earlier experiment, not a universal hardware tuning policy.
+
 ## DeepSeek: packed EXL3 tensor-parallel cache transfers
 
 `DS4_EXL3_PACKED_HOST=1` stores resident EXL3 host experts as GPU-ready member blobs;

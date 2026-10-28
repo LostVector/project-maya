@@ -18,6 +18,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <climits>
 #include <filesystem>
 #include <fstream>
 #include <numeric>
@@ -485,11 +486,11 @@ void test_gemm_rows(int k, int n, int k2, int cb, int rows) {   // (every GPU: b
 }
 
 // the prompt path's expert set: 3 experts (rows 37, 0, 70) through set_gate_up and set_down against the reference
-void test_set(int k2, int cb, int kd = 0) {
+void test_set(int k2, int cb, int kd = 0, int first = 37, int last = 70, int row0 = 0, bool bench = false) {
     if (kd <= 0) kd = k2;   // (every GPU: before sm_80 the portable kernels)
-    const int E = 512, F = 256, T = 64;
+    const int E = bench ? 5120 : 512, F = bench ? 1152 : 256, T = bench ? 2048 : 64;
     const float limit = 1.5f;
-    const int counts[3] = {37, 0, 70};
+    const int counts[3] = {first, 0, last};
     // the set's blobs back to back at a fixed stride, each [gate | up | down], a part [trellis | suh | svh]
     HostMat parts[3][3];
     ex::ExpertLayout lay;
@@ -517,55 +518,121 @@ void test_set(int k2, int cb, int kd = 0) {
         }
     std::vector<float> x = rand_x(T * E);
     // the sorted rows: expert e's rows are tokens (e * 7 + j) % T
-    std::vector<int> bounds = {0}, row_tok;
+    std::vector<int> bounds = {row0}, row_tok;
     for (int e = 0; e < 3; ++e) {
         for (int j = 0; j < counts[e]; ++j) row_tok.push_back((e * 7 + j) % T);
-        bounds.push_back((int) row_tok.size());
+        bounds.push_back(row0 + (int) row_tok.size());
     }
     const int rows = (int) row_tok.size();
     uint8_t* d_blob = dev_copy(blobs);
     float* d_x = dev_copy(x);
     int* d_bounds = dev_copy(bounds);
     int* d_rows = dev_copy(row_tok);
-    uint16_t* d_h = nullptr;
-    float* d_out = nullptr;
-    CK(cudaMalloc(&d_h, (size_t) rows * F * 2));
-    CK(cudaMalloc(&d_out, (size_t) rows * E * 4));
+    uint16_t* h_storage = nullptr;
+    float* y_storage = nullptr;
+    const size_t hbytes = (size_t) rows * F * 2, ybytes = (size_t) rows * E * 4;
+    CK(cudaMalloc(&h_storage, hbytes + 32));
+    CK(cudaMalloc(&y_storage, ybytes + 32));
+    CK(cudaMemset(h_storage, 0xa5, hbytes + 32));
+    CK(cudaMemset(y_storage, 0xa5, ybytes + 32));
+    uint16_t* d_h = h_storage + 8;
+    float* d_out = y_storage + 4;
     ex::SetArgs sa;
     sa.wbase = d_blob;
     sa.stride = stride;
     sa.lay = lay;
     sa.n_exp = 3;
     sa.bounds = d_bounds;
-    sa.row0 = 0;
-    sa.max_rows = 70;
+    sa.row0 = row0;
+    sa.max_rows = std::max(first, last);
     sa.n_embd = E;
     sa.n_ff = F;
     sa.limit = limit;
     ex::set_gate_up(sa, d_x, E, d_rows, d_h, F, 0);
     ex::set_down(sa, d_h, F, d_out, E, 0);
     CK(cudaDeviceSynchronize());
-    std::vector<float> ref((size_t) rows * E);
-    for (int e = 0, r = 0; e < 3; ++e) {
-        std::vector<float> wg((size_t) E * F), wu((size_t) E * F), wd((size_t) F * E);
-        cpu::exl3_inner_k2(parts[e][0].tr.data(), F / 16, E, F, k2, cb, wg.data());
-        cpu::exl3_inner_k2(parts[e][1].tr.data(), F / 16, E, F, k2, cb, wu.data());
-        cpu::exl3_inner_k2(parts[e][2].tr.data(), E / 16, F, E, kd, cb, wd.data());
-        for (int j = 0; j < counts[e]; ++j, ++r) {
-            std::vector<float> gg((size_t) F), uu((size_t) F), hh((size_t) F);
-            const float* xr = x.data() + (size_t) row_tok[(size_t) r] * E;
-            cpu::exl3_mv(wg.data(), parts[e][0].suh.data(), parts[e][0].svh.data(), E, F, xr, gg.data());
-            cpu::exl3_mv(wu.data(), parts[e][1].suh.data(), parts[e][1].svh.data(), E, F, xr, uu.data());
-            for (int i = 0; i < F; ++i) {
-                const float gv = std::min(gg[(size_t) i], limit), uv = std::min(std::max(uu[(size_t) i], -limit), limit);
-                hh[(size_t) i] = f32_from_f16(f16_from_f32(gv / (1.0f + std::exp(-gv)) * uv));   // h is FP16 there
+    if (!bench) {
+        std::vector<float> ref((size_t) rows * E);
+        for (int e = 0, r = 0; e < 3; ++e) {
+            std::vector<float> wg((size_t) E * F), wu((size_t) E * F), wd((size_t) F * E);
+            cpu::exl3_inner_k2(parts[e][0].tr.data(), F / 16, E, F, k2, cb, wg.data());
+            cpu::exl3_inner_k2(parts[e][1].tr.data(), F / 16, E, F, k2, cb, wu.data());
+            cpu::exl3_inner_k2(parts[e][2].tr.data(), E / 16, F, E, kd, cb, wd.data());
+            for (int j = 0; j < counts[e]; ++j, ++r) {
+                std::vector<float> gg((size_t) F), uu((size_t) F), hh((size_t) F);
+                const float* xr = x.data() + (size_t) row_tok[(size_t) r] * E;
+                cpu::exl3_mv(wg.data(), parts[e][0].suh.data(), parts[e][0].svh.data(), E, F, xr, gg.data());
+                cpu::exl3_mv(wu.data(), parts[e][1].suh.data(), parts[e][1].svh.data(), E, F, xr, uu.data());
+                for (int i = 0; i < F; ++i) {
+                    const float gv = std::min(gg[(size_t) i], limit), uv = std::min(std::max(uu[(size_t) i], -limit), limit);
+                    hh[(size_t) i] = f32_from_f16(f16_from_f32(gv / (1.0f + std::exp(-gv)) * uv));   // h is FP16 there
+                }
+                cpu::exl3_mv(wd.data(), parts[e][2].suh.data(), parts[e][2].svh.data(), F, E, hh.data(),
+                             ref.data() + (size_t) r * E);
             }
-            cpu::exl3_mv(wd.data(), parts[e][2].suh.data(), parts[e][2].svh.data(), F, E, hh.data(),
-                         ref.data() + (size_t) r * E);
         }
+        close(("set K" + kname3(k2, kd) + " cb" + std::to_string(cb) + " (3 experts, " + std::to_string(rows) + " rows)").c_str(),
+              host_copy(d_out, ref.size()), ref, 3e-3);
     }
-    close(("set K" + kname3(k2, kd) + " cb" + std::to_string(cb) + " (3 experts, 107 rows)").c_str(),
-          host_copy(d_out, ref.size()), ref, 3e-3);
+#if defined(STRATA_USE_HIP)
+    const auto h8 = host_copy(h_storage, hbytes / 2 + 16);
+    const auto y8 = host_copy(y_storage, ybytes / 4 + 8);
+    for (int i = 0; i < 16; ++i) {
+        const auto* hp = reinterpret_cast<const unsigned char*>(h8.data());
+        const auto* yp = reinterpret_cast<const unsigned char*>(y8.data());
+        if (hp[i] != 0xa5 || hp[hbytes + 16 + i] != 0xa5 || yp[i] != 0xa5 || yp[ybytes + 16 + i] != 0xa5) ++g_fail;
+    }
+    const size_t bytes = ex::decoded_set_bytes(sa);
+    if (bytes != size_t(6) * 3 * E * F || ex::decode_set(sa, nullptr, 0)) ++g_fail;
+    uint32_t* fragments = nullptr;
+    CK(cudaMalloc(&fragments, bytes));
+    if (!ex::decode_set(sa, fragments, 0) ||
+        !ex::set_gate_up_decoded(sa, fragments, d_x, E, d_rows, d_h, F, 0) ||
+        !ex::set_down_decoded(sa, fragments, d_h, F, d_out, E, 0)) ++g_fail;
+    CK(cudaDeviceSynchronize());
+    const auto hc = host_copy(h_storage, h8.size());
+    const auto yc = host_copy(y_storage, y8.size());
+    const bool exact = hc == h8 && std::memcmp(yc.data(), y8.data(), y8.size() * sizeof(float)) == 0;
+    std::printf("PREDECODE_PARITY k2=%d kd=%d cb=%d first=%d last=%d row0=%d exact_guards=%d\n",
+                k2, kd, cb, first, last, row0, int(exact));
+    if (!exact) ++g_fail;
+    auto bad = sa; bad.mix.n = 1;
+    if (ex::decoded_set_bytes(bad) || ex::decode_set(bad, fragments, 0)) ++g_fail;
+    bad = sa; bad.n_exp = 0;
+    if (ex::decoded_set_bytes(bad)) ++g_fail;
+    bad = sa; bad.n_embd = 2147483520; bad.n_ff = 2147483520; bad.n_exp = INT_MAX;
+    if (ex::decoded_set_bytes(bad)) ++g_fail;
+    if (bench) {
+        cudaEvent_t begin{}, end{};
+        CK(cudaEventCreate(&begin)); CK(cudaEventCreate(&end));
+        auto run = [&](int mode) {
+            if (mode == 0) {
+                ex::set_gate_up(sa, d_x, E, d_rows, d_h, F, 0);
+                ex::set_down(sa, d_h, F, d_out, E, 0);
+            } else if (!ex::decode_set(sa, fragments, 0) ||
+                       !ex::set_gate_up_decoded(sa, fragments, d_x, E, d_rows, d_h, F, 0) ||
+                       !ex::set_down_decoded(sa, fragments, d_h, F, d_out, E, 0)) ++g_fail;
+        };
+        run(0); run(1); CK(cudaDeviceSynchronize());
+        for (int block = 0; block < 4; ++block)
+            for (int pos = 0; pos < 4; ++pos) {
+                const int order[] = {0, 1, 1, 0};
+                const int mode = order[(pos + (block % 2) * 2) % 4];
+                run(mode);
+                CK(cudaEventRecord(begin, 0));
+                for (int n = 0; n < 8; ++n) run(mode);
+                CK(cudaEventRecord(end, 0)); CK(cudaEventSynchronize(end));
+                float ms = 0; CK(cudaEventElapsedTime(&ms, begin, end));
+                std::printf("PREDECODE_BENCH k2=%d first=%d last=%d mode=%d block=%d pos=%d inclusive_ms=%.9g\n",
+                            k2, first, last, mode, block, pos, ms / 8);
+            }
+        CK(cudaEventDestroy(begin)); CK(cudaEventDestroy(end));
+    }
+    CK(cudaFree(fragments));
+#endif
+    CK(cudaFree(d_blob)); CK(cudaFree(d_x)); CK(cudaFree(d_bounds)); CK(cudaFree(d_rows));
+    CK(cudaFree(h_storage)); CK(cudaFree(y_storage));
+
 }
 
 // a mixed-precision layer: 3 experts each at its own K for gate / up / down, each in its own allocation
@@ -1668,6 +1735,24 @@ int main(int argc, char** argv) {
     CK(cudaGetDevice(&dev));
     CK(cudaGetDeviceProperties(&p, dev));
     std::printf("exl3_test on %s (%.1f GB)\n", p.name, (double) p.totalGlobalMem / 1e9);
+#if defined(STRATA_USE_HIP)
+    if (argc == 2 && std::string(argv[1]) == "--hip-predecode-bench") {
+        for (int k2 : {6, 8})
+            for (int n : {64, 1024}) test_set(k2, 2, 0, n / 2, n, 17, true);
+        std::printf("HIP predecode bench: %s (%d failures, %d launch errors)\n", g_fail ? "FAIL" : "ok", g_fail, ex::launch_errors());
+        return g_fail || ex::launch_errors() ? 1 : 0;
+    }
+    if (argc == 2 && std::string(argv[1]) == "--hip-predecode") {
+        for (int k2 = 2; k2 <= 16; k2 += 2)
+            for (int cb = 0; cb <= 2; ++cb) test_set(k2, cb);
+        for (int k2 : {3, 5, 7}) test_set(k2, 2);
+        test_set(6, 2, 8);
+        for (int k2 : {6, 8})
+            for (int n : {1, 7, 8, 15, 16, 17, 31, 32, 47, 64, 128}) test_set(k2, 2, 0, n, n + 1, 17);
+        std::printf("HIP predecode test: %s (%d failures, %d launch errors)\n", g_fail ? "FAIL" : "ok", g_fail, ex::launch_errors());
+        return g_fail || ex::launch_errors() ? 1 : 0;
+    }
+#endif
     std::string fx_dir, expect_dir;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];

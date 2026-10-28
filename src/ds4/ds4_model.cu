@@ -659,6 +659,11 @@ struct Chunk {
     uint16_t *x16 = nullptr, *qr16 = nullptr, *o16 = nullptr, *oa16 = nullptr, *lat16 = nullptr, *sh16 = nullptr,
              *h16 = nullptr, *eg_x16 = nullptr, *ext = nullptr, *w16 = nullptr, *emb = nullptr;
     size_t w16_elems = 0;
+#if defined(STRATA_USE_HIP)
+    uint32_t* predecoded = nullptr;
+    size_t predecoded_cap = 0;
+    size_t predecode_min_total = 768, predecode_min_max = 512;
+#endif
     int *ridx = nullptr, *topk = nullptr, *cand = nullptr, *bounds = nullptr, *row_tok = nullptr, *pos = nullptr;
     uint8_t* eg_rows = nullptr;
     int* bounds_pin = nullptr;   // pinned: the sort's bounds, read back
@@ -4086,6 +4091,9 @@ struct Model::Impl {
                 workers.push_back(std::make_unique<Worker>());
                 workers.back()->start();
             }
+#if defined(STRATA_USE_HIP)
+        init_exl3_predecode();
+#endif
         tune_lane();   // (before calibrate_paths: its CPU-lane speed is the chosen pools')
         calibrate_paths();
         lane_setup();
@@ -5276,6 +5284,62 @@ struct Model::Impl {
     }
     // the experts [i0, i1) of a sorted set (blobs at wbase + i * stride; bounds b on the host, d_bounds on the device)
     // over the chunk's rows, in pieces of at most C rows, each added into acc in pick order
+#if defined(STRATA_USE_HIP)
+    // Opt-in workspace: reserve after the expert cache, before any request or peer-waiting kernels.
+    // No model dimensions, group sizes or device IDs are fixed by this feature.
+    void init_exl3_predecode() {
+        const char* on = ds4_env("DS4_EXL3_PREDECODE");
+        if (chunk <= 0 || on == nullptr || std::strcmp(on, "1") != 0) return;
+        auto setting = [&](const char* name, size_t fallback, size_t limit) {
+            const char* v = ds4_env(name);
+            if (v == nullptr || *v == 0) return fallback;
+            size_t n = 0;
+            for (const char* p = v; *p; ++p) {
+                if (*p < '0' || *p > '9' || n > (limit - size_t(*p - '0')) / 10) return fallback;
+                n = n * 10 + size_t(*p - '0');
+            }
+            return n <= limit ? n : fallback;
+        };
+        const size_t cap = setting("DS4_EXL3_PREDECODE_MIB", 128, 4096) << 20;
+        const size_t min_total = setting("DS4_EXL3_PREDECODE_MIN_TOTAL_ROWS", 768, INT_MAX);
+        const size_t min_max = setting("DS4_EXL3_PREDECODE_MIN_ROWS", 512, INT_MAX);
+        if (cap == 0) return;
+        for (size_t di = 0; di < devs.size(); ++di) {
+            if (chunks[di] == nullptr) continue;
+            Dev& d = devs[di];
+            Chunk& c = *chunks[di];
+            cudaDeviceProp prop{};
+            if (cudaSetDevice(d.id) != cudaSuccess || cudaGetDeviceProperties(&prop, d.id) != cudaSuccess ||
+                std::strncmp(prop.gcnArchName, "gfx12", 5) != 0 || x3::prompt_tc()) continue;
+            bool eligible = false;
+            for (int il = 0; il < g.nl && !eligible; ++il)
+                for (int m = 0; m < L[(size_t) il].nm; ++m) {
+                    const Layer& l = member(L[(size_t) il], m);
+                    if (l.dev != int(di) || l.n_cls > 1) continue;
+                    x3::SetArgs sa;
+                    sa.n_exp = 1;
+                    sa.n_embd = g.dim;
+                    sa.n_ff = l.ffn;
+                    sa.lay = l.nm > 1 ? l.hlay : l.lay;
+                    const size_t need = x3::decoded_set_bytes(sa);
+                    eligible = eligible || (need > 0 && need <= cap);
+                }
+            if (!eligible) continue;
+            if (cudaMalloc(&c.predecoded, cap) != cudaSuccess) {
+                cudaGetLastError();
+                std::fprintf(stderr, "ds4: HIP%d no EXL3 fragment workspace; retaining compressed tiles\n", d.id);
+                continue;
+            }
+            c.predecoded_cap = cap;
+            c.predecode_min_total = min_total;
+            c.predecode_min_max = min_max;
+            d.allocs.push_back(c.predecoded);
+            d.scratch += cap;
+            std::fprintf(stderr, "ds4: HIP%d EXL3 fragment workspace %zu bytes, rows %zu/%zu\n",
+                         d.id, cap, min_total, min_max);
+        }
+    }
+#endif
     bool run_set(Dev& d, Chunk& c, const Layer& l, const uint8_t* wbase, int wb0, size_t stride, const int* d_bounds,
                  const int* b, int i0, int i1, int T, std::string& err) {
         const int D = g.dim, FF = l.ffn;
@@ -5337,8 +5401,27 @@ struct Model::Impl {
                                       d.st, err))
                             return false;
                 } else {
+#if defined(STRATA_USE_HIP)
+                    // The optional workspace was reserved after expert placement, before requests.
+                    bool decoded = false;
+                    const size_t bytes = c.predecoded != nullptr ? x3::decoded_set_bytes(sa) : 0;
+                    if (bytes > 0 && bytes <= c.predecoded_cap && size_t(nrows) >= c.predecode_min_total &&
+                        size_t(max_rows) >= c.predecode_min_max && !x3::prompt_tc()) {
+                        if (!x3::decode_set(sa, c.predecoded, d.st) ||
+                            !x3::set_gate_up_decoded(sa, c.predecoded, c.x, D, c.row_tok + a, c.h16, FF, d.st) ||
+                            !x3::set_down_decoded(sa, c.predecoded, c.h16, FF, c.y, D, d.st)) {
+                            err = "EXL3 fragment predecode failed";
+                            return false;
+                        }
+                        decoded = true;
+                    }
+                    if (!decoded) {
+#endif
                     x3::set_gate_up(sa, c.x, D, c.row_tok + a, c.h16, FF, d.st);
                     x3::set_down(sa, c.h16, FF, c.y, D, d.st);
+#if defined(STRATA_USE_HIP)
+                    }
+#endif
                 }
                 if (dump_y != nullptr && (dump_y_layer < 0 || l.il == dump_y_layer)) {
                     std::vector<int> bb(b + i0, b + j + 1);

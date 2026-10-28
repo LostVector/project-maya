@@ -1,0 +1,234 @@
+{
+  "base": "249f9a8",
+  "hardware": "Two R9700s for parity; GPU0 for quick timing.",
+  "test_results": [
+    {
+      "name": "parity-gpu0",
+      "exit": 0,
+      "seconds": 1.0685522556304932
+    },
+    {
+      "name": "parity-gpu1",
+      "exit": 0,
+      "seconds": 1.0918879508972168
+    },
+    {
+      "name": "bench-gpu0",
+      "exit": 0,
+      "seconds": 3.5062432289123535
+    }
+  ],
+  "exact_cases": {
+    "parity-gpu0": 50,
+    "parity-gpu1": 50,
+    "bench-gpu0": 4
+  },
+  "scope": "Synthetic combined expansion+gate/up+down operator timing. Changes tile width as well as fragment reuse; not an isolated decompression or full-model gain.",
+  "timing": [
+    {
+      "k2": 6,
+      "first": 32,
+      "last": 64,
+      "compressed8_ms": [
+        0.561224759,
+        0.529694378,
+        0.518034399,
+        0.516764402,
+        0.52303952,
+        0.498359263,
+        0.502269268,
+        0.514959395
+      ],
+      "decoded16_expansion_included_ms": [
+        0.686530769,
+        0.692110777,
+        0.68368572,
+        0.65913552,
+        0.655530512,
+        0.640750349,
+        0.657430649,
+        0.652330399
+      ],
+      "latency_reduction_pct": -27.931384257151713
+    },
+    {
+      "k2": 6,
+      "first": 512,
+      "last": 1024,
+      "compressed8_ms": [
+        6.40370893,
+        5.881814,
+        6.26951265,
+        6.28978729,
+        6.2206974,
+        6.27351284,
+        6.25641775,
+        6.32726336
+      ],
+      "decoded16_expansion_included_ms": [
+        4.64780951,
+        4.48385763,
+        4.4665823,
+        4.60137844,
+        4.60426903,
+        4.59656858,
+        4.7320199,
+        4.68072939
+      ],
+      "latency_reduction_pct": 26.25958873595875
+    },
+    {
+      "k2": 8,
+      "first": 32,
+      "last": 64,
+      "compressed8_ms": [
+        0.500224113,
+        0.494734138,
+        0.470739007,
+        0.477533996,
+        0.468698859,
+        0.458503872,
+        0.445413888,
+        0.470779002
+      ],
+      "decoded16_expansion_included_ms": [
+        0.69708097,
+        0.693845868,
+        0.697575986,
+        0.67599076,
+        0.67488575,
+        0.675165594,
+        0.662290514,
+        0.663530469
+      ],
+      "latency_reduction_pct": -43.67314474310331
+    },
+    {
+      "k2": 8,
+      "first": 512,
+      "last": 1024,
+      "compressed8_ms": [
+        5.93420553,
+        5.58502722,
+        5.91546488,
+        5.95500994,
+        5.87286472,
+        5.86286449,
+        5.89318514,
+        5.86782932
+      ],
+      "decoded16_expansion_included_ms": [
+        4.74638557,
+        4.52094793,
+        4.57497835,
+        4.61712885,
+        4.65550375,
+        4.62384892,
+        4.654984,
+        4.63017416
+      ],
+      "latency_reduction_pct": 21.034860709581814
+    }
+  ],
+  "historical_model_scope": "Older FMA16 stack and fixed selector, not the current DOT2 port.",
+  "historical_model": {
+    "strict_parity": true,
+    "independent_accepted_cold_and_warm_exact": true,
+    "prefill": {
+      "cold-code": {
+        "reference_ms": [
+          12038.022,
+          11957.014,
+          11950.724,
+          12044.582
+        ],
+        "candidate_ms": [
+          12038.526,
+          12042.306,
+          11943.396,
+          11932.732
+        ],
+        "block_gain_pct": [
+          -0.3575572880990972,
+          0.4966721407928696
+        ],
+        "mean_block_gain_pct": 0.06955742634688619,
+        "median_gain_pct": 0.05465297072278365,
+        "reference_tok_s": 172.45233555807127,
+        "candidate_tok_s": 172.54663742130427
+      },
+      "warm-database": {
+        "reference_ms": [
+          7313.739,
+          7324.642,
+          7340.217,
+          7322.287,
+          7333.469,
+          7334.582,
+          7339.98,
+          7340.226,
+          7334.004,
+          7326.627,
+          7331.398,
+          7339.212
+        ],
+        "candidate_ms": [
+          7218.257,
+          7222.29,
+          7226.037,
+          7215.137,
+          7220.056,
+          7227.772,
+          7223.147,
+          7218.103,
+          7228.714,
+          7246.232,
+          7229.578,
+          7231.66
+        ],
+        "block_gain_pct": [
+          1.351474592716235,
+          1.5094966043999152,
+          1.5013787448652856,
+          1.6277428259521585,
+          1.2665553072033617,
+          1.4271526541841095
+        ],
+        "mean_block_gain_pct": 1.4473001215535108,
+        "median_gain_pct": 1.4882522708581012,
+        "reference_tok_s": 279.25737446389024,
+        "candidate_tok_s": 283.47621568110696,
+        "mean_block_gain_95pct_ci": [
+          1.3132270811983986,
+          1.581373161908623
+        ]
+      }
+    },
+    "decode": [
+      {
+        "mode": 0,
+        "ms": 5035.883,
+        "tok_s": 12.709
+      },
+      {
+        "mode": 1,
+        "ms": 5058.281,
+        "tok_s": 12.653
+      }
+    ],
+    "checkpoint_gate_pass": true,
+    "scope": "Fixed two-prompt workload and frozen expert placement; no claim of general prompt-distribution gain or default production deployment.",
+    "hardware": {
+      "cpu": "Ryzen9950X",
+      "gpu": [
+        "RadeonAI PRO R9700 32GB",
+        "RadeonAI PRO R9700 32GB",
+        "RadeonRX9070XT16GB"
+      ],
+      "arch": "gfx1201"
+    },
+    "model": "LibertAIDAI/DeepSeek-V4.1-Flash-1017-EXL3-3.5bpw",
+    "protocol": "Alternating ABBA/BAAB: six warm blocks, two cold blocks; same-process frozen cache placement and primed scratch",
+    "limitations": "Global swap counters changed across model loading, testing and restoration; no per-trial swap attribution was captured. CI describes repeatability on this fixed workload, not general prompt distributions."
+  }
+}

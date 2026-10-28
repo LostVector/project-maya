@@ -1428,6 +1428,170 @@ __global__ void __launch_bounds__(kThreads) hip_set_kernel(SetArgs a, const floa
     }
 }
 
+#if defined(STRATA_USE_HIP)
+struct HipDecodedSmem {
+    __half xb[2 * 16 * kCols];
+    float out[16 * kCols];
+};
+template <int K2, int cb>
+__global__ void __launch_bounds__(kThreads) hip_decode_set_kernel(SetArgs a, int part, uint32_t* decoded) {
+    const int e = blockIdx.z, q = blockIdx.x, g = blockIdx.y;
+    if (a.bounds[e + 1] <= a.bounds[e]) return;
+    const int k = part < 2 ? a.n_embd : a.n_ff, n = part < 2 ? a.n_ff : a.n_embd;
+    constexpr int W = Words<K2>::W, R = Words<K2>::R;
+    const int lane = threadIdx.x & 31, warp = threadIdx.x >> 5;
+    const uint8_t* blob = a.wbase + (size_t) e * a.stride;
+    const auto* tr = (const uint32_t*) (blob + a.lay.trellis[part]);
+    const size_t sstride = (size_t) (n / 16) * W;
+    const uint32_t* tile = tr + ((size_t) q * 8 * (n / 16) + g * 8 + warp) * W;
+    uint32_t wc[8][R];
+    __shared__ uint32_t stage[kWarps * 4 * K2];
+    load_tiles<K2>(tile, sstride, lane, wc);
+    uint32_t* dst = decoded + ((size_t) e * 3 + part) * ((size_t) a.n_embd * a.n_ff / 2);
+    for (int s = 0; s < 8; ++s) {
+        uint32_t value[4];
+        slice_frags<K2, cb>(wc[s], stage + warp * W, lane, value);
+        const size_t at = ((((size_t) g * (k / 128) + q) * 8 + s) * 8 + warp) * 128 + lane;
+#pragma unroll
+        for (int i = 0; i < 4; ++i) dst[at + i * 32] = value[i];
+    }
+}
+template <class Input>
+__device__ void hip_block_decoded16(const uint32_t* __restrict__ decoded, int output_block, int k0, int k1, const Input (&x)[2],
+                           const uint16_t* __restrict__ suh, int nc, HipDecodedSmem& sm) {
+    const int lane = threadIdx.x & 31, warp = threadIdx.x >> 5, g = lane >> 2, t = lane & 3;
+
+    const int nq = (k1 - k0) / kCols;
+    float xv[2][4], xs4[2][4];
+    for (int j = 0; j < 2; ++j)
+        if (warp + j * 8 < nc) chunk_load(x[j], suh, k0, lane, xv[j], xs4[j]);
+    float acc[16][2];
+#pragma unroll
+    for (int cc = 0; cc < 16; ++cc) acc[cc][0] = acc[cc][1] = 0.0f;
+
+    for (int q = 0; q < nq; ++q) {
+        __half* xq = sm.xb + (q & 1) * (16 * kCols);
+        for (int j = 0; j < 2; ++j)
+            if (warp + j * 8 < nc) chunk_store(xv[j], xs4[j], lane, xq + (warp + j * 8) * kCols);
+        __syncthreads();
+        if (q + 1 < nq) {
+            for (int j = 0; j < 2; ++j)
+                if (warp + j * 8 < nc) chunk_load(x[j], suh, k0 + (q + 1) * kCols, lane, xv[j], xs4[j]);
+        }
+#pragma unroll
+        for (int s = 0; s < 8; ++s) {
+            uint32_t f[4];
+            const size_t at = ((((size_t) output_block * nq + q) * 8 + s) * 8 + warp) * 128 + lane;
+#pragma unroll
+            for (int i = 0; i < 4; ++i) f[i] = decoded[at + i * 32];
+#if defined(EXL3_DOT2)
+#pragma unroll
+            for (int cc = 0; cc < 16; ++cc)
+                if (cc < nc) {
+                    const __half* xr = xq + cc * kCols + s * 16 + 2 * t;
+                    const uint32_t xa = *reinterpret_cast<const uint32_t*>(xr);
+                    const uint32_t xb = *reinterpret_cast<const uint32_t*>(xr + 8);
+                    acc[cc][0] = dot2_acc(f[1], xb, dot2_acc(f[0], xa, acc[cc][0]));
+                    acc[cc][1] = dot2_acc(f[3], xb, dot2_acc(f[2], xa, acc[cc][1]));
+                }
+#else
+            float v[8];
+#pragma unroll
+            for (int i = 0; i < 4; ++i) {
+                const float2 d = __half22float2(u2h(f[i]));
+                v[2 * i] = d.x;
+                v[2 * i + 1] = d.y;
+            }
+#pragma unroll
+            for (int cc = 0; cc < 16; ++cc)
+                if (cc < nc) {
+                    const __half* xr = xq + cc * kCols + s * 16 + 2 * t;
+                    const float x0 = __half2float(xr[0]), x1 = __half2float(xr[1]);
+                    const float x2 = __half2float(xr[8]), x3 = __half2float(xr[9]);
+                    acc[cc][0] = dot4_acc(acc[cc][0], v, x0, x1, x2, x3);
+                    acc[cc][1] = dot4_acc(acc[cc][1], v + 4, x0, x1, x2, x3);
+                }
+#endif
+
+        }
+
+    }
+    const int o = warp * 16 + g;
+    // the 4 lanes of one g hold parts of the same two outputs
+#pragma unroll
+    for (int cc = 0; cc < 16; ++cc)
+        if (cc < nc) {
+#pragma unroll
+            for (int h = 0; h < 2; ++h) {
+                acc[cc][h] += __shfl_xor_sync(0xffffffffu, acc[cc][h], 1);
+                acc[cc][h] += __shfl_xor_sync(0xffffffffu, acc[cc][h], 2);
+            }
+            if (t == 0) {
+                sm.out[cc * kCols + o] = acc[cc][0];
+                sm.out[cc * kCols + o + 8] = acc[cc][1];
+            }
+        }
+
+    __syncthreads();
+}
+
+template <bool gate_up>
+__global__ void __launch_bounds__(kThreads) hip_set_decoded_kernel(SetArgs a, const uint32_t* decoded, const float* x, int ldx,
+                                                          const int* idx, uint16_t* h, int ldh,
+                                                          float* y, int ldy) {
+    __shared__ __align__(16) HipDecodedSmem sm;
+    __shared__ float gate[16 * kCols];
+    const int e = blockIdx.z, g = blockIdx.y, warp = threadIdx.x >> 5;
+    const int start = a.bounds[e], end = a.bounds[e + 1];
+    const int row = start - a.row0 + (int) blockIdx.x * 16;
+    const int nc = min(16, end - start - (int) blockIdx.x * 16);
+    if (nc <= 0) return;
+    const uint8_t* blob = a.wbase + (size_t) e * a.stride;
+    if constexpr (gate_up) {
+        Xin in[2];
+        for (int j = 0; j < 2; ++j)
+            if (warp + j * 8 < nc) in[j].f = x + (size_t) idx[row + warp + j * 8] * ldx;
+        hip_block_decoded16(decoded + ((size_t) e * 3 + 0) * ((size_t) a.n_embd * a.n_ff / 2),
+                              g, 0, a.n_embd, in, (const uint16_t*) (blob + a.lay.suh[0]), nc, sm);
+        for (int j = 0; j < 2; ++j) {
+            const int c = warp + j * 8;
+            if (c < nc) block_out(sm.out + c * kCols, (const uint16_t*) (blob + a.lay.svh[0]) + g * kCols,
+                                  gate + c * kCols);
+        }
+        __syncthreads();
+        hip_block_decoded16(decoded + ((size_t) e * 3 + 1) * ((size_t) a.n_embd * a.n_ff / 2),
+                              g, 0, a.n_embd, in, (const uint16_t*) (blob + a.lay.suh[1]), nc, sm);
+        for (int j = 0; j < 2; ++j) {
+            const int r = warp + j * 8;
+            if (r < nc) {
+                const int lane = threadIdx.x & 31;
+                float v[4];
+                for (int i = 0; i < 4; ++i) v[i] = sm.out[r * kCols + lane * 4 + i];
+                had128(v, lane);
+                for (int i = 0; i < 4; ++i) {
+                    const int c = lane * 4 + i;
+                    const float up = v[i] * h2f(((const uint16_t*) (blob + a.lay.svh[1]))[g * kCols + c]);
+                    h[(size_t) (row + r) * ldh + g * kCols + c] =
+                        __half_as_ushort(__float2half_rn(swiglu(gate[r * kCols + c], up, a.limit)));
+                }
+            }
+        }
+    } else {
+        XinHalf in[2];
+        for (int j = 0; j < 2; ++j)
+            if (warp + j * 8 < nc) in[j].h = h + (size_t) (row + warp + j * 8) * ldh;
+        hip_block_decoded16(decoded + ((size_t) e * 3 + 2) * ((size_t) a.n_embd * a.n_ff / 2),
+                              g, 0, a.n_ff, in, (const uint16_t*) (blob + a.lay.suh[2]), nc, sm);
+        for (int j = 0; j < 2; ++j) {
+            const int c = warp + j * 8;
+            if (c < nc) block_out(sm.out + c * kCols, (const uint16_t*) (blob + a.lay.svh[2]) + g * kCols,
+                                  y + (size_t) (row + c) * ldy + g * kCols);
+        }
+    }
+}
+
+#endif
+
 // set_mix_kernel's share of SetArgs: the fields it reads.  The whole SetArgs (its MixedLayouts ~3.9 KB) beside KMix
 // made 5.8 KB of kernel parameters - over the 4 KB Pascal (sm_6x) allows, so a Pascal build stopped there (#479;
 // Volta and newer take 32 KB).  The same values, the same arithmetic: the same bits everywhere.
@@ -1772,6 +1936,15 @@ __global__ void __launch_bounds__(kThreads) hip_rows_kernel(Mat m, const uint16_
         }
     }
 }
+#if defined(STRATA_USE_HIP)
+template <int K2, int cb> struct RunHipDecodeSet {
+    static void run(const SetArgs& a, int r, uint32_t* dst, cudaStream_t stream) {
+        const int k = r < 2 ? a.n_embd : a.n_ff, n = r < 2 ? a.n_ff : a.n_embd;
+        hip_decode_set_kernel<K2, cb><<<dim3(k / 128, n / 128, a.n_exp), kThreads, 0, stream>>>(a, r, dst);
+    }
+};
+#endif
+
 template <int K2, int cb> struct RunHipGateUp {
     static void run(const SetArgs& a, const float* x, int ldx, const int* idx, uint16_t* h, int ldh, cudaStream_t s) {
         hip_set_kernel<K2, cb, true><<<dim3((a.max_rows + kTok - 1) / kTok, a.n_ff / kCols, a.n_exp), kThreads, 0, s>>>
@@ -2414,6 +2587,62 @@ bool mma_supported() {
     return major >= 8;
 #endif
 }
+
+size_t decoded_set_bytes(const SetArgs& a) {
+    if (a.mix.n != 0 || a.skip_ge != 0 || a.lay.fmt != 0 || a.n_exp <= 0 || a.n_embd <= 0 || a.n_ff <= 0 || a.n_embd % 128 || a.n_ff % 128) return 0;
+    if (a.lay.cb < 0 || a.lay.cb > 2) return 0;
+    for (int r = 0; r < 3; ++r) {
+        const int k2 = a.lay.k2[r];
+        if (!((k2 >= 2 && k2 <= 16 && !(k2 & 1)) ||
+              ((k2 == 3 || k2 == 5 || k2 == 7) && a.lay.cb == 2))) return 0;
+    }
+    const size_t d = (size_t) a.n_embd, f = (size_t) a.n_ff, ne = (size_t) a.n_exp;
+    if (d > SIZE_MAX / f / 6 / ne) return 0;
+    return d * f * 6 * ne;
+}
+bool decode_set(const SetArgs& a, uint32_t* decoded, cudaStream_t stream) {
+#if defined(STRATA_USE_HIP)
+    if (!decoded || !decoded_set_bytes(a) || !a.wbase || !a.bounds || a.lay.cb < 0 || a.lay.cb > 2) return false;
+    for (int r = 0; r < 3; ++r) {
+        const int k2 = a.lay.k2[r];
+        if (!((k2 >= 2 && k2 <= 16 && (k2 & 1) == 0) ||
+              ((k2 == 3 || k2 == 5 || k2 == 7) && a.lay.cb == 2))) return false;
+    }
+    const int before = g_launch_errors.load();
+    for (int r = 0; r < 3; ++r) {
+        if (!dispatch<RunHipDecodeSet>(a.lay.k2[r], a.lay.cb, a, r, decoded, stream)) return false;
+        launch_check("decode_set");
+    }
+    return g_launch_errors.load() == before;
+#else
+    (void) a; (void) decoded; (void) stream; return false;
+#endif
+}
+bool set_gate_up_decoded(const SetArgs& a, const uint32_t* decoded, const float* x, int ldx,
+                         const int* idx, uint16_t* h, int ldh, cudaStream_t stream) {
+#if defined(STRATA_USE_HIP)
+    if (!decoded || !decoded_set_bytes(a) || !a.wbase || !a.bounds || !x || !idx || !h || a.max_rows <= 0 || ldx < a.n_embd || ldh < a.n_ff) return false;
+    const int before = g_launch_errors.load();
+    hip_set_decoded_kernel<true><<<dim3((a.max_rows + 15) / 16, a.n_ff / kCols, a.n_exp), kThreads, 0, stream>>>
+        (a, decoded, x, ldx, idx, h, ldh, nullptr, 0);
+    launch_check("set_gate_up_decoded"); return g_launch_errors.load() == before;
+#else
+    (void) a; (void) decoded; (void) x; (void) ldx; (void) idx; (void) h; (void) ldh; (void) stream; return false;
+#endif
+}
+bool set_down_decoded(const SetArgs& a, const uint32_t* decoded, const uint16_t* h, int ldh,
+                      float* y, int ldy, cudaStream_t stream) {
+#if defined(STRATA_USE_HIP)
+    if (!decoded || !decoded_set_bytes(a) || !a.wbase || !a.bounds || !h || !y || a.max_rows <= 0 || ldh < a.n_ff || ldy < a.n_embd) return false;
+    const int before = g_launch_errors.load();
+    hip_set_decoded_kernel<false><<<dim3((a.max_rows + 15) / 16, a.n_embd / kCols, a.n_exp), kThreads, 0, stream>>>
+        (a, decoded, nullptr, 0, nullptr, const_cast<uint16_t*>(h), ldh, y, ldy);
+    launch_check("set_down_decoded"); return g_launch_errors.load() == before;
+#else
+    (void) a; (void) decoded; (void) h; (void) ldh; (void) y; (void) ldy; (void) stream; return false;
+#endif
+}
+
 
 void set_gate_up(const SetArgs& sa, const float* x, int ldx, const int* row_idx, uint16_t* h16, int ldh,
                  cudaStream_t s) {
