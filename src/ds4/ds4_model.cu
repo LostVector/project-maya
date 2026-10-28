@@ -978,6 +978,10 @@ struct Worker {
 struct Group {
     std::vector<int> mem;   // device indices, member order (member 0 the lead)
     ArGroup ar, arb;        // a window's all-reduces, a chunk's
+#if defined(STRATA_USE_HIP)
+    std::array<PeerAr, 2> peer_arb{};
+    bool peer_arb_on = false;
+#endif
     // the head group: the members' logits shares on their way to the lead, two slots (by seq), their flags and the
     // lead's acknowledgements (host-mapped)
     float* lg_stage = nullptr;
@@ -1011,6 +1015,9 @@ struct WinPlan {
 // ------------------------------------------------------------------ the model
 struct Model::Impl {
     Options o;
+#if defined(STRATA_USE_HIP)
+    std::atomic<bool> peer_ar_failed{false}; // sticky across reset: reload after a transport failure
+#endif
     // abliteration (ds4_ablate.hpp): the direction on the host, its scale, the start-up line describing it
     std::vector<float> abl_dir;
     float abl_scale = 0.0f;
@@ -4086,6 +4093,9 @@ struct Model::Impl {
                 workers.push_back(std::make_unique<Worker>());
                 workers.back()->start();
             }
+#if defined(STRATA_USE_HIP)
+        init_peer_ar(); // after expert placement: optional scratch does not shrink the expert cache
+#endif
         tune_lane();   // (before calibrate_paths: its CPU-lane speed is the chosen pools')
         calibrate_paths();
         lane_setup();
@@ -13790,6 +13800,12 @@ struct Model::Impl {
         return ok;
     }
     bool draft_(int y, std::vector<int>& out, std::vector<float>& conf, std::string& err) {
+#if defined(STRATA_USE_HIP)
+        if (peer_ar_failed.load(std::memory_order_relaxed)) {
+            err = "peer all-reduce failed; model reload required";
+            return false;
+        }
+#endif
         out.clear();
         conf.clear();
         const int T = g.d_block, D = g.dim, H = g.hc, V = g.vocab, R = g.d_rank;
@@ -14241,6 +14257,110 @@ struct Model::Impl {
         }();
         return on;
     }
+#if defined(STRATA_USE_HIP)
+    // Optional transport scratch is allocated only after expert placement. Failure leaves the
+    // original host transport intact for both ranks, without changing expert cache capacity.
+    void init_peer_ar() {
+        const char* opt = ds4_env("DS4_HIP_PEER_AR");
+        if (chunk <= 0 || !opt || std::atoi(opt) == 0) return;
+        for (Group& G : groups) {
+            if (G.mem.size() != 2 || G.arb.nm != 2) continue;
+            // Keep upstream's opt-in AR2 and the flow loader on their existing transports.
+            if (G.arb.ar2 != 0 || chunks[(size_t) G.mem[0]]->flow || chunks[(size_t) G.mem[1]]->flow) {
+                std::fprintf(stderr, "ds4: peer prefill all-reduce not selected for AR2/flow group\n");
+                continue;
+            }
+            std::array<PeerAr, 2> a{};
+            bool ok = true;
+            for (int m = 0; m < 2 && ok; ++m) {
+                Dev& d = devs[(size_t) G.mem[m]];
+                const int peer = devs[(size_t) G.mem[1-m]].id;
+                if (cudaSetDevice(d.id) != cudaSuccess) { ok = false; break; }
+                int capable = 0;
+                ok = hipDeviceCanAccessPeer(&capable, d.id, peer) == hipSuccess && capable;
+                if (!ok) break;
+                auto status = hipDeviceEnablePeerAccess(peer, 0);
+                ok = status == hipSuccess || status == hipErrorPeerAccessAlreadyEnabled;
+                if (!ok) break;
+                hipGetLastError(); // consume already-enabled status, if any
+                int wall_clock_khz = 0;
+                ok = hipDeviceGetAttribute(&wall_clock_khz, hipDeviceAttributeWallClockRate, d.id) == hipSuccess &&
+                     wall_clock_khz > 0;
+                if (!ok) break;
+                a[m].stride = G.arb.stride;
+                a[m].timeout_ticks = uint64_t(wall_clock_khz) * 2000; // bounded two-second wait
+                ok = hipExtMallocWithFlags((void**) &a[m].recv, 2 * a[m].stride * sizeof(float),
+                                           hipDeviceMallocFinegrained) == hipSuccess &&
+                     hipExtMallocWithFlags((void**) &a[m].flags,
+                                           2 * kPeerArBlocks * kPeerArFlagStride * sizeof(unsigned),
+                                           hipDeviceMallocFinegrained) == hipSuccess &&
+                     hipMalloc((void**) &a[m].error, sizeof(unsigned)) == hipSuccess &&
+                     hipMalloc((void**) &a[m].failure, sizeof(PeerArFailure)) == hipSuccess;
+                if (ok) ok = hipMemset(a[m].flags, 0, 2 * kPeerArBlocks * kPeerArFlagStride * sizeof(unsigned)) == hipSuccess &&
+                             hipMemset(a[m].error, 0, sizeof(unsigned)) == hipSuccess &&
+                             hipMemset(a[m].failure, 0, sizeof(PeerArFailure)) == hipSuccess &&
+                             hipDeviceSynchronize() == hipSuccess;
+            }
+            if (!ok) {
+                for (int m = 0; m < 2; ++m) {
+                    cudaSetDevice(devs[(size_t) G.mem[m]].id);
+                    if (a[m].recv) hipFree(a[m].recv);
+                    if (a[m].flags) hipFree(a[m].flags);
+                    if (a[m].error) hipFree(a[m].error);
+                    if (a[m].failure) hipFree(a[m].failure);
+                    hipGetLastError();
+                }
+                std::fprintf(stderr, "ds4: peer prefill all-reduce unavailable; retaining host transport\n");
+                continue;
+            }
+            for (int m = 0; m < 2; ++m) {
+                a[m].peer_recv = a[1-m].recv;
+                a[m].peer_flags = a[1-m].flags;
+                Dev& d = devs[(size_t) G.mem[m]];
+                d.allocs.push_back(a[m].recv);
+                d.allocs.push_back(a[m].flags);
+                d.allocs.push_back(a[m].error);
+                d.allocs.push_back(a[m].failure);
+                d.scratch += 2 * a[m].stride * sizeof(float) +
+                             (2 * kPeerArBlocks * kPeerArFlagStride + 1) * sizeof(unsigned) + sizeof(PeerArFailure);
+            }
+            G.peer_arb = a;
+            G.peer_arb_on = true;
+            std::fprintf(stderr, "ds4: exact peer prefill all-reduce enabled on HIP%d/HIP%d (%zu MiB/rank)\n",
+                         devs[(size_t) G.mem[0]].id, devs[(size_t) G.mem[1]].id,
+                         (2 * a[0].stride * sizeof(float)) >> 20);
+        }
+    }
+    bool check_peer_ar(std::string& err) {
+        for (Group& G : groups) if (G.peer_arb_on) {
+            for (int m = 0; m < 2; ++m) {
+                Dev& d = devs[(size_t) G.mem[m]];
+                cudaSetDevice(d.id);
+                unsigned error = 0;
+                const auto sync_status = cudaStreamSynchronize(d.st);
+                const auto copy_status = hipMemcpy(&error, G.peer_arb[m].error, sizeof(error), hipMemcpyDeviceToHost);
+                if (sync_status != cudaSuccess || copy_status != hipSuccess || error) {
+                    std::fprintf(stderr, "PEER_AR_FAILURE gpu=%d rank=%d stream_status=%d copy_status=%d error=%u sequence=%u\n",
+                                 d.id, m, int(sync_status), int(copy_status), error, chunks[(size_t) G.mem[m]]->arb_seq);
+                    if (error & 1u) {
+                        PeerArFailure detail{};
+                        const auto detail_status = hipMemcpy(&detail, G.peer_arb[m].failure, sizeof(detail), hipMemcpyDeviceToHost);
+                        std::fprintf(stderr, "PEER_AR_TIMEOUT_DETAIL gpu=%d rank=%d copy_status=%d captured=%u "
+                                     "failed_sequence=%u observed=%u block=%u n4=%u elapsed_ticks=%llu timeout_ticks=%llu "
+                                     "last_submitted_sequence=%u\n", d.id, m, int(detail_status), detail.captured,
+                                     detail.sequence, detail.observed, detail.block, detail.n4,
+                                     (unsigned long long) detail.elapsed_ticks, (unsigned long long) detail.timeout_ticks,
+                                     chunks[(size_t) G.mem[m]]->arb_seq);
+                    }
+                    peer_ar_failed = true;
+                }
+            }
+        }
+        if (peer_ar_failed) err = "peer all-reduce failed; model state invalid, reload required";
+        return !peer_ar_failed;
+    }
+#endif
+
     // a chunk's sum over its group: three members or more through the copy engines (allreduce_dma, c.y its scratch:
     // free between the MoE's sets), or (Group::hred) summed on the host; unless DS4_AR_DMA=0
     void chunk_allreduce(Dev& d, Chunk& c, const ArGroup& ab, int mi, int n, cudaStream_t s) {
@@ -14252,6 +14372,15 @@ struct Model::Impl {
             const char* e = std::getenv("DS4_AR_DMA");
             return e == nullptr || std::atoi(e) != 0;
         }();
+#if defined(STRATA_USE_HIP)
+        Group& pg = groups[(size_t) d.grp];
+        if (pg.peer_arb_on) {
+            // A failed launch cannot silently switch a single rank to another transport.
+            if (!allreduce_peer(buf, n, pg.peer_arb[(size_t) mi], mi, ++c.arb_seq, s))
+                peer_ar_failed.store(true, std::memory_order_relaxed);
+            return;
+        }
+#endif
         HostReducer* hr = groups[(size_t) d.grp].hred.get();
         if (dma && hr != nullptr) {   // (the lead submits the sum before its members' copies come)
             const unsigned seq = ++c.arb_seq;
@@ -16013,6 +16142,12 @@ struct Model::Impl {
     // n tokens at positions pos .. in chunks of equal size (at most `chunk`), pipelined over the groups; the logits of
     // the last min(logits_rows, 16) rows (logits_rows > 16: a run of one chunk, every row's into chunk_logits)
     bool forward_chunks(const int* tk, int n, int logits_rows, std::string& err, int snap_slot = -1) {
+#if defined(STRATA_USE_HIP)
+        if (peer_ar_failed.load(std::memory_order_relaxed)) {
+            err = "peer all-reduce failed; model reload required";
+            return false;
+        }
+#endif
         if (lend_broken) {
             err = kLendBroken;
             return false;
@@ -16282,6 +16417,14 @@ struct Model::Impl {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
         main_at.store("a run of chunks: the devices done, the head next", std::memory_order_relaxed);
+#if defined(STRATA_USE_HIP)
+        if (!check_peer_ar(err)) return false;
+        // A worker's early failure can leave peers with different submission sequences. Do not reuse the model.
+        for (const std::string& e : errs)
+            if (!e.empty() && e != kHalted)
+                for (const Group& G : groups)
+                    if (G.peer_arb_on) peer_ar_failed.store(true, std::memory_order_relaxed);
+#endif
         for (const std::string& e : errs)   // (a device's failure first: a Stop's early end is not one)
             if (!e.empty() && e != kHalted) {
                 err = e;
@@ -16541,6 +16684,12 @@ struct Model::Impl {
     }
 
     bool forward(const int* tk, int T, int logits_rows, std::string& err, int seed_rows = -1) {
+#if defined(STRATA_USE_HIP)
+        if (peer_ar_failed.load(std::memory_order_relaxed)) {
+            err = "peer all-reduce failed; model reload required";
+            return false;
+        }
+#endif
         if (lend_broken) {
             err = kLendBroken;
             return false;
@@ -17589,6 +17738,12 @@ struct Model::Impl {
     // the indexer's top k) through the window code a row at a time (layer(), attn_core); the Engram rows by its own
     // tokens; the drafter's rings seeded for each conversation as its own step seeds them.
     bool step_multi(const int* sv, const int* tk, int T, std::string& err) {
+#if defined(STRATA_USE_HIP)
+        if (peer_ar_failed.load(std::memory_order_relaxed)) {
+            err = "peer all-reduce failed; model reload required";
+            return false;
+        }
+#endif
         if (sqs.empty()) {
             err = "one conversation (no --parallel)";
             return false;
