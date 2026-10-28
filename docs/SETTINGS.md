@@ -875,6 +875,17 @@ installs, or checked by hash before each start) can keep them elsewhere.
 | --- | --- | --- |
 | `MAYA_DS4_LT_STORE` | `<pack>/lt-picks.txt` | the picks in this file instead; empty: none kept, each start measures its own |
 
+## DeepSeek: HIP expert-copy reuse waits
+
+The standard prompt batch loader normally queues a wait on the GPU copy stream before reusing an expert part.
+`MAYA_DS4_HIP_HOST_COPY_WAIT=1` waits on the device worker's host thread instead, after the previous consumer/event
+has been submitted. Copy contents, event order and arithmetic stay unchanged. The host wait may reduce overlap;
+it is opt-in and does not change the flow loader or CUDA. See [DS4_HIP_HOST_COPY_WAIT.md](DS4_HIP_HOST_COPY_WAIT.md).
+
+| Setting | Default | |
+| --- | --- | --- |
+| `MAYA_DS4_HIP_HOST_COPY_WAIT` | off (0) | `1`: host wait for an expert part's prior consumer before queuing its next copy; other values keep the copy-stream wait |
+
 ## DeepSeek: packed EXL3 tensor-parallel cache transfers
 
 `DS4_EXL3_PACKED_HOST=1` stores resident EXL3 host experts as GPU-ready member blobs;

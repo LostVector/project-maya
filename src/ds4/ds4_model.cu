@@ -11,6 +11,9 @@
 //   h = post * moe + comb^T h;  pre = f_pre
 // and after the last layer logits = head(rmsnorm(sum_s pre[s] h[s])).
 #include "ds4_model.hpp"
+#if defined(STRATA_USE_HIP)
+#include "ds4_hip_copy_wait.hpp"
+#endif
 #include "ds4_borrow.hpp"
 #include "ds4_cpu_exl3.hpp"
 #include "ds4_ablate.hpp"
@@ -4700,6 +4703,10 @@ struct Model::Impl {
     bool copy_ahead(Dev& d, Chunk& c, Streamer& S, int di, std::string& err) {
         const int P = Chunk::kParts;
 #if defined(STRATA_USE_HIP)
+        const char* opt = ds4_env("DS4_HIP_HOST_COPY_WAIT");
+        const bool host_wait = opt != nullptr && std::strcmp(opt, "1") == 0;
+#endif
+#if defined(STRATA_USE_HIP)
         static const bool skip_unpicked = std::getenv("DS4_SKIP_UNPICKED") != nullptr &&
                                           std::atoi(std::getenv("DS4_SKIP_UNPICKED")) != 0;
 #else
@@ -4721,7 +4728,14 @@ struct Model::Impl {
             int mi = 0;
             for (int m = 0; m < l0.nm; ++m)
                 if (member(l0, m).dev == di) mi = m;
-            if (S.cp >= (size_t) P) CK(cudaStreamWaitEvent(c.cs, c.freed[half], 0));
+            if (S.cp >= (size_t) P) {
+#if defined(STRATA_USE_HIP)
+                // cp - P < kp: the old consumer and freed event were queued before this reuse wait.
+                CK(expert_copy_reuse_wait(c.cs, c.freed[half], host_wait));
+#else
+                CK(cudaStreamWaitEvent(c.cs, c.freed[half], 0));
+#endif
+            }
             uint8_t* sb = nullptr;   // in place: the batch's regions in the part's staging slots
             bool staged = false;     // (a batch of copies in place, alone: nothing to stage)
             for (int i = 0; i < bt.n && !staged; ++i)
