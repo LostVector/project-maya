@@ -514,5 +514,6 @@
     "Peer input reads are slower in tested directions. Only vector host mailbox copy is proposed for runtime testing; it adds no allocation or transfer protocol.",
     "No full-model numerical or performance result yet for this candidate."
   ],
-  "permanent_artifacts": "/home/rkuo/research/llm-weight-compression/_meta/maya-p2p-helper-exchange-20261028"
+  "permanent_artifacts": "/home/rkuo/research/llm-weight-compression/_meta/maya-p2p-helper-exchange-20261028",
+  "followup_model_results": "ds4_helper_input_runtime_20261028.json"
 }

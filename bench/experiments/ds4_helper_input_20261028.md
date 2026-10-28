@@ -8,7 +8,7 @@ Direct peer reads were slower than host reads for both scalar and vector variant
 
 The prior model profile measured 0.577 ms/output of post-CPU helper waiting, which includes expert computation, and 0.026 ms/output of host helper merging. Removing both perfectly would have bounded ideal speedup at 2.52% on those older workloads; it is not a current universal ceiling. Copy savings must not be extrapolated directly to decode gains.
 
-Next validation belongs to canonical work item `p2p-helper-exchange`: matched-residency full-vocabulary comparison and a bounded balanced MTP decode screen on the optimized serving backport. Public-current-base model startup, CUDA behavior and full-model throughput remain unvalidated. Normal serving was never restarted or modified during these probes. Permanent raw traces, build commands, source hashes and the model-validation design are in the adjacent JSON's artifact root and linked from the single canonical plan.
+Follow-up model evidence is now in `ds4_helper_input_runtime_20261028.{md,json}`: 31 million exact values and small +0.15–0.31% pooled decode observations, with control-drift limitations. The canonical plan owns remaining validation. The original operator results above are retained separately.
 
 The optional HIP CMake target `ds4_helper_input_probe` is excluded from default builds. Its G/Q handshakes let the controller snapshot KFD/PSI while the process is alive. For a manual correctness run on an idle, peer-capable pair, use the ROCm runtime environment of the build:
 
