@@ -63,6 +63,9 @@ reproducing the reported helper measurements.
 Leave all helper settings unset to disable this feature. `DS4_HELPER_EXL3=1` is
 required for EXL3. Mixed-format EXL3 layers are not selected for the helper.
 The existing exclusive GGUF helper configuration remains available.
+Upstream's dynamic helper slots (`DS4_HELPER_RECENT`) currently read GGUF
+weights. EXL3 helpers use the static pool; a nonzero recent-slot count is
+rejected at load rather than passed to the GGUF fill path.
 
 CPU backing copies of helper experts are retained for fallback. This can
 increase host RAM compared with the original placement. `DS4_WARM_CAP_GB`
