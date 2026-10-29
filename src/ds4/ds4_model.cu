@@ -16727,6 +16727,14 @@ struct Model::Impl {
     bool run_dev_chunks(int di, const Run& run, std::string& err) {
         Dev& d = devs[(size_t) di];
         Chunk& c = *chunks[(size_t) di];
+        // A selected helper/drafter-only device has no trunk chunks to admit.
+        // Letting its empty loop advance halt_seen would immediately commit the
+        // entire prompt, preventing a Stop from cutting the real TP workers short.
+        // This is about the device's role, independent of its index or hardware.
+        bool trunk_participant = false;
+        for (int il = 0; il < g.nl && !trunk_participant; ++il)
+            for (int m = 0; m < L[(size_t) il].nm; ++m)
+                trunk_participant = trunk_participant || member(L[(size_t) il], m).dev == di;
         struct AtEnd {   // (Model::where: every way out of the run)
             Chunk& c;
             ~AtEnd() { c.at.store("its part of the run ended", std::memory_order_relaxed); }
@@ -16864,7 +16872,7 @@ struct Model::Impl {
                         std::this_thread::sleep_for(std::chrono::microseconds(100));
                     }
             }
-            if (!chunk_go(k)) return halt_end(di, err);   // (a Stop: the chunks every device reaches are done)
+            if (trunk_participant && !chunk_go(k)) return halt_end(di, err);
             c.at_k.store(k, std::memory_order_relaxed);
             c.at_il.store(-1, std::memory_order_relaxed);
             const int64_t p0 = run.p0[(size_t) k];
