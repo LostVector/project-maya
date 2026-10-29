@@ -1492,7 +1492,7 @@ struct Model::Impl {
     int helper_id = -1;
     bool helper_shared = false;   // opt-in: helper GPU also owns DSpark blocks, never target layers
     size_t helper_cap = 0, helper_used = 0;
-    size_t helper_prof = 0;                       // (of helper_used: the profile's experts; the rest the recent slots)
+    size_t helper_prof = 0;                       // (of helper_used: profiled experts; the rest recent slots or reserved slack)
     int helper_n = 0;                             // experts it holds
     std::atomic<bool> helper_dead{false};
     uint8_t* helper_pool = nullptr;
@@ -12924,6 +12924,8 @@ struct Model::Impl {
         }
         helper_prof = helper_used;   // (the profile's experts' bytes; the pool is these and the recent slots)
         helper_used += hr_bytes;
+        // Shared mode reserved its entire budget before placement; account for unused pool space too.
+        if (helper_shared) helper_used = helper_cap;
         int cur = 0;
         cudaGetDevice(&cur);
         bool ok = cudaSetDevice(helper_id) == cudaSuccess;
