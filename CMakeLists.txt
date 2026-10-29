@@ -311,9 +311,10 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
     add_test(NAME exl3_test COMMAND exl3_test)
     set_tests_properties(exl3_test PROPERTIES TIMEOUT 120)
     if(STRATA_ENABLE_HIP)
-      # Exercise the opt-in one-row kernel, including exact multi-row/mixed-row fallback checks.
+      # exl3_test exercises the default. Check explicit enable and rollback too, including mixed-row fallback.
       add_test(NAME exl3_mv1_test COMMAND ${CMAKE_COMMAND} -E env DS4_EXL3_MV1=1 $<TARGET_FILE:exl3_test>)
-      set_tests_properties(exl3_mv1_test PROPERTIES TIMEOUT 120)
+      add_test(NAME exl3_mv_generic_test COMMAND ${CMAKE_COMMAND} -E env DS4_EXL3_MV1=0 $<TARGET_FILE:exl3_test>)
+      set_tests_properties(exl3_mv1_test exl3_mv_generic_test PROPERTIES TIMEOUT 120)
     endif()
     # the same decoders against exllamav3 itself (tools/exl3_exllamav3_fixture.py's tiles): the same bits
     add_test(NAME exl3_exllamav3 COMMAND exl3_test --exllamav3 ${CMAKE_CURRENT_SOURCE_DIR}/data/exl3-exllamav3)

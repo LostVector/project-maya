@@ -1844,7 +1844,10 @@ bool dispatch(int K2, int cb, A&&... args) {
 template <int K2, int cb> struct RunMv {
     static void run(const KBatch& b, int blocks, cudaStream_t s) {
 #if defined(STRATA_USE_HIP)
-        static const bool enabled = [] { const char* v = std::getenv("DS4_EXL3_MV1"); return v && std::atoi(v) != 0; }();
+        // A one-row batch needs only one row of accumulators/scratch. Keep the input-split planner
+        // and reduction order unchanged; a mixed/multi-row batch always uses the generic kernel.
+        // Enabled by default on HIP; DS4_EXL3_MV1=0 is the explicit rollback.
+        static const bool enabled = [] { const char* v = std::getenv("DS4_EXL3_MV1"); return !v || std::atoi(v) != 0; }();
         bool single = enabled;
         for (int i = 0; i < b.n && single; ++i) single = b.j[i].nc == 1;
         if (single) { mv_kernel<K2, cb, true><<<blocks, kThreads, 0, s>>>(b); return; }
