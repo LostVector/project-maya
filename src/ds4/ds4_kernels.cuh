@@ -517,6 +517,18 @@ struct PeerAr {
     uint64_t timeout_ticks = 0; // HIP wall_clock64 ticks, calibrated with hipDeviceAttributeWallClockRate.
 };
 bool allreduce_peer(float* x, int n, const PeerAr& a, int mi, unsigned seq, cudaStream_t s);
+enum class PeerTransport { host, ar2, peer };
+struct PeerCalibration {
+    PeerTransport selected = PeerTransport::host;
+    bool complete = false, quiescent = true, valid = true;
+    int samples = 0;
+    double ms[3] = {0, 0, 0}, elapsed_ms = 0;
+};
+// Startup only, before requests: private input rows/streams, original exact-F32 transport and optional AR2.
+// Both ranks' production flags are reset before returning. budget_ms bounds submission/polling;
+// driver API calls themselves cannot be interrupted by a userspace deadline.
+PeerCalibration calibrate_peer(const int ids[2], const ArGroup& host, const ArGroup* ar2,
+                               const PeerAr peer[2], int n, double budget_ms);
 #endif
 
 /// A chunk's all-reduce (three members or more) through the copy engines: allreduce's FP16 sums bit for bit (each

@@ -4442,7 +4442,7 @@ struct Model::Impl {
             }
         if (cp_pin_last()) cp_pin();   // (#589: after every pinned buffer above, before the paths are timed)
 #if defined(STRATA_USE_HIP)
-        init_peer_ar(); // after expert placement: optional scratch does not shrink the expert cache
+        if (!init_peer_ar(err)) return false; // after expert placement: optional scratch does not shrink the expert cache
 #endif
         tune_lane();   // (before calibrate_paths: its CPU-lane speed is the chosen pools')
         pick_len = chunk > 0 ? prompt_pick_length(ds4_env("DS4_PROMPT_PICK")) : 0;
@@ -15849,9 +15849,24 @@ struct Model::Impl {
 #if defined(STRATA_USE_HIP)
     // Optional transport scratch is allocated only after expert placement. Failure leaves the
     // original host transport intact for both ranks, without changing expert cache capacity.
-    void init_peer_ar() {
+    bool init_peer_ar(std::string& err) {
+        if (chunk <= 0) return true;
+        bool eligible = false;
+        for (const Group& G : groups)
+            eligible = eligible || (G.mem.size() == 2 && G.arb.nm == 2 && G.arb.ar2 == 0 &&
+                !chunks[(size_t) G.mem[0]]->flow && !chunks[(size_t) G.mem[1]]->flow);
+        if (!eligible) return true; // no allocations, queries or timing for single-GPU/other group shapes
         const char* opt = ds4_env("DS4_HIP_PEER_AR");
-        if (chunk <= 0 || !opt || std::atoi(opt) == 0) return;
+        if (opt && std::strcmp(opt, "0") == 0) return true;
+        const bool automatic = !opt || std::strcmp(opt, "auto") == 0;
+        if (!automatic && std::strcmp(opt, "1") != 0) {
+            err = "DS4_HIP_PEER_AR takes auto, 0 or 1";
+            return false;
+        }
+        int original_device = 0;
+        cudaGetDevice(&original_device);
+        const double deadline = now_ms() + 3000.0; // shared by every group, not three seconds per pair
+
         for (Group& G : groups) {
             if (G.mem.size() != 2 || G.arb.nm != 2) continue;
             // Keep upstream's opt-in AR2 and the flow loader on their existing transports.
@@ -15859,8 +15874,19 @@ struct Model::Impl {
                 std::fprintf(stderr, "ds4: peer prefill all-reduce not selected for AR2/flow group\n");
                 continue;
             }
+            if (automatic && now_ms() >= deadline) continue;
             std::array<PeerAr, 2> a{};
-            bool ok = true;
+            auto release = [&] {
+                for (int m = 0; m < 2; ++m) {
+                    cudaSetDevice(devs[(size_t) G.mem[m]].id);
+                    if (a[m].recv) hipFree(a[m].recv);
+                    if (a[m].flags) hipFree(a[m].flags);
+                    if (a[m].error) hipFree(a[m].error);
+                    if (a[m].failure) hipFree(a[m].failure);
+                    hipGetLastError();
+                }
+            };
+            bool ok = G.arb.stride <= size_t(INT_MAX);
             for (int m = 0; m < 2 && ok; ++m) {
                 Dev& d = devs[(size_t) G.mem[m]];
                 const int peer = devs[(size_t) G.mem[1-m]].id;
@@ -15876,6 +15902,14 @@ struct Model::Impl {
                 ok = hipDeviceGetAttribute(&wall_clock_khz, hipDeviceAttributeWallClockRate, d.id) == hipSuccess &&
                      wall_clock_khz > 0;
                 if (!ok) break;
+                size_t available = 0, total = 0;
+                const size_t payload = G.arb.stride * sizeof(float);
+                // The probe needs one private input row per rank in addition to the persistent two-slot pool.
+                // Leave 64 MiB free; never evict experts or resize the expert pool to make tuning fit.
+                const size_t need = (automatic ? 3 : 2) * payload + (64ull << 20) +
+                                   2 * kPeerArBlocks * kPeerArFlagStride * sizeof(unsigned);
+                if (hipMemGetInfo(&available, &total) != hipSuccess || available < need ||
+                    (automatic && now_ms() >= deadline)) { ok = false; break; }
                 a[m].stride = G.arb.stride;
                 a[m].timeout_ticks = uint64_t(wall_clock_khz) * 2000; // bounded two-second wait
                 ok = hipExtMallocWithFlags((void**) &a[m].recv, 2 * a[m].stride * sizeof(float),
@@ -15891,20 +15925,51 @@ struct Model::Impl {
                              hipDeviceSynchronize() == hipSuccess;
             }
             if (!ok) {
-                for (int m = 0; m < 2; ++m) {
-                    cudaSetDevice(devs[(size_t) G.mem[m]].id);
-                    if (a[m].recv) hipFree(a[m].recv);
-                    if (a[m].flags) hipFree(a[m].flags);
-                    if (a[m].error) hipFree(a[m].error);
-                    if (a[m].failure) hipFree(a[m].failure);
-                    hipGetLastError();
-                }
+                release();
                 std::fprintf(stderr, "ds4: peer prefill all-reduce unavailable; retaining host transport\n");
                 continue;
             }
             for (int m = 0; m < 2; ++m) {
                 a[m].peer_recv = a[1-m].recv;
                 a[m].peer_flags = a[1-m].flags;
+            }
+            if (automatic) {
+                ArGroup ar2_group = G.arb;
+                unsigned* progress = nullptr;
+                // Respect an explicit AR2 setting, including 0. Unset: compare its exact-F32 mode too.
+                if (ds4_env("DS4_AR2") == nullptr) {
+                    const size_t bytes = size_t(ar2_group.nm) * ar2_group.slots * kAr2Blocks * 16 * sizeof(unsigned);
+                    if (hipHostMalloc((void**) &progress, bytes, hipHostMallocMapped | hipHostMallocPortable) == hipSuccess) {
+                        std::memset(progress, 0, bytes);
+                        ar2_group.pflags = progress;
+                        ar2_group.ar2 = 1;
+                    } else hipGetLastError();
+                }
+                const int ids[2] = {devs[(size_t) G.mem[0]].id, devs[(size_t) G.mem[1]].id};
+                const auto result = calibrate_peer(ids, G.arb, progress ? &ar2_group : nullptr, a.data(),
+                                                   int(G.arb.stride), std::max(0.0, deadline - now_ms()));
+                const char* selected = result.complete && result.selected == PeerTransport::peer ? "peer" :
+                                       result.complete && result.selected == PeerTransport::ar2 ? "ar2" : "host";
+                std::fprintf(stderr, "PEER_AR_AUTO gpu=%d,%d floats=%zu samples=%d host_ms=%.6f ar2_ms=%.6f "
+                                     "peer_ms=%.6f selected=%s elapsed_ms=%.1f complete=%d\n",
+                             ids[0], ids[1], G.arb.stride, result.samples, result.ms[0], progress ? result.ms[1] : -1.0,
+                             result.ms[2], selected, result.elapsed_ms, int(result.complete));
+                if (!result.quiescent || !result.valid) {
+                    // Never start inference or release buffers that a failed probe may still be reading.
+                    if (result.quiescent) { release(); if (progress) hipHostFree(progress); }
+                    cudaSetDevice(original_device);
+                    err = "startup transport probe failed validation or did not drain; reload required";
+                    return false;
+                }
+                if (result.complete && result.selected == PeerTransport::ar2) {
+                    G.arb = ar2_group;
+                    host_allocs.push_back(progress);
+                    progress = nullptr;
+                }
+                if (progress) hipHostFree(progress);
+                if (!result.complete || result.selected != PeerTransport::peer) { release(); continue; }
+            }
+            for (int m = 0; m < 2; ++m) {
                 Dev& d = devs[(size_t) G.mem[m]];
                 d.allocs.push_back(a[m].recv);
                 d.allocs.push_back(a[m].flags);
@@ -15919,6 +15984,8 @@ struct Model::Impl {
                          devs[(size_t) G.mem[0]].id, devs[(size_t) G.mem[1]].id,
                          (2 * a[0].stride * sizeof(float)) >> 20);
         }
+        cudaSetDevice(original_device);
+        return true;
     }
     bool check_peer_ar(std::string& err) {
         for (Group& G : groups) if (G.peer_arb_on) {

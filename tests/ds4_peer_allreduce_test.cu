@@ -1,5 +1,5 @@
 // Two-rank peer-VRAM transport against the existing host transport, including failure/draining.
-// Run with exactly two visible GPUs; needs about 640 MiB of spare VRAM on each.
+// Run with exactly two visible GPUs; needs about 800 MiB of spare VRAM on each, including calibration scratch.
 #include "../src/ds4/ds4_kernels.cuh"
 #include <hip/hip_runtime.h>
 #include <algorithm>
@@ -71,7 +71,7 @@ int main() {
         size_t available = 0, total = 0;
         CK(hipMemGetInfo(&available, &total));
         if (!capable || clock_status != hipSuccess || r.wall_clock_khz <= 0 ||
-            available < 4ull * kCapacity * sizeof(float) + (64ull << 20)) {
+            available < 5ull * kCapacity * sizeof(float) + (64ull << 20)) {
             std::puts("SKIP: peer access, steady clock or spare VRAM unavailable"); return 77;
         }
         const auto status = hipDeviceEnablePeerAccess(1 - i, 0);
@@ -164,6 +164,43 @@ int main() {
         std::printf("PEER_CHAIN first=%u calls=128 variable_sizes=1 signed_zero_extreme_subnormal=1 guards=1 exact=1\n", first);
         std::fflush(stdout);
     }
+    // Exercise the actual startup selector, including exact AR2 and post-probe sequence reuse.
+    ArGroup pipelined = host;
+    pipelined.ar2 = 1;
+    CK(hipHostMalloc(&pipelined.pflags, size_t(2) * host.slots * kAr2Blocks * 16 * sizeof(unsigned),
+                     hipHostMallocMapped | hipHostMallocPortable));
+    const int ids[2] = {0, 1};
+    const PeerAr peers[2] = {ranks[0].peer, ranks[1].peer};
+    const auto no_budget = calibrate_peer(ids, host, &pipelined, peers, 4096 * 5120, 0);
+    REQUIRE(!no_budget.complete && no_budget.quiescent && no_budget.valid);
+    const auto tuned = calibrate_peer(ids, host, &pipelined, peers, 4096 * 5120, 3000);
+    REQUIRE(tuned.complete && tuned.quiescent && tuned.valid && tuned.samples >= 3);
+    const int selected = int(tuned.selected);
+    REQUIRE(tuned.ms[selected] <= tuned.ms[0] && tuned.ms[selected] <= tuned.ms[1] && tuned.ms[selected] <= tuned.ms[2]);
+    std::printf("PEER_AUTO complete=1 selected=%d samples=%d host_ms=%.6f ar2_ms=%.6f peer_ms=%.6f elapsed_ms=%.1f\n",
+                 selected, tuned.samples, tuned.ms[0], tuned.ms[1], tuned.ms[2], tuned.elapsed_ms);
+    for (int mode = 0; mode < 3; ++mode) {
+        for (int m = 0; m < 2; ++m) {
+            CK(hipSetDevice(m));
+            auto& r = ranks[m];
+            init_input<<<32, 256, 0, r.stream>>>(r.x, 5120, m, 19);
+            if (mode == 2) REQUIRE(allreduce_peer(r.x, 5120, r.peer, m, 1, r.stream));
+            else allreduce(r.x, 5120, mode == 1 ? pipelined : host, m, 1, r.counter, r.stream);
+            if (mode == 0) CK(hipMemcpyAsync(r.reference, r.x, 5120 * sizeof(float), hipMemcpyDeviceToDevice, r.stream));
+            else check_values<<<32, 256, 0, r.stream>>>(r.x, r.reference, 5120, r.peer.error);
+        }
+        sync();
+    }
+    for (int m = 0; m < 2; ++m) {
+        CK(hipSetDevice(m)); unsigned error = 0;
+        CK(hipMemcpy(&error, ranks[m].peer.error, sizeof(error), hipMemcpyDeviceToHost));
+        REQUIRE(error == 0);
+    }
+    std::puts("PEER_AUTO_REUSE first_sequence=1 all_transports_exact=1");
+    const auto without_ar2 = calibrate_peer(ids, host, nullptr, peers, 4096 * 5120, 3000);
+    REQUIRE(without_ar2.complete && without_ar2.valid && without_ar2.quiescent &&
+            without_ar2.selected != PeerTransport::ar2 && without_ar2.ms[1] == 0);
+    CK(hipHostFree(pipelined.pflags));
     // Deliberately omit rank 1. Check physical elapsed time independently of the device's clock.
     reset(1);
     CK(hipSetDevice(0));
