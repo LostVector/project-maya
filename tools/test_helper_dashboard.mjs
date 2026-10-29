@@ -40,6 +40,7 @@ for(const mode of ['helper','failed','plain']) {
   assert(html.includes('Primary VRAM'));
   assert(html.includes('CPU backing remains available for fallback'));
   assert(html.includes(mode==='failed'?'Helper unavailable':'1,200 profiled cached experts'));
+  assert.equal(html.includes('the helper handles some'), mode==='helper');
  }
 }
 if(out)writeFileSync(out,JSON.stringify(outputs,null,2)+'\n');

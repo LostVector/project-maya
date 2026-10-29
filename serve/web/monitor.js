@@ -207,7 +207,7 @@ function Tiers({t, eng}) {
   if (ds4) {
     if (!stale && n.disk_mb != null && n.disk_mb >= 500) tip = "Much of every token is read from the SSD: more RAM keeps more of the model's experts cached, and answers get faster.";
     else if (!stale && n.vram_hit != null && n.vram_hit < 0.5)
-      tip = helper ? "Most selections miss the primary cache; the helper handles some before CPU fallback."
+      tip = helper && !n.helper_dead ? "Most selections miss the primary cache; the helper handles some before CPU fallback."
                    : "Most experts run on the CPU: more VRAM (or a second GPU) keeps more of them on the card.";
   } else if (!stale && n.disk != null && n.disk >= 3) {
     tip = "Many experts are read from the SSD for every token: more RAM, a smaller model or a shorter context makes answers faster.";
