@@ -50,6 +50,7 @@ PeerCalibration calibrate_peer(const int ids[2], const ArGroup& original, const 
                 if (hipSetDevice(ids[m]) != hipSuccess) return false;
                 const auto status = hipStreamQuery(rank[m].stream);
                 if (status != hipSuccess && status != hipErrorNotReady) return false;
+                if (status == hipErrorNotReady) (void) hipGetLastError();
                 ready = ready && status == hipSuccess;
             }
             if (ready) return true;
