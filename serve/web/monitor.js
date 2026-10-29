@@ -356,8 +356,10 @@ function GpuMap({m}) {
   const more = (g, b) => (g.slots && g.parts.pool ? Math.max(0, Math.floor(b / (g.parts.pool / g.slots))) : 0);
   const where = (gs) => (one ? "this GPU" : gpuList(gs));
   const pools = (gs) => (one ? "the expert pool" : gs.length > 1 ? "their expert pools" : "its expert pool");
-  const others = complete || plain ? [] : map.filter((g) => (g.parts.other || 0) >= 0.5 * GIB);
-  const frees = complete || plain ? [] : map.filter((g) => !g.vision_lent && (g.free || 0) >= 2 * GIB);
+  // A dedicated helper (or drafter-only device) has no primary pool to grow on restart.
+  const hasPrimaryPool = (g) => g.slots > 0 && (g.parts.pool || 0) > 0;
+  const others = complete || plain ? [] : map.filter((g) => hasPrimaryPool(g) && (g.parts.other || 0) >= 0.5 * GIB);
+  const frees = complete || plain ? [] : map.filter((g) => hasPrimaryPool(g) && !g.vision_lent && (g.free || 0) >= 2 * GIB);
   let advice = "";
   if (others.length) {
     const b = others.reduce((a, g) => a + g.parts.other, 0), n = others.reduce((a, g) => a + more(g, g.parts.other), 0);
