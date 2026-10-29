@@ -1679,6 +1679,7 @@ int main(int argc, char** argv) {
     CK(cudaGetDevice(&dev));
     CK(cudaGetDeviceProperties(&p, dev));
     std::printf("exl3_test on %s (%.1f GB)\n", p.name, (double) p.totalGlobalMem / 1e9);
+    std::printf("grouped matrix prefill: %s\n", ex::prompt_tc() ? "enabled" : "disabled");
     if (argc == 2 && std::string(argv[1]) == "--prefill-only") {
         for (int k2 = 2; k2 <= 16; k2 += 2)
             for (int cb = 0; cb <= 2; ++cb) test_set(k2, cb);

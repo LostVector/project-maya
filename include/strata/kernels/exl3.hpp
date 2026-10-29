@@ -166,7 +166,8 @@ bool several_ok();
 /// The prompt path's tensor-core GEMMs (sm_80 and later; mma_supported() says whether this device runs them).
 bool mma_supported();
 /// Whether the prompt path's set kernels (set_gate_up / set_down) run on this device's tensor cores: sm_80 and later
-/// (mma_supported), or sm_7x through wmma (EXL3_WMMA=0: not); otherwise they are the CUDA-core portable kernels.
+/// (mma_supported), sm_7x through wmma, or HIP gfx11/gfx12 through WMMA. On HIP, EXL3_WMMA=0 disables
+/// WMMA and EXL3_WMMA_GFX12=0 disables it on gfx12 only; otherwise unsupported devices use portable kernels.
 bool prompt_tc();
 /// A set of n_exp routed experts in VRAM, expert e's blob at wbase + e * stride (the layout in lay), owning the sorted
 /// rows [bounds[e], bounds[e + 1]) (device, n_exp + 1 entries); a sorted row's LOCAL row is bounds[e] - row0 + r.

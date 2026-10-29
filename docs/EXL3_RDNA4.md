@@ -1,8 +1,8 @@
-# Opt-in RDNA4 EXL3 matrix prefill
+# RDNA4 EXL3 matrix prefill
 
-On HIP gfx12 devices, `EXL3_WMMA_GFX12=1` enables matrix instructions for
-`set_gate_up` and `set_down`. The default remains the existing portable path.
-`EXL3_WMMA=0` overrides the new flag and disables matrix prefill.
+On HIP gfx12 devices, grouped EXL3 prefill uses matrix instructions for
+`set_gate_up` and `set_down` by default. `EXL3_WMMA_GFX12=0` selects the portable
+path on gfx12; `EXL3_WMMA=0` disables matrix prefill on both gfx11 and gfx12.
 `EXL3_WMMA_ROWS=16` (default) or `32` selects routed rows per block.
 
 Earlier DeepSeek tests on three R9700s measured about 8–9% higher warm 4K
@@ -17,6 +17,9 @@ compiled for the selected RDNA4 GPU (`gfx1201` for the R9700 / RX 9070 family).
 It does not accelerate GGUF expert weights. A practical starting point is
 16 routed rows per block; no particular GPU count or tensor-parallel layout
 is required.
+
+No environment overrides are needed for the 16-row default. The explicit
+settings below also work with earlier versions that required an opt-in.
 
 First check the GPUs with `./maya.sh --backend hip --check`. Stop any running
 server before setting up again or editing its configuration. To save the
@@ -50,7 +53,7 @@ library reads them directly. The same names can be exported for a native
 ### Verify and compare
 
 1. Confirm setup selected a HIP build for your RDNA4 GPU. An older binary
-   without this implementation will ignore the new switch.
+   without this implementation cannot run the RDNA4 matrix path.
 2. Check that the saved configuration contains the entries above, then start
    that configuration: `./maya.sh --config /path/to/maya-ds4-hip.json`.
    Use the actual config path printed by setup. A shell variable alone does
@@ -89,14 +92,16 @@ The separate FMA16 and predecoded-fragment-cache experiments are excluded.
 
 Both RDNA4 paths use FP16 operands and FP32 accumulation. Matrix instructions
 group products and additions differently from the portable DOT2 path.
-Full-model logits need not match the portable path bit for bit, and changed
-logits can affect expert routing and generated answers. CPU-reference operator
-tests do not establish full-model quality equivalence.
+The weights and operand formats stay the same. Different accumulation grouping
+and rounding produce numerical differences that can affect later expert routing
+and generated answers; bit-identical full-model logits are not required.
+CPU-reference operator tests check numerical accuracy, while the reported
+full-model logit differences do not by themselves measure answer-quality loss.
 
 The previous experimental stack had full-model numerical differences. Its older
 speed measurements do not establish an end-to-end gain for this current-upstream
-port. Keep the path opt-in pending broader full-model quality, stability,
-and matched performance tests. One earlier normal-cache/MTP comparison also
+port. Broader full-model quality, stability and matched performance evaluation
+remain useful follow-ups. One earlier normal-cache/MTP comparison also
 observed 3.24% slower decode despite faster prefill; generated continuations
 and cache behavior differed. Measure both stages when choosing settings.
 
@@ -113,14 +118,19 @@ cmake --build build-hip --target exl3_test -j 2
 ```
 
 ```sh
-# Existing full suite, portable default on gfx12:
+# Full suite, RDNA4 matrix default:
 ./build-hip/exl3_test
+# Portable control:
+EXL3_WMMA=0 ./build-hip/exl3_test
 # Focused grouped-expert cases, both matrix tile sizes:
 EXL3_WMMA_GFX12=1 EXL3_WMMA_ROWS=16 ./build-hip/exl3_test --prefill-only
 EXL3_WMMA_GFX12=1 EXL3_WMMA_ROWS=32 ./build-hip/exl3_test --prefill-only
-# Explicit opt-out overrides the opt-in:
+# Explicit global opt-out overrides forced RDNA4 enable:
 EXL3_WMMA_GFX12=1 EXL3_WMMA=0 ./build-hip/exl3_test --prefill-only
 ```
+
+The test prints `grouped matrix prefill: enabled` or `disabled` to verify
+the selected dispatch in that test process.
 
 The focused suite compares against the scalar CPU reference with the existing
 `3e-3` relative-RMS tolerance and worst-element/finite checks. It covers integer

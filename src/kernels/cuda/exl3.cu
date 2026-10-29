@@ -1498,7 +1498,7 @@ __global__ void __launch_bounds__(kThreads) set_mix_kernel(const KSetMix a, KMix
 // decoded once for all of them - and the products on the matrix cores.  A warp's decoded tile goes through LDS into
 // A's layout (lane m and m + 16: output m's 16 inputs); each 16 activations of the slice are a B (lane n and n + 16:
 // activation n's 16 inputs); D's element i is output 2i + lane / 16 of the tile for activation lane % 16.  The host
-// uses this layout on gfx11; the opt-in gfx12 implementation follows below. Both use EXL3_WMMA_ROWS 16 or 32
+// uses this layout on gfx11; the gfx12 implementation follows below. Both use EXL3_WMMA_ROWS 16 or 32
 // (by default 16). The decode and verify kernels keep
 // block_gemv (their bits are the token path's).
 // Volta / Turing (sm_70 .. sm_75: no mma.m16n8k16, so not the tensor-core kernels below) run the same kernel on
@@ -1533,6 +1533,12 @@ typedef uint32_t exl3_u8 __attribute__((ext_vector_type(8)));
 // RDNA4's WMMA has eight FP16 inputs per lane and a different accumulator layout.
 // Keep compressed weight words in registers; decode only the tile being consumed.
 // Padded activation rows retain 8-byte alignment for two exact 64-bit LDS loads.
+// Numerical contract: the EXL3 weights, FP16 operands (including chunk_store's activation rounding),
+// and FP32 accumulation are the same formats as block_gemv's RDNA4 DOT2 path. WMMA groups the products
+// and additions differently from DOT2's partial accumulators and warp reduction, so rounding and
+// low output bits can differ. Full-model routing can amplify those differences in later layers.
+// Bitwise equality with the DOT2 path is therefore not the accuracy contract; the existing
+// CPU-reference tolerances, finite checks and output guards remain the operator contract.
 #if defined(STRATA_USE_HIP) && defined(__GFX12__)
 #define EXL3_WMMA_RDNA4 1
 typedef _Float16 rdna4_h8 __attribute__((ext_vector_type(8)));
@@ -2427,8 +2433,11 @@ bool mma_now() {
 #endif
 }
 
-// Matrix prompt path: gfx11 by default, gfx12 only with EXL3_WMMA_GFX12=1.
-// EXL3_WMMA=0 disables both. Decode and verify retain their existing arithmetic.
+// Matrix prompt path: gfx11 and gfx12 by default. EXL3_WMMA_GFX12=0 restores the
+// portable path on gfx12 only; EXL3_WMMA=0 disables both. The RDNA4 numerical
+// differences are accumulation grouping/rounding, as documented above rdna4_block_wmma,
+// with the same weight and operand formats. Decode/verify kernels keep their arithmetic;
+// a changed prefill state can still change later routing or generated tokens.
 static bool wmma_now() {
 #if defined(STRATA_USE_HIP)
     static const bool off = std::getenv("EXL3_WMMA") != nullptr && std::atoi(std::getenv("EXL3_WMMA")) == 0;
@@ -2439,7 +2448,7 @@ static bool wmma_now() {
     if (known[dev] == 0) {
         cudaDeviceProp p{};
         const char* v = std::getenv("EXL3_WMMA_GFX12");
-        const bool rdna4 = v != nullptr && std::atoi(v) != 0;
+        const bool rdna4 = v == nullptr || std::atoi(v) != 0;
         known[dev] = cudaGetDeviceProperties(&p, dev) == cudaSuccess &&
                      (std::strncmp(p.gcnArchName, "gfx11", 5) == 0 ||
                       (rdna4 && std::strncmp(p.gcnArchName, "gfx12", 5) == 0)) ? 2 : 1;
