@@ -5,6 +5,72 @@ On HIP gfx12 devices, `EXL3_WMMA_GFX12=1` enables matrix instructions for
 `EXL3_WMMA=0` overrides the new flag and disables matrix prefill.
 `EXL3_WMMA_ROWS=16` (default) or `32` selects routed rows per block.
 
+Earlier DeepSeek tests on three R9700s measured about 8–9% higher warm 4K
+prefill throughput and 12% lower warm 16K prefill latency with this path.
+Those whole-model measurements used an earlier integration;
+they are not a speed guarantee for every model or machine.
+
+## Guided setup
+
+Use this with an EXL3 model and a HIP build containing this implementation,
+compiled for the selected RDNA4 GPU (`gfx1201` for the R9700 / RX 9070 family).
+It does not accelerate GGUF expert weights. A practical starting point is
+16 routed rows per block; no particular GPU count or tensor-parallel layout
+is required.
+
+First check the GPUs with `./maya.sh --backend hip --check`. Stop any running
+server before setting up again or editing its configuration. To save the
+settings through setup, for example with DeepSeek's 3.5-bit EXL3 quant:
+
+```sh
+./maya.sh --backend hip --setup \
+  --model DeepSeek-V4.1-Flash-1017 --ds4-quant exl3-3.5 \
+  --env EXL3_WMMA_GFX12=1 --env EXL3_WMMA_ROWS=16 --env EXL3_WMMA=1 \
+  --no-start
+```
+
+Keep your existing model-directory, GPU and context options when repeating
+setup; choose your installed EXL3 quant if it differs from this example.
+The example uses the normal setup workflow, which may build or download files;
+it saves the configuration without starting the server. For an existing
+installation, merging these entries into its configuration's `env` is enough:
+
+```json
+{
+  "EXL3_WMMA_GFX12": "1",
+  "EXL3_WMMA_ROWS": "16",
+  "EXL3_WMMA": "1"
+}
+```
+
+Preserve the other `env` entries. Use these exact `EXL3_*` names: the kernel
+library reads them directly. The same names can be exported for a native
+`maya-ds4` launch. They must be set before starting the engine.
+
+### Verify and compare
+
+1. Confirm setup selected a HIP build for your RDNA4 GPU. An older binary
+   without this implementation will ignore the new switch.
+2. Check that the saved configuration contains the entries above, then start
+   that configuration: `./maya.sh --config /path/to/maya-ds4-hip.json`.
+   Use the actual config path printed by setup. A shell variable alone does
+   not override a conflicting value already saved in the configuration.
+3. To check kernel execution independently, build `exl3_test` and run the
+   focused matrix tests below on an idle GPU. A saved flag alone is not proof
+   that a request exercised the grouped EXL3 prefill path; short prompts may
+   use the existing small-window kernels.
+4. Compare representative long prompts with the same model, context, cache
+   conditions and other settings. Record prefill and decode separately.
+   For a portable-path control, set `EXL3_WMMA=0` in the same configuration
+   and restart; keep the other settings fixed. Restore it to `1` and restart
+   to re-enable matrix prefill. An environment change does not reconfigure
+   an engine that is already loaded.
+
+See [Setup](SETUP.md) for the installation workflow and
+[Settings](SETTINGS.md#rdna4-exl3-matrix-prefill) for the switches.
+
+## Implementation
+
 The implementation decodes compressed weight tiles directly into matrix operand
 registers, reusing each tile across the routed rows. It does not reconstruct the
 whole expert or require a predecoded-weight cache. Activation rows use eight
@@ -21,22 +87,32 @@ The separate FMA16 and predecoded-fragment-cache experiments are excluded.
 
 ## Numerical and performance limits
 
-Matrix instructions group products and additions differently from scalar FP32
-FMA. Full-model logits need not match the portable path bit for bit, and changed
+Both RDNA4 paths use FP16 operands and FP32 accumulation. Matrix instructions
+group products and additions differently from the portable DOT2 path.
+Full-model logits need not match the portable path bit for bit, and changed
 logits can affect expert routing and generated answers. CPU-reference operator
 tests do not establish full-model quality equivalence.
 
 The previous experimental stack had full-model numerical differences. Its older
 speed measurements do not establish an end-to-end gain for this current-upstream
-port. Keep the path opt-in pending current-base full-model quality, stability,
-and matched performance tests. No throughput improvement is claimed here.
+port. Keep the path opt-in pending broader full-model quality, stability,
+and matched performance tests. One earlier normal-cache/MTP comparison also
+observed 3.24% slower decode despite faster prefill; generated continuations
+and cache behavior differed. Measure both stages when choosing settings.
 
 ## Tests
 
 Build `maya-ds4` and `exl3_test` with HIP enabled and gfx1201 in
 `CMAKE_HIP_ARCHITECTURES`. Select a device with `HIP_VISIBLE_DEVICES`.
+If normal setup built the engine with tests disabled, enable the test targets
+in that existing HIP build directory first:
 
+```sh
+cmake -S . -B build-hip -DSTRATA_BUILD_TESTS=ON
+cmake --build build-hip --target exl3_test -j 2
 ```
+
+```sh
 # Existing full suite, portable default on gfx12:
 ./build-hip/exl3_test
 # Focused grouped-expert cases, both matrix tile sizes:
