@@ -2512,6 +2512,8 @@ bool prompt_tc() {
 #endif
 }
 
+bool prompt_wmma() { return wmma_now(); }
+
 bool mma_supported() {
 #if defined(STRATA_USE_HIP)
     return false;
