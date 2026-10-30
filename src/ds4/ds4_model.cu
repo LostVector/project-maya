@@ -1057,6 +1057,19 @@ struct Model::Impl {
 #if defined(STRATA_USE_HIP)
     std::atomic<bool> peer_ar_failed{false}; // sticky across reset: reload after a transport failure
 #endif
+    // A failed peer collective invalidates the model until reload. Check at public feed entry points too:
+    // empty feeds and feed-plan creation may never reach forward(), and a marked feed can queue a checkpoint.
+    bool peer_state_ok(std::string& err) const {
+#if defined(STRATA_USE_HIP)
+        if (peer_ar_failed.load(std::memory_order_relaxed)) {
+            err = "peer all-reduce failed; model reload required";
+            return false;
+        }
+#else
+        (void) err;
+#endif
+        return true;
+    }
     // abliteration (ds4_ablate.hpp): the direction on the host, its scale, the start-up line describing it
     std::vector<float> abl_dir;
     float abl_scale = 0.0f;
@@ -20263,6 +20276,7 @@ bool Model::step(int token, bool logits, std::string& err) { return p_->step(tok
 std::string Model::where() const { return p_->where(); }
 bool Model::feed(const int* tokens, int n, int logits_rows, std::string& err, int after) {
     Impl& p = *p_;
+    if (!p.peer_state_ok(err)) return false;
     if (!feed_release(err)) return false;   // (another read: a prompt's room kept between its parts handed back first)
     p.main_at.store("reading a prompt", std::memory_order_relaxed);
     p.pm.last = -1;
@@ -20279,6 +20293,7 @@ bool Model::feed(const int* tokens, int n, int logits_rows, std::string& err, in
 }
 bool Model::feed_mark(const int* tokens, int n, int logits_rows, int slot, std::string& err) {
     Impl& p = *p_;
+    if (!p.peer_state_ok(err)) return false;
     if (!feed_release(err)) return false;   // (another read: a prompt's room kept between its parts handed back first)
     p.main_at.store("reading a prompt", std::memory_order_relaxed);
     p.pm.last = -1;
@@ -20301,7 +20316,7 @@ bool Model::feed_plan(int n, int logits_rows, int slot, FeedPlan& plan) {
     Impl& p = *p_;
     plan = FeedPlan{};
     std::string e0;   // (another read: a prompt's room kept between its parts handed back first - pick_path sees the
-    if (!feed_release(e0)) return false;   //  experts where they are; a failure fails the read that follows)
+    if (!p.peer_state_ok(e0) || !feed_release(e0)) return false;   //  experts where they are; a failure fails the read that follows)
     // (the path feed() / feed_mark() would take: windows - or every row's logits - stay one call; then the flow's
     //  chunks, two or more of them)
     if (p.lend_broken || p.chunk <= 0 || n < std::max(2, p.chunk_min) || logits_rows > kWin) return false;
@@ -20330,6 +20345,7 @@ bool Model::feed_release(std::string& err) {
 }
 bool Model::feed_part(const FeedPlan& plan, const int* tokens, int k0, int k1, std::string& err) {
     Impl& p = *p_;
+    if (!p.peer_state_ok(err)) return false;
     const int nk = (int) plan.ends.size();
     if (plan.at < 0 || k0 < 0 || k1 <= k0 || k1 > nk) {
         err = "feed_part: chunks the plan does not have";
