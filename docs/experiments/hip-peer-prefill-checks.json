@@ -1,0 +1,24 @@
+{
+  "clean_public_build": {
+    "commit": "201aa10b80a90595263d51dc9430eac39b7738de",
+    "build_exit": 0,
+    "binary_sha256": {
+      "ds4_peer_prefill_test": "0796aab959fc5928e7a7bf03fca1b4167ece67be0db9beb2574657d4cdf89ee0",
+      "maya-ds4": "f0dad80d854890dae311d5bf239a29e31b1900e7cf665c66ebbc7977d3dfb994"
+    },
+    "production_peer_test_hooks_absent": true,
+    "pr": "https://github.com/LostVector/project-maya/pull/15"
+  },
+  "model_fault": {
+    "request_rejection_and_sticky_poison_verified": true
+  },
+  "fault_binary": {
+    "command": [
+      "/home/rkuo/research/llm-weight-compression/_meta/maya-peer-prefill-20261020/fault-ds4_peer_prefill_test",
+      "/home/rkuo/models/DeepSeek-V4.1-Flash-1017-EXL3-3.5bpw/maya-ds4",
+      "/home/rkuo/research/llm-weight-compression/_meta/maya-peer-prefill-fault-20261020"
+    ],
+    "exe_sha256": "b24b5fdf3cdc917612a182d3d1a50b63abb13ba088567e42b28474c8f7746db5"
+  },
+  "fault_log_marker": "PEER_MODEL_FAULT request_rejected=1 reset_still_poisoned=1 decode_rejected=1 later_prefill_rejected=1 subsequent_calls=0"
+}

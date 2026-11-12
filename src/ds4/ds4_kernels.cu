@@ -1650,6 +1650,10 @@ __global__ void __launch_bounds__(kThreads) ar_sum_kernel(float* x, int n4, cons
 
 #if defined(STRATA_USE_HIP)
 __global__ void __launch_bounds__(kThreads) ar_peer_kernel(float* x, int n4, PeerAr a, int mi, unsigned seq) {
+    __shared__ int ready;
+    if (threadIdx.x == 0) ready = (*reinterpret_cast<volatile unsigned*>(a.error) & 1u) == 0;
+    __syncthreads();
+    if (!ready) return; // a previous timed-out call poisons all subsequently queued calls
     const int slot = int(seq & 1u);
     float4* peer = reinterpret_cast<float4*>(a.peer_recv + size_t(slot) * a.stride);
     const float4* received = reinterpret_cast<const float4*>(a.recv + size_t(slot) * a.stride);
@@ -1659,7 +1663,6 @@ __global__ void __launch_bounds__(kThreads) ar_peer_kernel(float* x, int n4, Pee
     __threadfence_system();
     __syncthreads();
     const size_t fi = (size_t(slot) * kPeerArBlocks + blockIdx.x) * kPeerArFlagStride;
-    __shared__ int ready;
     if (threadIdx.x == 0) {
         *reinterpret_cast<volatile unsigned*>(a.peer_flags + fi) = seq;
         __threadfence_system();
