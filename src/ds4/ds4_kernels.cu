@@ -3529,9 +3529,14 @@ __global__ void __launch_bounds__(kThreads) ar_sum_kernel(float* x, int n4, cons
 #if defined(STRATA_USE_HIP) || defined(DS4_CUDA_PEER_AR)
 __global__ void __launch_bounds__(kThreads) ar_peer_kernel(float* x, int n4, PeerAr a, int mi, unsigned seq) {
     __shared__ int ready;
-    if (threadIdx.x == 0) ready = (*reinterpret_cast<volatile unsigned*>(a.error) & 1u) == 0;
+    if (threadIdx.x == 0)
+        ready = (*reinterpret_cast<volatile unsigned*>(a.error) & 1u) == 0 &&
+                (a.poison == nullptr || (*reinterpret_cast<volatile unsigned*>(a.poison) & 1u) == 0);
     __syncthreads();
     if (!ready) return; // a previous timed-out call poisons all subsequently queued calls
+    // where this rank's device is, for the host to read while its stream is stuck (a plain store to its own memory)
+    if (a.progress != nullptr && blockIdx.x == 0 && threadIdx.x == 0)
+        *reinterpret_cast<volatile unsigned*>(a.progress) = seq;
     const int slot = int(seq & 1u);
     float4* peer = reinterpret_cast<float4*>(a.peer_recv + size_t(slot) * a.stride);
     const float4* received = reinterpret_cast<const float4*>(a.recv + size_t(slot) * a.stride);
@@ -3548,20 +3553,35 @@ __global__ void __launch_bounds__(kThreads) ar_peer_kernel(float* x, int n4, Pee
         const uint64_t begin = uint64_t(wall_clock64());
         ready = 1;
         unsigned observed;
+        unsigned spins = 0;
+        // the watchdog's way out: it sets poison from the host, so a waiting kernel lets go and the process can
+        // end without leaving a spinning kernel that holds the device until a kernel-level reset (MES)
+        const auto poisoned = [&] {
+            if ((++spins & 1023u) != 0u || a.poison == nullptr) return false;
+            return (*reinterpret_cast<volatile unsigned*>(a.poison) & 1u) != 0u;
+        };
+        const auto give_up = [&](unsigned reason) {
+            if ((atomicOr(a.error, 1u) & 1u) == 0 && a.failure != nullptr) {
+                a.failure->sequence = seq;
+                a.failure->observed = observed;
+                a.failure->block = blockIdx.x;
+                a.failure->n4 = unsigned(n4);
+                a.failure->rank = unsigned(mi);
+                a.failure->elapsed_ticks = uint64_t(wall_clock64()) - begin;
+                a.failure->timeout_ticks = a.timeout_ticks;
+                a.failure->reason = reason;
+                a.failure->captured = 1;
+            }
+            ready = 0;
+        };
         while (int((observed = *reinterpret_cast<const volatile unsigned*>(a.flags + fi)) - seq) < 0) {
             const uint64_t elapsed = uint64_t(wall_clock64()) - begin;
             if (elapsed >= a.timeout_ticks) {
-                if ((atomicOr(a.error, 1u) & 1u) == 0 && a.failure != nullptr) {
-                    a.failure->sequence = seq;
-                    a.failure->observed = observed;
-                    a.failure->block = blockIdx.x;
-                    a.failure->n4 = unsigned(n4);
-                    a.failure->rank = unsigned(mi);
-                    a.failure->elapsed_ticks = elapsed;
-                    a.failure->timeout_ticks = a.timeout_ticks;
-                    a.failure->captured = 1;
-                }
-                ready = 0;
+                give_up(1);
+                break;
+            }
+            if (poisoned()) {
+                give_up(2);
                 break;
             }
         }

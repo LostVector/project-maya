@@ -765,6 +765,13 @@ void start_watchdog(const strata::ds4::Model& m) {
             const double now = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
             if (!rule.stalled(g_busy.load(), g_beats.load(), now)) continue;
             std::fprintf(stderr, "maya ds4 serve: where it stopped: %s\n", m.where().c_str());
+            // a peer all-reduce pair waiting on each other would hold its devices spinning after this exit, and the
+            // kernel would have to reset them to take the queues back; poison lets those kernels go first
+            const int poisoned = m.peer_ar_poison();
+            if (poisoned > 0) {
+                std::fprintf(stderr, "maya ds4 serve: released %d peer all-reduce rank(s) from waiting\n", poisoned);
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));   // (let the waiting kernels drain)
+            }
             // (the server reads the line with "issue #29" as the engine's own watchdog, not a lack of RAM)
             std::fprintf(stderr, "maya ds4 serve: no progress for %d s during a request - stopping the engine so the "
                                  "server starts it again (issue #29, #539; MAYA_DS4_WATCHDOG_S)\n", limit);

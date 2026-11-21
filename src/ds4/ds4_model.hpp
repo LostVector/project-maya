@@ -405,6 +405,11 @@ public:
     /// Where the main thread and each device's thread of a run of chunks are (any thread may ask; the serve watchdog's
     /// report of a request that stopped moving).
     std::string where() const;
+    /// The way out of a hung peer all-reduce (the serve watchdog calls it before ending the engine): sets every
+    /// peer-VRAM all-reduce pair's poison words so a waiting kernel - and every call queued behind it - ends at
+    /// once, and the process leaves without holding a device until a kernel-level reset. Returns the ranks poisoned;
+    /// 0 without the peer transport. The model is not reusable after it.
+    int peer_ar_poison() const;
     /// Where the routed experts live (the drafter's apart), for the Monitor's tiers: in VRAM; in RAM - copied there, or
     /// read ahead into the page cache (in place); the rest read from the SSD when routed.  cpu_blob: a CPU-lane expert's
     /// bytes on average (the SSD's reads a token -> experts a token)
