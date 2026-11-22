@@ -72,7 +72,7 @@ It first asks which model to set up:
 - **Hy4-Flash** (`--model hy4-flash-maya-xs`, or `--hy4-quant maya-xs`) - Project Maya's own GGUF quant of Tencent's
   Hy4-flash, [Hy4-Flash · Maya-XS](https://huggingface.co/peasantsmith/Hy4-Flash-Maya-GGUF) (the model file 44.8 GB
   and one n-gram table of 63.4 GB that every size shares: about 110 GB of disk; Maya-M, 68.4 GB, and Maya-L, 89.5 GB, for PCs with more
-  memory - the setup recommends one by the PC's RAM + VRAM), on its own engine (`build/maya-hy4`): NVIDIA GPUs (CUDA) from the V100 on, Linux and Windows, and AMD GPUs (`--backend hip`, `build-hip/maya-hy4`) on Linux - a Strix Halo / Gorgon Halo, whose one memory holds a whole size on the GPU, or Radeon cards; not with an AMD GPU on Windows yet (untested), and not on
+  memory - the setup recommends one by the PC's RAM + VRAM), on its own engine (`build/maya-hy4`): NVIDIA GPUs (CUDA) from the V100 on, Linux and Windows, and AMD GPUs (`--backend hip`, `build-hip/maya-hy4`) on Linux - a Strix Halo / Gorgon Halo, whose one memory holds a whole size on the GPU, or Radeon cards; with an AMD GPU on Windows experimental (offered, not tested by us: [AMD_MAYA.md](AMD_MAYA.md#hy4-flash-under-windows-experimental)), and not on
   Mac yet. The same steps with these differences: the setup picks the layout and the context that fit
   the card (4K, 8K, 16K, 32K, 64K or 128K; for a card under about 10 GB the "8 GB" layout of Maya-XS, a second model
   file of 43.6 GB; a card with less than about 7 GB cannot run it); it downloads the model file and the n-gram table
@@ -227,7 +227,22 @@ calling Maya's API unless Maya allows that page. List the pages in the config, `
 
 Exact addresses (scheme, host and port, no path); `["*"]` lets every page in - set an `api_key` with it, or any page
 you open could use your model. It opens `/v1/*` and nothing else: the settings and the tools stay for Maya's own page.
-Without it nothing changes. A new `--setup` writes the config again: add the line back after it.
+Without it nothing changes. A new `--setup` keeps it, as it keeps the server's other settings in the config (`host`,
+`port`, `api_key`, `mcp_servers`, `model_management`, `web_ui`, `idle_unload_s`, `loop_guard`, `fit_max_tokens`); a
+`--port`, `--host` or `--api-key` given to that setup wins.
+
+## The API only (no web page)
+
+Maya as a backend behind a proxy or another chat front end: in the config, `maya-<model>.json`,
+
+```json
+"web_ui": false,
+"api_key": "..."
+```
+
+(`MAYA_WEB_UI=0` in the environment does the same.) The page and its files (`/`, `/web/*`, `/fonts/*`) then answer
+404; `/v1/*`, `/v1/messages`, Maya's model API and `/health` answer as before, and no browser opens at the start. With an
+`api_key` every other route needs it too (the settings, the Monitor's `/metrics`, the Models page's `/api/*`).
 
 ## Giving the GPU back when idle
 
@@ -245,8 +260,7 @@ VRAM and 79 GB of RAM). The dashboard and `/health` say `unloaded`, and `/v1/mod
 status `unloaded`. The next request loads the model again - about a minute before its first token - and the experts
 in VRAM warm up again over the next answers. With `MAYA_GLM_SLOT_KEEP=1` the conversation in the model is written to
 the disk on the way out and read back, so the next turn of the same chat reads only its new tokens (1,630 of 1,690
-prompt tokens reused after an unload). `0` (the default): never. A new `--setup` writes the config again: add the
-lines back after it.
+prompt tokens reused after an unload). `0` (the default): never. A new `--setup` keeps both lines.
 
 ## If the build fails
 

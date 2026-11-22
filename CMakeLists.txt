@@ -212,6 +212,7 @@ target_compile_options(strata_warnings INTERFACE
   $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-Wall>
   $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-Wextra>
   $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<CXX_COMPILER_ID:MSVC>>:-Xcompiler=/W4>
+  $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<CXX_COMPILER_ID:MSVC>>:-Xcompiler=/utf-8>
   $<$<COMPILE_LANGUAGE:HIP>:-Wall>
   $<$<COMPILE_LANGUAGE:HIP>:-Wextra>)
 if(STRATA_WERROR)
@@ -249,6 +250,14 @@ if(STRATA_BUILD_TESTS)
   # maya-hy4's --kv auto and its pictures' room: what is tried, in which order (src/hy4/hy4_plan.hpp; no GPU)
   add_executable(hy4_plan_test tests/hy4_plan_test.cpp)
   add_test(NAME hy4_plan_test COMMAND hy4_plan_test)
+  # maya-hy4's HY4_EG_POPULATE: a mapping's pages walked on every platform (src/mm3/mm3_os.hpp; no GPU, #1069)
+  add_executable(hy4_populate_test tests/hy4_populate_test.cpp)
+  target_include_directories(hy4_populate_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  add_test(NAME hy4_populate_test COMMAND hy4_populate_test)
+  # maya-hy4's rings after rewinds: a resume is taken only where its window's rows are still held (src/hy4/hy4_ring.hpp;
+  # no GPU, #1091)
+  add_executable(hy4_ring_test tests/hy4_ring_test.cpp)
+  add_test(NAME hy4_ring_test COMMAND hy4_ring_test)
   add_executable(ds4_pcie_test tests/ds4_pcie_test.cpp)
   add_test(NAME ds4_pcie_test COMMAND ds4_pcie_test)
   add_executable(ds4_ram_slice_test tests/ds4_ram_slice_test.cpp)
@@ -286,6 +295,13 @@ if(STRATA_BUILD_TESTS)
   add_executable(ds4_place_test tests/ds4_place_test.cpp)
   target_link_libraries(ds4_place_test PRIVATE strata_warnings)
   add_test(NAME ds4_place_test COMMAND ds4_place_test ${CMAKE_CURRENT_SOURCE_DIR}/data/expert-profile-ds4.bin)
+  # maya-ds4's room for the CPU lane's copies on their NUMA node (src/ds4/ds4_os.hpp): what a node short of free
+  # memory releases of its file cache first, the node's meminfo read, the no-ops (host code only, no model, no GPU)
+  find_package(Threads REQUIRED)
+  add_executable(ds4_node_room_test tests/ds4_node_room_test.cpp)
+  target_include_directories(ds4_node_room_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(ds4_node_room_test PRIVATE strata_warnings Threads::Threads)
+  add_test(NAME ds4_node_room_test COMMAND ds4_node_room_test)
 endif()
 # maya-ds4's Engram reader: a batch read ahead (a prompt's next part's rows) waits behind the others, every read the
 # file's bytes (src/ds4/ds4_engram_io.hpp; a file in the temp folder, host code only)
@@ -873,6 +889,103 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
       message(STATUS "Maya: maya-mm3 not built - it needs sm_70 or newer, arch ${_strata_archs}")
     endif()
   endif()
+  # maya-ik2: Inkling 2 (thinkingmachines/Inkling-2-Small, docs/INKLING2.md) from unsloth's GGUFs in place.  CUDA on
+  # Linux only (its host tables are mmap'd and pinned in place), Volta on: Ampere's kernels (mma.sync m16n8k16,
+  # cp.async), Turing's (m16n8k8) and Volta's own (mma.m8n8k4) - CUDA 12.x for sm_70; Hopper's prefill attention takes
+  # wgmma, so a 90 in the list builds 90a.  "all" / "all-major": the compiler's list (CMake's) from sm_70 on.
+  # Its kernels - the ops the other engines do not have - and their test against a double reference (no model).
+  set(_ik2_archs "")
+  set(_ik2_filter OFF)
+  if(STRATA_ENABLE_CUDA AND _strata_archs)
+    set(_ik2_filter ON)
+    set(_ik2_in "${_strata_archs}")
+    if(_ik2_in STREQUAL "all" AND CMAKE_CUDA_ARCHITECTURES_ALL)
+      set(_ik2_in "${CMAKE_CUDA_ARCHITECTURES_ALL}")
+    elseif(_ik2_in STREQUAL "all-major" AND CMAKE_CUDA_ARCHITECTURES_ALL_MAJOR)
+      set(_ik2_in "${CMAKE_CUDA_ARCHITECTURES_ALL_MAJOR}")
+    endif()
+    foreach(_a IN LISTS _ik2_in)
+      string(REGEX REPLACE "-.*$" "" _base "${_a}")
+      if(NOT _base MATCHES "^[0-9]+a?$")
+        set(_ik2_filter OFF)   # (anything else: as CMake gives it)
+      elseif(_base STREQUAL "90")
+        list(APPEND _ik2_archs "90a")
+      elseif(NOT _base LESS 70)
+        list(APPEND _ik2_archs "${_a}")
+      endif()
+    endforeach()
+    list(REMOVE_DUPLICATES _ik2_archs)
+    if(_ik2_filter AND NOT _ik2_archs)
+      message(STATUS "Maya: maya-ik2 not built - it needs sm_70 or newer, arch ${_strata_archs}")
+    endif()
+  endif()
+  # (Windows: outside the Inkling 2 preview - @cobra91's MSVC / CUDA 13 port builds with STRATA_IK2_WINDOWS=ON, untested)
+  option(STRATA_IK2_WINDOWS "Build maya-ik2 on Windows (outside the Inkling 2 preview, untested)" OFF)
+  if(STRATA_ENABLE_CUDA AND WIN32 AND NOT STRATA_IK2_WINDOWS)
+    message(STATUS "Maya: maya-ik2 not built on Windows (STRATA_IK2_WINDOWS=ON builds it, untested)")
+  endif()
+  # (AMD: HIP on Linux, through include/strata/hip_compat as the other engines - every arch of the HIP list, wave64
+  #  CDNA through the compat layer's 32-lane halves; Windows AMD is outside it, see docs/INKLING2.md)
+  set(_ik2_hip OFF)
+  if(STRATA_ENABLE_HIP AND NOT WIN32)
+    set(_ik2_hip ON)
+  elseif(STRATA_ENABLE_HIP)
+    message(STATUS "Maya: maya-ik2 not built for AMD on Windows (Linux only)")
+  endif()
+  if((STRATA_ENABLE_CUDA AND (NOT WIN32 OR STRATA_IK2_WINDOWS) AND (_ik2_archs OR NOT _ik2_filter)) OR _ik2_hip)
+    # (ik2_off.cu: the offload token path's GPU fetch - a tier of the experts in VRAM, the rest copied in by the GPU)
+    add_library(ik2_kernels STATIC src/ik2/ik2_kernels.cu src/ik2/ik2_off.cu)
+    # (third_party/ggml: ggml's IQ3_XXS grid and IQ4_XS values, src/ik2/ik2_iq_tables.h)
+    target_include_directories(ik2_kernels PUBLIC ${_strata_gpu_include_directories} src/ik2 third_party/ggml)
+    target_link_libraries(ik2_kernels PUBLIC ${_strata_gpu_runtime_target})
+    # the engine: the experts in pinned host memory, a cache of them in VRAM; one GPU, or two (IK2_EP=1 / IK2_TP=1)
+    # (the offload path's CPU lane, ik2_lane.cpp: its rows in ik2_exact.h's arithmetic on maya-hy4's lane threads -
+    #  hy4_lane.cpp and what it needs from maya-ds4's CPU rows, built here as maya-hy4 builds them)
+    set(_ik2_lane_sources src/ik2/ik2_lane.cpp src/hy4/hy4_lane.cpp src/ds4/ds4_iq_cpu.cpp src/ds4/ds4_gguf_cpu.cpp)
+    if(MSVC)
+      set_source_files_properties(src/ik2/ik2_lane.cpp PROPERTIES COMPILE_OPTIONS "/fp:strict")
+    else()
+      set_source_files_properties(src/ik2/ik2_lane.cpp PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+    endif()
+    add_executable(maya-ik2 src/ik2/ik2_main.cu src/ik2/ik2_draft.cu src/ik2/ik2_cpu.cpp ${_ik2_lane_sources})
+    target_include_directories(maya-ik2 PRIVATE include src/hy4 third_party/ggml)
+    target_link_libraries(maya-ik2 PRIVATE ik2_kernels strata_kernels_cpu ${_strata_gpu_blas_target} Threads::Threads
+                          strata_spec)
+    target_compile_definitions(maya-ik2 PRIVATE MAYA_DS4_IQ_ONLY DS4_IQ_MIN_FORMS)
+    if(_ik2_hip)   # (AMD: the prompt's FP16 GEMMs on hipBLASLt, each shape's kernel measured and kept - ds4_lt.cu)
+      target_sources(maya-ik2 PRIVATE src/ds4/ds4_lt.cu)
+      target_include_directories(maya-ik2 PRIVATE src/ds4)
+      if(STRATA_HIPBLASLT_AVAILABLE)
+        set_source_files_properties(src/ds4/ds4_lt.cu PROPERTIES COMPILE_DEFINITIONS STRATA_HIPBLASLT_AVAILABLE=1)
+        target_link_libraries(maya-ik2 PRIVATE roc::hipblaslt)
+      endif()
+    endif()
+    set(_ik2_targets ik2_kernels maya-ik2)
+    if(STRATA_BUILD_TESTS)
+      add_executable(ik2_kernels_test tests/ik2_kernels_test.cu)
+      target_link_libraries(ik2_kernels_test PRIVATE ik2_kernels)
+      add_test(NAME ik2_kernels_test COMMAND ik2_kernels_test)
+      set_tests_properties(ik2_kernels_test PROPERTIES TIMEOUT 300)
+      list(APPEND _ik2_targets ik2_kernels_test)
+      if(NOT _ik2_hip)   # (AMD: no offload path there yet - its lane test is NVIDIA's)
+        # the offload path's exact lane: the GPU's rows against the CPU's forms (AVX-512, AVX2, the reference) bit for
+        # bit, on random NVFP4 and Q8_0 experts; the staging plan and the GPU fetch
+        add_executable(ik2_off_test tests/ik2_off_test.cu ${_ik2_lane_sources})
+        target_include_directories(ik2_off_test PRIVATE include src/hy4 third_party/ggml)
+        target_link_libraries(ik2_off_test PRIVATE ik2_kernels strata_kernels_cpu Threads::Threads)
+        target_compile_definitions(ik2_off_test PRIVATE MAYA_DS4_IQ_ONLY DS4_IQ_MIN_FORMS)
+        if(NOT MSVC)   # (its host side computes the reference: no contraction there either)
+          target_compile_options(ik2_off_test PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-ffp-contract=off>)
+        endif()
+        add_test(NAME ik2_off_test COMMAND ik2_off_test)
+        set_tests_properties(ik2_off_test PROPERTIES TIMEOUT 300 LABELS gpu)
+        list(APPEND _ik2_targets ik2_off_test)
+      endif()
+    endif()
+    if(_ik2_filter)
+      set_property(TARGET ${_ik2_targets} PROPERTY CUDA_ARCHITECTURES ${_ik2_archs})
+    endif()
+  endif()
   if((STRATA_ENABLE_CUDA AND (_mm3_archs OR NOT _mm3_filter)) OR STRATA_ENABLE_HIP)
     # (a GGUF's weights - tools/mm3/pack_gguf.py, MiniMax's Maya quants: maya-ds4's ggml block-type kernels, src/ds4/ds4_iq,
     #  on the device and its CPU rows on the CPU lane - mm3_gguf.cu, mm3_cpu_gg.cpp)
@@ -898,12 +1011,39 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
     # kernels (src/ds4/ds4_iq) and maya-mm3's OS helpers; NVIDIA, and AMD on Linux
     if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
       add_executable(maya-hy4 src/hy4/hy4_main.cpp src/hy4/hy4_model.cu src/hy4/hy4_vision.cu src/hy4/hy4_kernels.cu src/hy4/hy4_lane.cpp src/hy4/hy4_tp.cpp
-                              src/ds4/ds4_iq.cu src/ds4/ds4_iq_cpu.cpp src/ds4/ds4_gguf_cpu.cpp)
+                              src/ds4/ds4_iq.cu src/ds4/ds4_iq_cpu.cpp src/ds4/ds4_gguf_cpu.cpp src/ds4/ds4_lt.cu)
+      if(STRATA_ENABLE_HIP AND STRATA_HIPBLASLT_AVAILABLE)   # (the prompt path's FP16 GEMMs on AMD: ds4_lt.cu, measured)
+        set_source_files_properties(src/ds4/ds4_lt.cu PROPERTIES COMPILE_DEFINITIONS STRATA_HIPBLASLT_AVAILABLE=1)
+        target_link_libraries(maya-hy4 PRIVATE roc::hipblaslt)
+      endif()
       target_include_directories(maya-hy4 PRIVATE ${_strata_gpu_include_directories} include src/hy4 src/mm3
                                                   third_party/ggml)
       target_link_libraries(maya-hy4 PRIVATE strata_kernels_cpu ${_strata_gpu_runtime_target} ${_strata_gpu_blas_target}
                                              Threads::Threads)
-      target_compile_definitions(maya-hy4 PRIVATE MAYA_DS4_IQ_ONLY)
+      # (DS4_IQ_MIN_FORMS: on AMD the K-quants' minimum term rounded one way in the token and the window kernels -
+      #  ds4_iq.cu's kMinG ..; a verify window's rows are then the rows the tokens get one at a time)
+      target_compile_definitions(maya-hy4 PRIVATE MAYA_DS4_IQ_ONLY DS4_IQ_MIN_FORMS)
+      # the CPU lane kernels' build: a hash of their sources (maya-hy4 remembers per PC whether its 4-bit expert
+      # copies pay, by this too - changed kernels are measured again); a change to one of them configures again
+      file(GLOB _hy4_lane_src src/hy4/hy4_lane.cpp src/hy4/hy4_lane.hpp src/ds4/ds4_iq_cpu.* src/ds4/ds4_iq512_kern.inc
+           src/kernels/cpu/iq*.cpp src/kernels/cpu/iq*.inc include/strata/kernels/cpu/iq*.hpp)
+      list(SORT _hy4_lane_src)
+      set(_hy4_lane_sum "")
+      foreach(_f IN LISTS _hy4_lane_src)
+        file(MD5 "${_f}" _h)
+        string(APPEND _hy4_lane_sum "${_h}")
+      endforeach()
+      string(MD5 _hy4_lane_sum "${_hy4_lane_sum}")
+      string(SUBSTRING "${_hy4_lane_sum}" 0 12 _hy4_lane_sum)
+      set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_hy4_lane_src})
+      set_property(SOURCE src/hy4/hy4_lane.cpp APPEND PROPERTY COMPILE_DEFINITIONS HY4_LANE_KERNELS=k${_hy4_lane_sum})
+      # maya-hy4's CPU lane alone (no GPU, no model): a call's time / GB/s by expert format and a hash of its
+      # outputs, to compare the lane's row forms bit for bit across runs (built by name)
+      add_executable(hy4_lane_bench EXCLUDE_FROM_ALL tests/hy4_lane_bench.cpp src/hy4/hy4_lane.cpp src/ds4/ds4_iq_cpu.cpp
+                                    src/ds4/ds4_gguf_cpu.cpp)
+      target_include_directories(hy4_lane_bench PRIVATE include src/hy4 third_party/ggml)
+      target_link_libraries(hy4_lane_bench PRIVATE strata_kernels_cpu Threads::Threads)
+      target_compile_definitions(hy4_lane_bench PRIVATE MAYA_DS4_IQ_ONLY DS4_IQ_MIN_FORMS)
       if(STRATA_BUILD_TESTS)
         # maya-hy4's routed experts (no model): the token, window and prompt forms on ds4_iq's kernels against
         # per-matrix GEMVs, in Hy4-flash's types (Q4_K / Q6_K, and the MTP block's Q8_0)
@@ -912,7 +1052,7 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
         target_include_directories(hy4_experts_test PRIVATE ${_strata_gpu_include_directories} include src/hy4
                                                            third_party/ggml)
         target_link_libraries(hy4_experts_test PRIVATE strata_kernels_cpu ${_strata_gpu_runtime_target})
-        target_compile_definitions(hy4_experts_test PRIVATE MAYA_DS4_IQ_ONLY)
+        target_compile_definitions(hy4_experts_test PRIVATE MAYA_DS4_IQ_ONLY DS4_IQ_MIN_FORMS)
         add_test(NAME hy4_experts_test COMMAND hy4_experts_test)
         # maya-hy4's own kernels (no model): hyper-connections, the latent cache and MLA attention with sinks, the
         # router, the indexer's pools / scores / picks, Engram - against double-precision host references
@@ -1445,6 +1585,20 @@ elseif(STRATA_CPU_X86)
   # MAYA_CPU_VNNI_EMULATE=ON chooses that on any toolchain (tests)
   option(MAYA_CPU_VNNI_EMULATE "CPU expert kernel: AVX512-BW in place of VNNI's dot products" OFF)
   include(CheckCXXSourceCompiles)
+  # ... and the GGUF experts' CPU rows (src/ds4/ds4_gguf_cpu.cpp) have an AVX-VNNI tier (VEX-encoded vpdpbusd), which
+  # the same assemblers refuse: without it that tier is left out (MAYA_NO_AVXVNNI) and the AVX2 one runs in its place;
+  # the same for the IQ2 / IQ3 rows' AVX-VNNI form (src/kernels/cpu/iq2v_rows.cpp, iq3v_rows.cpp: VEX vpdpwssd)
+  set(CMAKE_REQUIRED_FLAGS "-mavx2 -mavxvnni")
+  check_cxx_source_compiles([=[
+#include <immintrin.h>
+__m256i f(__m256i a, __m256i b, __m256i c) { return _mm256_dpbusd_avx_epi32(a, b, c); }
+int main() { return 0; }
+]=] MAYA_TOOLCHAIN_AVXVNNI)
+  unset(CMAKE_REQUIRED_FLAGS)
+  if(NOT MAYA_TOOLCHAIN_AVXVNNI)
+    message(STATUS "Maya: the assembler has no AVX-VNNI - the GGUF experts' CPU rows are built without that tier")
+    add_compile_definitions(MAYA_NO_AVXVNNI)
+  endif()
   set(CMAKE_REQUIRED_FLAGS "-mavx512f -mavx512bw -mavx512vl -mavx512dq -mavx512vnni -mavx512vbmi -mf16c -mfma")
   check_cxx_source_compiles([=[
 #include <immintrin.h>
@@ -1527,7 +1681,8 @@ if(STRATA_NATIVE_EXPERTS)
   if(STRATA_CPU_X86)
     target_sources(strata_kernels_cpu PRIVATE src/kernels/cpu/native_expert.cpp src/kernels/cpu/iq_avx512.cpp
                                              src/kernels/cpu/iq_avx2.cpp src/kernels/cpu/kq_avx512.cpp
-                                             src/kernels/cpu/iq_avx512_one.cpp)
+                                             src/kernels/cpu/iq_avx512_one.cpp src/kernels/cpu/iq2v_rows.cpp
+                                             src/kernels/cpu/iq3v_rows.cpp)
   else()
     target_sources(strata_kernels_cpu PRIVATE src/kernels/cpu/native_expert.cpp)
   endif()
@@ -1538,7 +1693,16 @@ if(STRATA_NATIVE_EXPERTS)
     # Match the non-MSVC no-contraction mode: IQ1_M's subnormal-scale parity checks need it too.
     set_source_files_properties(src/kernels/cpu/iq_avx2.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX2;/fp:strict")
     set_source_files_properties(src/kernels/cpu/iq_avx512_one.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX512")
+    # (the second-generation IQ2 rows: VEX encodings throughout - without /arch the compiler's own SSE code beside
+    #  them cost a third of their speed on Golden Cove; their AVX-512 form's intrinsics compile as they are, and the
+    #  caller runs each form only where the CPU takes it)
+    set_source_files_properties(src/kernels/cpu/iq2v_rows.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX2;/fp:strict")
+    # (the second-generation IQ3_XXS / IQ4_XS / 4-bit IQ2_XXS rows: the same, for the same reason)
+    set_source_files_properties(src/kernels/cpu/iq3v_rows.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX2;/fp:strict")
   elseif(STRATA_CPU_X86)
+    # (the second-generation IQ2 rows: each function's instruction set its own, no contraction)
+    set_source_files_properties(src/kernels/cpu/iq2v_rows.cpp PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+    set_source_files_properties(src/kernels/cpu/iq3v_rows.cpp PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
     # (no VNNI / VBMI needed - cpu_avx512bw_ok() is enough to run them; no FP contraction: their sums must take
     # ggml-cpu's float steps exactly, see iq_avx512.cpp)
     set_source_files_properties(src/kernels/cpu/iq_avx512.cpp PROPERTIES COMPILE_OPTIONS
@@ -1672,6 +1836,7 @@ if(STRATA_NATIVE_EXPERTS)
     target_compile_options(strata_mmq PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--extended-lambda -use_fast_math>)
     if(MSVC)
       target_compile_options(strata_mmq PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/bigobj>)
+      target_compile_options(strata_mmq PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/utf-8>)
     endif()
     target_link_libraries(strata_mmq PUBLIC ggml-base ${_strata_gpu_runtime_target})
     target_link_libraries(strata_prefill PUBLIC strata_mmq)
@@ -1826,6 +1991,11 @@ if(STRATA_BUILD_TESTS)
     target_link_libraries(direct_file_async_test PRIVATE Threads::Threads)
     add_test(NAME direct_file_async_test COMMAND direct_file_async_test)
   endif()
+  # Failed expert-cache reads or member transfers must not publish a partially filled spare (host-only injection).
+  add_executable(ds4_cache_swap_test tests/ds4_cache_swap_test.cpp)
+  target_include_directories(ds4_cache_swap_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/ds4)
+  target_link_libraries(ds4_cache_swap_test PRIVATE strata_warnings)
+  add_test(NAME ds4_cache_swap_test COMMAND ds4_cache_swap_test)
   # maya-ds4's RAM expert store (--ssd-cache, src/ds4/ds4_store.hpp) over files of fake experts written in the build
   # directory (~1 MB, removed): reads, where they land, eviction, the read queue, giving RAM back, preload, the miss
   # split's order, put - host code only, no GPU

@@ -78,8 +78,32 @@ static void check_ram_plan() {
     assert(balanced_resident_ram(true, true, false));
 }
 
+// #860: a route's miss on an expert demoted at the last boundary finds its demotion by RAM slot and key, and reads the
+// bytes from the VRAM slot the copy reads while that slot is still draining - never by waiting for the copy
+static void check_drain_source() {
+    using namespace strata::core::glmfast;
+    struct Drain {   // (glm_fast_state.hpp's FastState::Drain fields the lookup reads)
+        int il, vslot, key, rclass, rslot;
+    };
+    const char kResident = 1, kSpare = 2, kDraining = 3, kLent = 4;   // (FastState's VRAM slot states)
+    const int NE = 256;
+    const std::vector<Drain> drains{{12, 40, 12 * NE + 7, 0, 5}, {13, 41, 13 * NE + 7, 0, 6}, {20, 3, 20 * NE + 9, 1, 5}};
+    assert(drain_of(drains, 0, 5, 12 * NE + 7) == 0);
+    assert(drain_of(drains, 0, 6, 13 * NE + 7) == 1);
+    assert(drain_of(drains, 1, 5, 20 * NE + 9) == 2);   // (the same RAM slot index in another class)
+    assert(drain_of(drains, 0, 5, 20 * NE + 9) == -1);  // another expert's key in that slot: not this drain
+    assert(drain_of(drains, 1, 6, 13 * NE + 7) == -1);  // the right key in another class's slot
+    assert(drain_of(std::vector<Drain>{}, 0, 5, 12 * NE + 7) == -1);
+    // the draining VRAM slot of the route's own layer holds the bytes; any other state of it, or another layer's
+    // slot, does not (the old wait for the copy, then the RAM slot)
+    assert(drain_reads_vram(12, 12, kDraining, kDraining));
+    assert(!drain_reads_vram(12, 13, kDraining, kDraining));
+    for (const char st : {kResident, kSpare, kLent, (char) 0}) assert(!drain_reads_vram(12, 12, st, kDraining));
+}
+
 int main() {
     check_ram_plan();
+    check_drain_source();
     using strata::core::glmfast::expert_pool_budget;
     using strata::core::glmfast::minimal_ram_tier;
     using strata::core::glmfast::full_unified_pool;
@@ -257,6 +281,42 @@ int main() {
         assert(apu_shared_margin(16220 * M) == 2 * GB && apu_shared_margin(16220 * M) > 1751 * M);
         assert(apu_shared_margin(4 * GB) == GB && apu_shared_margin(0) == GB && apu_shared_margin(-1) == GB);
         assert(apu_shared_margin(25 * GB) == 3 * GB + 256 * M && apu_shared_margin(64 * GB) == 4 * GB);
+    }
+    {
+        // #924 / #1035: the cap measured before the expert pool - Windows + a discrete Radeon, one GPU only; never
+        // on NVIDIA, Linux, an APU or a split; the setting wins on one GPU (an empty one counts as unset), never in a
+        // split
+        using strata::core::glmfast::pin_cap_before_pool;
+        assert(pin_cap_before_pool(true, false, 1, nullptr) && pin_cap_before_pool(true, false, 1, ""));
+        assert(!pin_cap_before_pool(false, false, 1, nullptr) && !pin_cap_before_pool(true, true, 1, nullptr));
+        assert(!pin_cap_before_pool(true, false, 2, nullptr) && !pin_cap_before_pool(false, true, 3, nullptr));
+        assert(!pin_cap_before_pool(true, false, 1, "0") && pin_cap_before_pool(false, false, 1, "1"));
+        assert(pin_cap_before_pool(false, true, 1, "1") && !pin_cap_before_pool(false, true, 2, "1"));
+        using strata::core::glmfast::pin_left_since;
+        const int64_t M = int64_t{1} << 20, GB = int64_t{1} << 30;
+        assert(pin_left_since(29 * GB, 300 * M) == 29 * GB - 300 * M && pin_left_since(GB, 2 * GB) == 0);
+        assert(pin_left_since(GB, -5) == GB && pin_left_since(0, 0) == 0);
+        // the classes sized one after another under a measured cap never pass it less the room kept above them,
+        // and with room to spare each keeps its planned slots (the caller's min with the plan)
+        using strata::core::glmfast::pin_cap_share;
+        using strata::core::glmfast::pin_cap_room;
+        const int64_t stride[] = {6 * M + 3 * 4096, 9 * M + 512, 2 * M + 7};
+        const int64_t plan[] = {3000, 1500, 900};   // ~35 GB planned: more than the cap below
+        for (const int64_t left0 : {29 * GB + 768 * M, 12 * GB, 40 * GB, 600 * M}) {
+            const int64_t keep = pin_cap_room(true, left0, -1);
+            int64_t left = left0, pinned = 0;
+            for (int c = 0; c < 3; ++c) {
+                int64_t planned = 0;
+                for (int k = c; k < 3; ++k) planned += plan[k] * stride[k];
+                const int64_t n = std::min(plan[c], pin_cap_share(left, keep, planned, plan[c]));
+                assert(n >= 0);
+                left -= n * stride[c];
+                pinned += n * stride[c];
+            }
+            assert(pinned + keep <= left0 || (left0 <= keep && pinned == 0));
+            if (left0 == 40 * GB) assert(pinned == plan[0] * stride[0] + plan[1] * stride[1] + plan[2] * stride[2]);
+            if (left0 == 29 * GB + 768 * M) assert(pinned > left0 - keep - 3 * 9 * M);   // (no more than a slot a class lost)
+        }
     }
     std::puts("GLM memory policy checks passed (CPU only)");
 }

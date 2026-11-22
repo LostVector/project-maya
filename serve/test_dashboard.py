@@ -144,7 +144,9 @@ class Dashboard(unittest.TestCase):
             ({"engine_kind": "qwen", "mtp": 0, "lookup": 0}, {}, []),
             ({"engine_kind": "mm3", "dspark": 1}, {}, ["DSpark"]),
             ({"engine_kind": "mm3", "dspark": 0}, {}, []),
-            ({"engine_kind": "hy4", "dspark": 0, "mtp": 0}, {}, []),                   # (maya-hy4: no drafting yet)
+            ({"engine_kind": "hy4", "dspark": 0, "mtp": 0}, {}, []),                   # (maya-hy4: drafting off)
+            ({"engine_kind": "hy4", "dspark": 0, "mtp": 0, "dfly2": 1}, {}, ["DFly2"]),
+            ({"engine_kind": "hy4", "dspark": 0, "mtp": 0, "dfly2": 0}, {}, []),
             ({"engine_kind": "ds4"}, {"dspark": True, "lookup": True}, ["DSpark", "Lookup"]),
             ({"engine_kind": "ds4"}, {"dspark": False, "lookup": True}, ["Lookup"]),
             ({"engine_kind": "ds4"}, {"dspark": False, "lookup": False}, []),
@@ -911,6 +913,13 @@ const eng = {engine_kind: "hy4", experts: "6144", vram_slots: "1900"}, n = {vram
 out.set = m.tierSet(eng).map((x) => [x.key, x.label]); out.shares = sv.tierShares(n, eng);
 out.tip = m.tierTip(n, eng, {disk: 0}); out.calm = m.tierTip({...n, vram_hit: 0.9}, eng, {disk: 0});
 out.sets = ["ds4", "mm3", "qwen", "glm-fast"].map((k) => m.tierSet({engine_kind: k}).map((x) => x.key).join());
+// its INFO line as the server parses it (numbers): tensor parallel (every expert's slices on the members: all in VRAM),
+// a layer split with all of them in VRAM, one GPU with the CPU lane (Jupiter's V100, Maya-XS)
+const info = (line) => Object.fromEntries(line.split(" ").slice(1).map((kv) => kv.split("=")).map(([k, v]) => [k, /^-?\\d+$/.test(v) ? +v : v]));
+const lay = {tp: "INFO engine=hy4 engine_kind=hy4 model=Hy4-flash ctx=32768 vram_gb=49.40 dspark=0 mtp=1 experts=20992 vram_slots=20992",
+             one: "INFO engine=hy4 engine_kind=hy4 model=Hy4-flash ctx=32768 vram_gb=31.40 dspark=0 mtp=1 experts=20992 vram_slots=8118"};
+out.lay = Object.fromEntries(Object.entries(lay).map(([k, l]) => [k, sv.tierShares({vram_hit: 1, cpu: 0}, info(l))]));
+out.layTip = m.tierTip({vram_hit: 1, cpu: 0, engram_ms: 0.07}, info(lay.tp), {disk: 0});
 console.log(JSON.stringify(out));""")
         self.assertEqual(got["family"], "hy4")
         self.assertEqual(got["others"], ["glm", "glm", "deepseek", "minimax", "qwen", "qwen", "glm"])   # (as before)
@@ -928,8 +937,45 @@ console.log(JSON.stringify(out));""")
                                          "diskGb": None})
         self.assertTrue(got["tip"].startswith("Most experts run on the CPU"))
         self.assertEqual(got["calm"], "")
+        # (maya-hy4 before the fix said vram_slots=0 in tensor parallel: the bar all RAM beside a 100% VRAM hit)
+        self.assertEqual({k: (v["vu"], v["ru"], v["total"], v["disk"]) for k, v in got["lay"].items()},
+                         {"tp": (20992, 0, 20992, 0), "one": (8118, 12874, 20992, 0)})
+        self.assertEqual(got["layTip"], "")
         self.assertEqual(got["sets"], ["ram_fetch,disk,promo,engram_ms", "ram_fetch,disk,promo", "ram_fetch,disk",
                                        "ram_fetch,disk,promo"])                   # (the other engines': unchanged)
+
+    def test_ik2_its_levels_its_own_settings_its_name_and_its_monitor(self):
+        # Inkling 2 Mini ("inkling-2-mini", maya-ik2, an experimental preview): its template's effort levels by name -
+        # Off, Low, Medium, High (its default: 0.9), Max - chat settings of its own; a level of another model's goes to
+        # the nearest it has; its name from its id; no maker's mark in lobe-icons (the page's chip); the Monitor: no
+        # tiers card (maya-ik2 writes no STAT lines) and the other engines' sets as they were
+        got = self.node("""
+const m = await import(web + "/monitor.js"), lib = await import(web + "/lib.js"), tc = await import(web + "/turbo-core.js");
+const out = {family: st.familyOf("inkling-2-mini"), small: st.familyOf("inkling-2-small"),
+  others: ["glm-5.3-flash", "deepseek-v4.1-flash", "minimax-m3.1-flash", "cyber-frost-3.8-ps", "hy4-flash", ""].map((x) => st.familyOf(x))};
+st.setFamily("inkling-2-mini");
+st.S.health = {model: "inkling-2-mini"};
+out.levels = st.LEVELS.map((l) => [l.id, l.name]); out.dflt = st.DEFAULTS.thinking; out.titles = st.thinkTitles(); out.key = st.prefsKey();
+out.nearest = ["none", "auto", "low", "medium", "high", "xhigh", "max"].map((l) => st.levelFor(l));
+out.fastest = tc.fastestThinking(st.THINKING);
+out.name = lib.modelName("inkling-2-mini"); out.short = lib.modelName("inkling-2-mini", true);
+out.logo = lib.modelLogo("inkling-2-mini");
+const eng = {engine_kind: "ik2", model: "Inkling-2", kv: "fp8", ctx: 262144, gpus: 1};
+out.set = m.tierSet(eng).map((x) => x.key).join(); out.tip = m.tierTip({}, eng, {disk: 0});
+out.sets = ["ds4", "mm3", "qwen", "hy4", "glm-fast"].map((k) => m.tierSet({engine_kind: k}).map((x) => x.key).join());
+console.log(JSON.stringify(out));""")
+        self.assertEqual((got["family"], got["small"]), ("ik2", "ik2"))
+        self.assertEqual(got["others"], ["glm", "deepseek", "minimax", "qwen", "hy4", "glm"])   # (as before)
+        self.assertEqual(got["levels"], [["none", "Off"], ["low", "Low"], ["medium", "Medium"], ["high", "High"],
+                                         ["max", "Max"]])
+        self.assertEqual((got["dflt"], got["key"], got["fastest"]), ("high", "sampling_ik2", "none"))
+        self.assertEqual(sorted(got["titles"]), ["high", "low", "max", "medium", "none"])
+        self.assertIn("its default", got["titles"]["high"])
+        self.assertEqual(got["nearest"], ["none", None, "low", "medium", "high", "max", "max"])   # (None: its default)
+        self.assertEqual((got["name"], got["short"], got["logo"]), ("Inkling 2 Mini", "Inkling 2 Mini", None))
+        self.assertEqual(got["tip"], "")
+        self.assertEqual(got["sets"], ["ram_fetch,disk,promo,engram_ms", "ram_fetch,disk,promo", "ram_fetch,disk",
+                                       "cpu,engram_ms", "ram_fetch,disk,promo"])
 
     def test_about_has_the_support_line_always_and_the_update_card_none(self):
         # owner 2026-11-05: one line on About (always, also while an update shows), its link on "supporting me" in bold

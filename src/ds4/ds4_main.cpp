@@ -288,7 +288,8 @@ float dspark_cum_default() {
 // millisecond from them - from this PC's round times by window size and the lookup drafts' acceptance, both measured
 // as it decodes - so a lookup window may run past DSpark's block, up to verify_max().  Only which drafts are verified
 // changes: verify() keeps a draft the drafter did not draw with probability p(d) (q a point at it), so every token is
-// still the model's own draw.  Not beside DS4_DSPARK_SAMPLE=1's drawn drafts (the choice would then hang on a draw).
+// still the model's own draw.  With DS4_DSPARK_SAMPLE=1 (drawn drafts) a round with a lookup proposal takes the
+// drafter's argmax as without it, so the choice hangs on no draw; the rounds without one draw their drafts.
 // A round with no drafter window (--dspark none or off, or DSpark resting after drafts below its confidence) weighs
 // the lookup's drafts against a plain step the same way.  --suffix-draft N: the shortest match it proposes from (3; 0:
 // off).  A proposal the policy trusts (DraftPolicy::trust: a long match whose windows measured hold) is verified alone,
@@ -583,6 +584,11 @@ struct Req {
     // ablate=0|1 (the server's per-request switch, INFO ablate=1): this request's passes project the --ablate direction
     // out or not; -1: as the engine started (--ablate-default).  Without a direction: ignored
     int ablate = -1;
+    // cold=1: the prompt is read from its first token - nothing kept is taken back (the state in the model, its
+    // checkpoints, the conversation slots, a kept shared start); the experts' placement and heat stay as they are.
+    // For measuring a prompt read again (a repeated prompt is otherwise taken back, not read).  One conversation
+    // only; without it, as before
+    bool cold = false;
 };
 
 // A prompt's picture: where its span starts, its pixels (the server's resize: RGB rows, both sides multiples of the
@@ -709,6 +715,7 @@ bool parse_gen(const std::string& line, Req& r, bool geni) {
         else if (k == "think_dig") { for (int x : parse_ids(v)) r.soft_dig.insert(x); }
         else if (k == "rid") r.rid = std::atoll(v.c_str());
         else if (k == "ablate") r.ablate = std::atoi(v.c_str()) != 0;
+        else if (k == "cold") r.cold = std::atoi(v.c_str()) != 0;
         else if (k == "marks") {
             for (int x : parse_ids(v))
                 if (x > 0) r.marks.push_back(x);
@@ -787,6 +794,8 @@ int serve(strata::ds4::Model& m, const std::string& eos_list, bool spec, float c
     for (const std::string& l : m.info_lines()) std::printf("%s\n", l.c_str());
     std::printf("INFO logprobs=%d\n", strata::ds4::kTopLogprobs);   // (GEN logprobs=<k>: LP lines, k at most this)
     std::printf("INFO logit_bias=1\n");   // (GEN logit_bias=<id>:<bias>,...: added to the logits of every pick)
+    // (#1026: this start came out short of --reserve-mib - the server starts the engine once more, which keeps it)
+    if (m.reserve_short_mib() > 0) std::printf("INFO reserve_short=%d\n", m.reserve_short_mib());
     if (m.ablate_loaded())   // (--ablate: GEN ablate=0|1 turns its projection off / on for the request)
         std::printf("INFO ablate=1 ablate_default=%d\n", m.ablating() ? 1 : 0);
     const bool abl_default = m.ablating();   // (a GEN without ablate=: as the engine started)
@@ -1556,7 +1565,7 @@ int serve(strata::ds4::Model& m, const std::string& eos_list, bool spec, float c
         // slot_put / prefix_keep, so none is taken back either)
         const bool abl = m.ablate_loaded() && (r.ablate >= 0 ? r.ablate != 0 : abl_default);
         const bool abl_flip = m.ablate_loaded() && abl != m.ablating();
-        if (abl_flip) c = 0;
+        if (abl_flip || r.cold) c = 0;   // (cold=1: nothing shared with the state)
         size_t from = 0;
         bool continued = false;
         // a kept shared start is no conversation: prefix_take leaves it in the model when a prompt that begins with it
@@ -1582,9 +1591,10 @@ int serve(strata::ds4::Model& m, const std::string& eos_list, bool spec, float c
             bool whole = false;
             // (a kept shared start, when it covers more than the state itself can go back to; a kept conversation
             //  only when it covers more than either)
-            const int pi = abl ? -1 : prefix_find(r.ids, pics, rs > 0 ? (size_t) rs : 0);
+            const int pi = abl || r.cold ? -1 : prefix_find(r.ids, pics, rs > 0 ? (size_t) rs : 0);
             const size_t plen = pi >= 0 ? prefixes[(size_t) pi].tokens.size() : 0;
-            const size_t back = abl ? 0 : slot_take(r.ids, pics, std::max(rs > 0 ? (size_t) rs : 0, plen), whole);
+            const size_t back =
+                abl || r.cold ? 0 : slot_take(r.ids, pics, std::max(rs > 0 ? (size_t) rs : 0, plen), whole);
             beat();
             if (back > 0) {
                 from = back;
@@ -1592,7 +1602,7 @@ int serve(strata::ds4::Model& m, const std::string& eos_list, bool spec, float c
             } else if (pi >= 0 && prefix_take(pi)) {
                 from = plen;
                 held.clear();
-            } else if (rs >= 0 && m.restore(limit))
+            } else if (!r.cold && rs >= 0 && m.restore(limit))
                 from = (size_t) m.pos();
             else m.reset();
         }
@@ -2733,11 +2743,18 @@ int serve(strata::ds4::Model& m, const std::string& eos_list, bool spec, float c
                 settle();
             }, kTurn);
         };
-        // after every event: a STOP of a prompt waiting for its turn (ended now, the conversation before it kept), the
-        // requests ended (their conversations to the requests waiting), then the next turn - or, none running, idle
-        settle = [&] {
+        // the requests the server stopped, ended: a prompt waiting for its turn there (the conversation before it kept)
+        // and - `answers` - an answer before its next token (as round_turn ends it); then every ended request's
+        // conversation given back.  True: one was
+        const auto reap = [&](bool answers) -> bool {
             for (auto& ap : acts)
-                if (ap->reading && !ap->done && in.stopped(ap->r.rid)) read_turn(*ap, 0, false);
+                if (!ap->done && in.stopped(ap->r.rid)) {
+                    if (ap->reading) read_turn(*ap, 0, false);
+                    else if (answers) {
+                        ap->finish = "cancel";
+                        ap->done = true;
+                    }
+                }
             bool freed = false;
             for (size_t i = 0; i < acts.size();) {
                 if (!acts[i]->done) {
@@ -2752,7 +2769,12 @@ int serve(strata::ds4::Model& m, const std::string& eos_list, bool spec, float c
                 freed = true;
             }
             if (freed) end_if_broken();   // (the other conversations' state is the same GPUs': lost with it)
-            if (freed) admit_waiting();
+            return freed;
+        };
+        // after every event: the stopped prompts and the ended requests (their conversations to the requests waiting),
+        // then the next turn - or, none running, idle
+        settle = [&] {
+            if (reap(false)) admit_waiting();
             if (!acts.empty()) {
                 queue_turn();
                 return;
@@ -2776,6 +2798,10 @@ int serve(strata::ds4::Model& m, const std::string& eos_list, bool spec, float c
                 quit = true;
                 in.stop_all.store(true);
             } else if (ln.rfind("GEN ", 0) == 0 || ln.rfind("GENI ", 0) == 0) {
+                // the requests whose STOP came before this line end first: a conversation they held is then idle for
+                // it - often the same conversation sent again after the client gave up on the last one.  Placed
+                // before them, it took another conversation and read its prompt from the shared start (#1057)
+                reap(true);
                 waiting.push_back(ln);
                 admit_waiting();
             } else {
@@ -3751,7 +3777,7 @@ int main(int argc, char** argv) {
         else if (a == "--gpus") {
             for (int g : parse_ids(val("--gpus"))) o.gpus.push_back(g);
         } else if (a == "--max-context") o.max_context = std::atoll(val("--max-context").c_str());
-        else if (a == "--reserve-mib") o.reserve_mib = std::atoll(val("--reserve-mib").c_str());
+        else if (a == "--reserve-mib") o.reserve_mib = std::atoll(val("--reserve-mib").c_str()), o.reserve_given = true;
         else if (a == "--vram-experts") o.vram_experts = std::atof(val("--vram-experts").c_str());
         else if (a == "--cpu-threads") o.cpu_threads = std::atoi(val("--cpu-threads").c_str());
         else if (a == "--expert-profile") o.profile = val("--expert-profile");
