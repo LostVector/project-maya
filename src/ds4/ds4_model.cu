@@ -18224,15 +18224,20 @@ struct Model::Impl {
                 if (sync_status != cudaSuccess || copy_status != hipSuccess || error) {
                     std::fprintf(stderr, "PEER_AR_FAILURE gpu=%d rank=%d stream_status=%d copy_status=%d error=%u sequence=%u\n",
                                  d.id, m, int(sync_status), int(copy_status), error, chunks[(size_t) G.mem[m]]->arb_seq);
-                    if (error & 1u) {
-                        const PeerArFailure detail = *G.peer_failure[m];   // (host-mapped: no copy, no device call)
-                        std::fprintf(stderr, "PEER_AR_TIMEOUT_DETAIL gpu=%d rank=%d captured=%u "
-                                     "failed_sequence=%u observed=%u block=%u n4=%u elapsed_ticks=%llu timeout_ticks=%llu "
-                                     "reason=%u last_submitted_sequence=%u\n", d.id, m, detail.captured,
-                                     detail.sequence, detail.observed, detail.block, detail.n4,
-                                     (unsigned long long) detail.elapsed_ticks, (unsigned long long) detail.timeout_ticks,
-                                     detail.reason, G.peer_ar_sent[m]);
-                    }
+                    // the rank's whole state, read without touching the devices: where its kernel got (progress), whether
+                    // the watchdog poisoned it, and its first-failure record - a 719 launch failure carries no detail
+                    // of its own, so this line is the only witness of where the pair stood when the queue died
+                    const PeerArFailure detail = G.peer_failure[m] ? *G.peer_failure[m] : PeerArFailure{};
+                    const unsigned prog =
+                        G.peer_progress[m] ? *reinterpret_cast<const volatile unsigned*>(G.peer_progress[m]) : 0u;
+                    const unsigned pois =
+                        G.peer_poison[m] ? *reinterpret_cast<const volatile unsigned*>(G.peer_poison[m]) : 0u;
+                    std::fprintf(stderr, "PEER_AR_DETAIL gpu=%d rank=%d sent=%u device_at=%u poison=%u captured=%u "
+                                 "failed_sequence=%u observed=%u block=%u n4=%u elapsed_ticks=%llu timeout_ticks=%llu "
+                                 "reason=%u\n", d.id, m, G.peer_ar_sent[m], prog, pois, detail.captured,
+                                 detail.sequence, detail.observed, detail.block, detail.n4,
+                                 (unsigned long long) detail.elapsed_ticks, (unsigned long long) detail.timeout_ticks,
+                                 detail.reason);
                     peer_ar_failed = true;
                 }
             }
