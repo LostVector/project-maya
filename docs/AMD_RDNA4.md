@@ -15,6 +15,9 @@ Use the KFD GPU number printed by setup; the example machine has a 7900 XT
 at GPU 0 and an R9700 at GPU 1. Setup chooses the supported card with the most
 VRAM when `--gpu` is omitted. See [AMD_MAYA.md](AMD_MAYA.md) for model setup.
 
+For the fork's three-card DeepSeek workstation, see
+[Local three-R9700 DeepSeek settings](LOCAL-R9700-SETTINGS.md).
+
 ## One binary, three code targets
 
 Setup compiles the architectures of the chosen cards (a 7900 XT + R9700: `gfx1100;gfx1201`); a manual build can
