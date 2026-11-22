@@ -524,6 +524,7 @@ constexpr int kPeerArBlocks = 64, kPeerArFlagStride = 32;
 struct PeerArFailure {
     unsigned captured = 0, sequence = 0, observed = 0, block = 0, n4 = 0, rank = 0;
     uint64_t elapsed_ticks = 0, timeout_ticks = 0;
+    unsigned reason = 0;   // 1: the partner's flag did not arrive within the timeout; 2: the watchdog poisoned the call
 };
 /// Experimental exact two-rank push/reduce. All payload/flag buffers are fine-grained device memory,
 /// and both devices must have peer access enabled. Each rank owns two `stride`-float receive slots
@@ -533,13 +534,20 @@ struct PeerArFailure {
 /// Two slots are safe because completing a call requires the peer to have started that call: a rank
 /// cannot start call k+2 before the peer has finished reading call k. This is not graph-replay safe
 /// with a frozen host sequence. The bounded wait sets sticky *error on timeout; caller MUST check it.
+/// `poison` and `progress` are host-mapped words (one per rank): the kernel writes the sequence it
+/// starts into `progress` so the host sees how far it got without touching a stuck stream, and the
+/// serve watchdog sets `poison` to make a waiting kernel - and every call queued behind it - let go,
+/// so a hung pair ends with the process instead of holding the device until a kernel-level reset.
 struct PeerAr {
     float* recv = nullptr;
     float* peer_recv = nullptr;
     unsigned* flags = nullptr;
     unsigned* peer_flags = nullptr;
     unsigned* error = nullptr;
-    PeerArFailure* failure = nullptr; // optional first-timeout record; read only after stream synchronization
+    PeerArFailure* failure = nullptr; // optional first-timeout record; host-mapped: readable with a stuck stream
+    PeerArFailure* failure_host = nullptr; // the same record as the host sees it (memset/memcpy, never hipMemset)
+    unsigned* poison = nullptr;       // host-mapped: set by the watchdog to release a waiting kernel
+    unsigned* progress = nullptr;     // host-mapped: the sequence of the call this rank's kernel started
     size_t stride = 0;
     uint64_t timeout_ticks = 0; // HIP wall_clock64 ticks, calibrated with hipDeviceAttributeWallClockRate.
 };

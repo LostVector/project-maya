@@ -1062,6 +1062,12 @@ struct Group {
 #if defined(STRATA_USE_HIP) || defined(DS4_CUDA_PEER_AR)
     std::array<PeerAr, 2> peer_arb{};
     bool peer_arb_on = false;
+    // the watchdog's eyes and way out, host-mapped so the host reads and writes them with the devices' streams stuck:
+    // each rank's poison word (set to release a waiting kernel), its progress word (the call its kernel started),
+    // its first-failure record, and the last sequence its host submitted (plain words: diagnostics, raced by design)
+    std::array<unsigned*, 2> peer_poison{}, peer_progress{};
+    std::array<PeerArFailure*, 2> peer_failure{};
+    std::array<unsigned, 2> peer_ar_sent{};
 #endif
     // the head group: the members' logits shares on their way to the lead, two slots (by seq), their flags and the
     // lead's acknowledgements (host-mapped)
@@ -1195,6 +1201,28 @@ struct Model::Impl {
                           c.at_k.load(std::memory_order_relaxed), c.at_il.load(std::memory_order_relaxed));
             s += b;
         }
+#if defined(STRATA_USE_HIP) || defined(DS4_CUDA_PEER_AR)
+        // a peer all-reduce pair's state, read without touching the devices: what each rank's host submitted, which
+        // call each rank's kernel started, and the first failure recorded - the two ranks' places say where they went
+        // out of step when a run stopped with both of them waiting on each other
+        for (const Group& G : groups)
+            if (G.peer_arb_on)
+                for (int m = 0; m < 2; ++m) {
+                    char b[192];
+                    const unsigned poison =
+                        G.peer_poison[m] ? *reinterpret_cast<const volatile unsigned*>(G.peer_poison[m]) : 0u;
+                    const unsigned prog =
+                        G.peer_progress[m] ? *reinterpret_cast<const volatile unsigned*>(G.peer_progress[m]) : 0u;
+                    const PeerArFailure f = G.peer_failure[m] ? *G.peer_failure[m] : PeerArFailure{};
+                    std::snprintf(b, sizeof b, "; peer AR rank %d (CUDA%d): sent %u, device at %u%s%s", m,
+                                  devs[(size_t) G.mem[m]].id, G.peer_ar_sent[m], prog, poison ? ", poisoned" : "",
+                                  f.captured ? ", failed" : "");
+                    s += b;
+                    if (f.captured)
+                        std::snprintf(b, sizeof b, " (call %u waited for %u: block %u, n4 %u, reason %u)", f.sequence,
+                                      f.observed, f.block, f.n4, f.reason), s += b;
+                }
+#endif
         return s;
     }
     std::vector<cudaEvent_t> chunk_done;     // on the last layer's device: chunk k through every layer
@@ -18011,13 +18039,18 @@ struct Model::Impl {
                 continue;
             }
             std::array<PeerAr, 2> a{};
+            // host-mapped words per rank: [poison, progress] and the first-failure record (the watchdog reads and
+            // writes these while the devices' streams are stuck - a device call there would hang the host too)
+            std::array<unsigned*, 2> watch_h{};
+            std::array<PeerArFailure*, 2> fail_h{};
             auto release = [&] {
                 for (int m = 0; m < 2; ++m) {
                     cudaSetDevice(devs[(size_t) G.mem[m]].id);
                     if (a[m].recv) hipFree(a[m].recv);
                     if (a[m].flags) hipFree(a[m].flags);
                     if (a[m].error) hipFree(a[m].error);
-                    if (a[m].failure) hipFree(a[m].failure);
+                    if (fail_h[m]) cudaFreeHost(fail_h[m]);
+                    if (watch_h[m]) cudaFreeHost(watch_h[m]);
                     hipGetLastError();
                 }
             };
@@ -18065,12 +18098,41 @@ struct Model::Impl {
                      hipExtMallocWithFlags((void**) &a[m].flags,
                                            2 * kPeerArBlocks * kPeerArFlagStride * sizeof(unsigned),
                                            hipDeviceMallocFinegrained) == hipSuccess &&
-                     hipMalloc((void**) &a[m].error, sizeof(unsigned)) == hipSuccess &&
-                     hipMalloc((void**) &a[m].failure, sizeof(PeerArFailure)) == hipSuccess;
+                     hipMalloc((void**) &a[m].error, sizeof(unsigned)) == hipSuccess;
                 if (ok) ok = hipMemset(a[m].flags, 0, 2 * kPeerArBlocks * kPeerArFlagStride * sizeof(unsigned)) == hipSuccess &&
                              hipMemset(a[m].error, 0, sizeof(unsigned)) == hipSuccess &&
-                             hipMemset(a[m].failure, 0, sizeof(PeerArFailure)) == hipSuccess &&
                              hipDeviceSynchronize() == hipSuccess;
+                if (ok) {   // the watchdog's words and the failure record: host-mapped, one allocation per rank
+                    void* wh = nullptr;
+                    void* fh = nullptr;
+                    ok = cudaHostAlloc(&wh, 2 * sizeof(unsigned), cudaHostAllocMapped | cudaHostAllocPortable) ==
+                             cudaSuccess &&
+                         cudaHostAlloc(&fh, sizeof(PeerArFailure), cudaHostAllocMapped | cudaHostAllocPortable) ==
+                             cudaSuccess;
+                    if (ok) {
+                        unsigned* wd = nullptr;
+                        PeerArFailure* fd = nullptr;
+                        ok = cudaHostGetDevicePointer((void**) &wd, wh, 0) == cudaSuccess && wd != nullptr &&
+                             cudaHostGetDevicePointer((void**) &fd, fh, 0) == cudaSuccess && fd != nullptr;
+                        if (ok) {
+                            watch_h[m] = static_cast<unsigned*>(wh);
+                            fail_h[m] = static_cast<PeerArFailure*>(fh);
+                            watch_h[m][0] = 0;   // poison
+                            watch_h[m][1] = 0;   // progress
+                            a[m].poison = wd;
+                            a[m].progress = wd + 1;
+                            a[m].failure = fd;
+                            a[m].failure_host = fail_h[m];
+                            std::memset(fail_h[m], 0, sizeof(PeerArFailure));
+                        } else {   // a mapping that failed leaves nothing behind for release() to miss
+                            cudaFreeHost(wh);
+                            cudaFreeHost(fh);
+                        }
+                    } else {
+                        if (wh) cudaFreeHost(wh);
+                        if (fh) cudaFreeHost(fh);
+                    }
+                }
             }
             if (!ok) {
                 release();
@@ -18132,11 +18194,17 @@ struct Model::Impl {
                 d.allocs.push_back(a[m].recv);
                 d.allocs.push_back(a[m].flags);
                 d.allocs.push_back(a[m].error);
-                d.allocs.push_back(a[m].failure);
+                host_allocs.push_back(watch_h[m]);   // (host-mapped: freed with the model's other host words)
+                host_allocs.push_back(fail_h[m]);
                 d.scratch += 2 * a[m].stride * sizeof(float) +
                              (2 * kPeerArBlocks * kPeerArFlagStride + 1) * sizeof(unsigned) + sizeof(PeerArFailure);
             }
             G.peer_arb = a;
+            for (int m = 0; m < 2; ++m) {
+                G.peer_poison[m] = watch_h[m];
+                G.peer_progress[m] = watch_h[m] + 1;
+                G.peer_failure[m] = fail_h[m];
+            }
             G.peer_arb_on = true;
             std::fprintf(stderr, "ds4: exact peer prefill all-reduce enabled on GPU%d/GPU%d (%zu MiB/rank)\n",
                          devs[(size_t) G.mem[0]].id, devs[(size_t) G.mem[1]].id,
@@ -18156,22 +18224,40 @@ struct Model::Impl {
                 if (sync_status != cudaSuccess || copy_status != hipSuccess || error) {
                     std::fprintf(stderr, "PEER_AR_FAILURE gpu=%d rank=%d stream_status=%d copy_status=%d error=%u sequence=%u\n",
                                  d.id, m, int(sync_status), int(copy_status), error, chunks[(size_t) G.mem[m]]->arb_seq);
-                    if (error & 1u) {
-                        PeerArFailure detail{};
-                        const auto detail_status = hipMemcpy(&detail, G.peer_arb[m].failure, sizeof(detail), hipMemcpyDeviceToHost);
-                        std::fprintf(stderr, "PEER_AR_TIMEOUT_DETAIL gpu=%d rank=%d copy_status=%d captured=%u "
-                                     "failed_sequence=%u observed=%u block=%u n4=%u elapsed_ticks=%llu timeout_ticks=%llu "
-                                     "last_submitted_sequence=%u\n", d.id, m, int(detail_status), detail.captured,
-                                     detail.sequence, detail.observed, detail.block, detail.n4,
-                                     (unsigned long long) detail.elapsed_ticks, (unsigned long long) detail.timeout_ticks,
-                                     chunks[(size_t) G.mem[m]]->arb_seq);
-                    }
+                    // the rank's whole state, read without touching the devices: where its kernel got (progress), whether
+                    // the watchdog poisoned it, and its first-failure record - a 719 launch failure carries no detail
+                    // of its own, so this line is the only witness of where the pair stood when the queue died
+                    const PeerArFailure detail = G.peer_failure[m] ? *G.peer_failure[m] : PeerArFailure{};
+                    const unsigned prog =
+                        G.peer_progress[m] ? *reinterpret_cast<const volatile unsigned*>(G.peer_progress[m]) : 0u;
+                    const unsigned pois =
+                        G.peer_poison[m] ? *reinterpret_cast<const volatile unsigned*>(G.peer_poison[m]) : 0u;
+                    std::fprintf(stderr, "PEER_AR_DETAIL gpu=%d rank=%d sent=%u device_at=%u poison=%u captured=%u "
+                                 "failed_sequence=%u observed=%u block=%u n4=%u elapsed_ticks=%llu timeout_ticks=%llu "
+                                 "reason=%u\n", d.id, m, G.peer_ar_sent[m], prog, pois, detail.captured,
+                                 detail.sequence, detail.observed, detail.block, detail.n4,
+                                 (unsigned long long) detail.elapsed_ticks, (unsigned long long) detail.timeout_ticks,
+                                 detail.reason);
                     peer_ar_failed = true;
                 }
             }
         }
         if (peer_ar_failed) err = "peer all-reduce failed; model state invalid, reload required";
         return !peer_ar_failed;
+    }
+    // the serve watchdog's way out: set every peer-VRAM all-reduce rank's poison word so a waiting kernel - and
+    // everything queued behind it - ends at once, and the process can leave without holding the device until a
+    // kernel-level reset. Returns the ranks poisoned (0 without the transport). The model is not reusable after it.
+    int peer_ar_poison() const {
+        int n = 0;
+        for (const Group& G : groups)
+            if (G.peer_arb_on)
+                for (int m = 0; m < 2; ++m)
+                    if (G.peer_poison[m] != nullptr) {
+                        *reinterpret_cast<volatile unsigned*>(G.peer_poison[m]) = 1u;
+                        ++n;
+                    }
+        return n;
     }
 #endif
 
@@ -18189,8 +18275,10 @@ struct Model::Impl {
 #if defined(STRATA_USE_HIP) || defined(DS4_CUDA_PEER_AR)
         Group& pg = groups[(size_t) d.grp];
         if (pg.peer_arb_on) {
+            const unsigned seq = ++c.arb_seq;
+            pg.peer_ar_sent[mi] = seq;   // (the watchdog's dump: what this rank's host has submitted)
             // A failed launch cannot silently switch a single rank to another transport.
-            if (!allreduce_peer(buf, n, pg.peer_arb[(size_t) mi], mi, ++c.arb_seq, s))
+            if (!allreduce_peer(buf, n, pg.peer_arb[(size_t) mi], mi, seq, s))
                 peer_ar_failed.store(true, std::memory_order_relaxed);
             return;
         }
@@ -23387,6 +23475,13 @@ int Model::mixed_plan(const std::string& pack, int reserve_mib, double margin_gb
     return k;
 }
 std::string Model::where() const { return p_->where(); }
+int Model::peer_ar_poison() const {
+#if defined(STRATA_USE_HIP) || defined(DS4_CUDA_PEER_AR)
+    return p_->peer_ar_poison();
+#else
+    return 0;
+#endif
+}
 bool Model::feed(const int* tokens, int n, int logits_rows, std::string& err, int after) {
     Impl& p = *p_;
     const int64_t p0 = p.pos;

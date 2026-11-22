@@ -75,7 +75,9 @@ PeerCalibration calibrate_peer(const int ids[2], const ArGroup& original, const 
             ok = hipSetDevice(ids[m]) == hipSuccess && ok;
             ok = hipMemset(peer[m].flags, 0, 2 * kPeerArBlocks * kPeerArFlagStride * sizeof(unsigned)) == hipSuccess && ok;
             ok = hipMemset(peer[m].error, 0, sizeof(unsigned)) == hipSuccess && ok;
-            if (peer[m].failure) ok = hipMemset(peer[m].failure, 0, sizeof(PeerArFailure)) == hipSuccess && ok;
+            // the failure record is host-mapped (the watchdog reads it with a stuck stream): a host memset, never a device one
+            if (peer[m].failure_host) std::memset(peer[m].failure_host, 0, sizeof(PeerArFailure));
+            else if (peer[m].failure) ok = hipMemset(peer[m].failure, 0, sizeof(PeerArFailure)) == hipSuccess && ok;
         }
         return ok;
     };
