@@ -18597,10 +18597,13 @@ struct Model::Impl {
         CK(cudaStreamSynchronize(s));
         std::vector<int> b(c.bounds_pin, c.bounds_pin + n_vs + 1);
         // pv_n is this run's resident prefix: slots lent to buffers are streamed, not hits.
-        if (S.collect_prefill && !S.prefill.add_bounds(b.data(), (size_t) primary_vs, (size_t) L0.pv_n)) {
+        const uint64_t pf_p0 = S.prefill.picks, pf_h0 = S.prefill.vram_picks;
+        if (!S.prefill.add_bounds(b.data(), (size_t) primary_vs, (size_t) L0.pv_n)) {
             err = "invalid prefill routing bounds for statistics";
             return false;
         }
+        st.pf_picks += (int64_t) (S.prefill.picks - pf_p0);
+        st.pf_hits += (int64_t) (S.prefill.vram_picks - pf_h0);
         const bool helper_pending = helper_drain.p && helper_drain.p->submit(
             L0.il, T, l.k_exp, primary_vs, n_vs, b.data(), c.x, c.bounds, c.row_tok, c.pos, c.rw, g.lim);
         if (dump_r != nullptr && mi == 0) {
