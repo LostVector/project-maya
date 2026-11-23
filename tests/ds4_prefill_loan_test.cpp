@@ -9,6 +9,16 @@ static void require(bool passed) {
 }
 
 int main() {
+    require(parse_max_rows(nullptr) == 0);
+    require(parse_max_rows("0") == 0);
+    require(parse_max_rows("12288") == wide_rows);
+    require(parse_max_rows("16384") < 0);
+    require(parse_max_rows("8192") < 0);
+    require(parse_max_rows("true") < 0);
+    require(parse_max_rows("") < 0);
+    require(parse_max_rows("12288x") < 0);
+    require(parse_max_rows("12288 ") < 0);
+
     require(!eligible(min_fresh - 1, true, true));
     require(!eligible(min_fresh, false, true));
     require(!eligible(min_fresh, true, false));

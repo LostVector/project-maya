@@ -3602,6 +3602,12 @@ struct Model::Impl {
     // ---- loading
     bool load(const Options& opt, std::string& err) {
         o = opt;
+        const int adaptive_max = o.adaptive_prefill
+            ? prefill_loan::parse_max_rows(ds4_env("DS4_ADAPTIVE_PREFILL_MAX")) : 0;
+        if (adaptive_max < 0) {
+            err = "MAYA_DS4_ADAPTIVE_PREFILL_MAX must be 0 or 12288";
+            return false;
+        }
         const double t0 = now_ms();
         // the pool: a part server runs the trunk's layers from part_from on (the others never touched here)
         if (o.part_from > 0) {
@@ -4485,7 +4491,7 @@ struct Model::Impl {
             for (size_t di = 0; di < devs.size(); ++di)
                 if ((sr.ckv[di] != nullptr || sr.ik[di] != nullptr) && devs[di].grp != sg) sr.readers.push_back((int) di);
         }
-        phase_loan = supports_prefill_loan();
+        phase_loan = adaptive_max == prefill_loan::wide_rows && supports_prefill_loan();
         for (Group& G : groups) {
             G.ar.nm = (int) G.mem.size();
             G.ar.slots = 4;
@@ -5547,11 +5553,9 @@ struct Model::Impl {
 
     bool supports_prefill_loan() const {
 #if defined(STRATA_USE_HIP) && defined(__linux__)
-        const char* adaptive = ds4_env("DS4_ADAPTIVE_PREFILL");
         const char* peer = ds4_env("DS4_HIP_PEER_AR");
         const char* helper_prefill = ds4_env("DS4_HELPER_PREFILL");
-        if (!o.adaptive_prefill || (adaptive && std::strcmp(adaptive, "0") == 0) ||
-            !peer || std::strcmp(peer, "1") != 0 || !helper_prefill || std::strcmp(helper_prefill, "1") != 0 ||
+        if (!peer || std::strcmp(peer, "1") != 0 || !helper_prefill || std::strcmp(helper_prefill, "1") != 0 ||
             chunk != prefill_loan::normal_rows || devs.size() != 3 || helper_id < 0 || !helper_shared ||
             recent_n != 0 || pk.gguf || file_experts || o.vision_only || part_srv || !o.remote_part.empty() ||
             tp_borrow_on() || std::getenv("DS4_CHUNK") || g.nl == 0 ||

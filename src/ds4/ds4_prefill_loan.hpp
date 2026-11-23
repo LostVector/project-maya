@@ -1,12 +1,20 @@
 #pragma once
 
 #include <cstddef>
+#include <string_view>
 
 namespace strata::ds4::prefill_loan {
 
 inline constexpr int normal_rows = 8192;
 inline constexpr int wide_rows = 12288;
 inline constexpr std::size_t min_fresh = 128000;
+
+// A wider size needs validation for the workspace and scheduler first.
+inline constexpr int parse_max_rows(const char* value) {
+    if (!value || std::string_view(value) == "0") return 0;
+    if (std::string_view(value) == "12288") return wide_rows;
+    return -1;
+}
 
 // Keep the short-text path in private scratch. Making some of the ordinary
 // arena loanable pays for the wider collective and leaves room for late allocations.

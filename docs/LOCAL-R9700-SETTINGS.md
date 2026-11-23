@@ -101,19 +101,30 @@ The fresh-prompt screen favored `DS4_RECENT=0`. Setting it to `32`
 increased streamed weight traffic by 14% and reduced throughput by 5% on
 that screen.
 
-### Automatic prefill sizing
+## Adaptive prefill opt-in
 
-On a compatible Linux RDNA4 EXL3 TP2 server with the third GPU configured
-as the shared prefill helper, the 8,192-token configuration can use up to
-12,288 rows for an idle text request with at least 128,000 fresh tokens after
-prefix reuse. Admission checks the configured reserve on each device with
-both HIP and driver accounting. Other requests use the ordinary 8K cap. The
-server keeps its decision for the request and retains the existing scheduler's
-yield points.
+For the three-R9700 DeepSeek V4.1 Flash EXL3 2.9 bpw profile, keep
+`--prefill-chunk 8192` in the engine arguments and add this setting to the
+`env` object at startup:
+
+```json
+{
+  "MAYA_DS4_ADAPTIVE_PREFILL_MAX": "12288"
+}
+```
+
+Use the shared helper and exact peer reduction described above. A compatible
+server can choose up to 12,288 rows for an idle text request with at least
+128,000 fresh tokens after prefix reuse. Admission checks every GPU's reserve
+with both HIP and driver accounting. The normal 8K cap applies when admission
+fails. The server keeps its choice for the request and uses the existing
+scheduler yield points.
+
+Leave the setting unset or use `0` to use the normal prefill configuration.
+`12288` is the supported nonzero value. The variable has the native
+`DS4_ADAPTIVE_PREFILL_MAX` alias.
 
 The wider workspace borrows GPU expert slots. The server restores the original
 bytes before returning from each prefill call, including a yield or cancellation.
 An unverified restore stops the engine. For validation, `DS4_CHECK_LEND=1`
-reads the restored bytes back. `DS4_ADAPTIVE_PREFILL=0` disables this path for
-comparison or troubleshooting. Other configured chunk sizes retain their
-existing behavior.
+reads the restored bytes back.
