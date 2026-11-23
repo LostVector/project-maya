@@ -269,6 +269,9 @@ if(STRATA_BUILD_TESTS)
   add_executable(ds4_lent_fallback_test tests/ds4_lent_fallback_test.cpp)
   target_include_directories(ds4_lent_fallback_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/ds4)
   add_test(NAME ds4_lent_fallback_test COMMAND ds4_lent_fallback_test)
+
+  add_executable(ds4_prefill_loan_test tests/ds4_prefill_loan_test.cpp)
+  add_test(NAME ds4_prefill_loan_test COMMAND ds4_prefill_loan_test)
   # maya-ds4's restore points: the one a prompt goes back to, the ones a read keeps (marks= / shared=), the cases
   add_executable(ds4_marks_test tests/ds4_marks_test.cpp)
   target_link_libraries(ds4_marks_test PRIVATE strata_warnings)

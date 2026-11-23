@@ -100,3 +100,20 @@ host-transport control had the shorter measured pause.
 The fresh-prompt screen favored `DS4_RECENT=0`. Setting it to `32`
 increased streamed weight traffic by 14% and reduced throughput by 5% on
 that screen.
+
+### Automatic prefill sizing
+
+On a compatible Linux RDNA4 EXL3 TP2 server with the third GPU configured
+as the shared prefill helper, the 8,192-token configuration can use up to
+12,288 rows for an idle text request with at least 128,000 fresh tokens after
+prefix reuse. Admission checks the configured reserve on each device with
+both HIP and driver accounting. Other requests use the ordinary 8K cap. The
+server keeps its decision for the request and retains the existing scheduler's
+yield points.
+
+The wider workspace borrows GPU expert slots. The server restores the original
+bytes before returning from each prefill call, including a yield or cancellation.
+An unverified restore stops the engine. For validation, `DS4_CHECK_LEND=1`
+reads the restored bytes back. `DS4_ADAPTIVE_PREFILL=0` disables this path for
+comparison or troubleshooting. Other configured chunk sizes retain their
+existing behavior.
