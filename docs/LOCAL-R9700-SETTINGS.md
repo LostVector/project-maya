@@ -128,3 +128,29 @@ The wider workspace borrows GPU expert slots. The server restores the original
 bytes before returning from each prefill call, including a yield or cancellation.
 An unverified restore stops the engine. For validation, `DS4_CHECK_LEND=1`
 reads the restored bytes back.
+
+## Preferred DSpark pack for our 2.9 bpw profile
+
+For our three-R9700 DeepSeek-V4.1-Flash-1017 EXL3 2.9 bpw profile, use 3-bit
+routed DSpark experts on GPU 2. Use the matching expert-major EXL3 mul1 donor
+and build a separate pack that references both the base shards and the donor.
+See the [EXL3 pack guide](ds4-exl3-packs.md#3-bit-dspark-routed-experts) for
+the donor layout.
+
+```sh
+MODEL=/path/to/DeepSeek-V4.1-Flash-1017-EXL3-2.9bpw
+DONOR=/path/to/model-exl3-mtp-experts-maya-layout.safetensors
+python tools/ds4/pack.py --model "$MODEL" --drafter-experts "$DONOR" \
+  --out "$MODEL/maya-ds4-dspark-3bit"
+```
+
+In the saved engine JSON's `args` list, replace the value following `--pack`
+with the absolute path to `maya-ds4-dspark-3bit`. If a launcher passes the
+engine arguments directly, change its `--pack` value too. Keep
+`--dspark on --dspark-conf 0.65` and `DS4_DRAFT_GPU=2`. To switch back to
+the bundled drafter, point `--pack` at the original `maya-ds4` directory.
+
+In two 512-token coding turns, the 3-bit pack freed 1,620 MiB on GPU 2 and
+raised median decode throughput by 3.8% and 7.8%. Each configuration had two
+independent loads. The generated responses differed, and two 16-token turns
+showed mixed results.
