@@ -230,6 +230,10 @@ struct Lines {
             cv.notify_all();
         }).detach();
     }
+    bool queued() {
+        std::lock_guard<std::mutex> lk(mu);
+        return !q.empty() || eof;
+    }
     bool next(std::string& l) {
         std::unique_lock<std::mutex> lk(mu);
         cv.wait(lk, [&] { return !q.empty() || eof; });
@@ -1513,6 +1517,7 @@ int serve(strata::ds4::Model& m, const std::string& eos_list, bool spec, float c
         size_t done = 0;         // the prompt's tokens in the state so far
         size_t next_pp = 0;      // (the next PP line's)
         bool continued = false;  // (the conversation goes on - its anchor stays)
+        bool prefill_admitted = false, wide_prefill = false;
         std::vector<Pic> pics;
         std::vector<strata::ds4::MarkAt> cuts;   // the restore points the read stops at (ds4_marks.hpp)
         size_t next_cut = 0;                     // (the next of them)
@@ -1727,8 +1732,17 @@ int serve(strata::ds4::Model& m, const std::string& eos_list, bool spec, float c
     // tokens), its last with a checkpoint before its last token and one after it: the next turn re-renders this one,
     // and shares its start up to one of them
     const auto prompt_piece = [&](Req& r, const std::string& tag, const std::function<bool()>& stop_now, Prompt& P,
-                                  size_t piece) -> bool {
+                                  size_t piece, bool idle) -> bool {
         const size_t total = r.ids.size();
+        if (!P.prefill_admitted && piece != 0) {
+            P.prefill_admitted = true;
+            P.wide_prefill = m.admit_wide_prefill(total - P.from, idle && P.pics.empty() && !in.queued());
+        }
+        m.set_wide_prefill(P.wide_prefill);
+        struct ResetChunk {
+            strata::ds4::Model& model;
+            ~ResetChunk() { model.set_wide_prefill(false); }
+        } reset_chunk{m};
         const size_t from = P.from;
         const double t0 = P.t0;
         const size_t start = P.done;
@@ -1886,7 +1900,7 @@ int serve(strata::ds4::Model& m, const std::string& eos_list, bool spec, float c
     };
     const auto prompt_in = [&](Req& r, bool geni, const std::string& tag, const std::function<bool()>& stop_now,
                                Prompt& P) -> bool {
-        if (!prompt_begin(r, geni, tag, P) || !prompt_piece(r, tag, stop_now, P, r.ids.size())) return false;
+        if (!prompt_begin(r, geni, tag, P) || !prompt_piece(r, tag, stop_now, P, r.ids.size(), true)) return false;
         prompt_end(P);
         return true;
     };
@@ -2244,12 +2258,13 @@ int serve(strata::ds4::Model& m, const std::string& eos_list, bool spec, float c
         };
         // the next `piece` tokens of its prompt into its conversation (a STOP ends it here, its DONE written); `yield`:
         // the piece ends early at a chunk the model reaches once a line is waiting
-        const auto read_turn = [&](Act& a, size_t piece, bool yield) {
+        const auto read_turn = [&](Act& a, size_t piece, bool yield, bool idle) {
             bind(a.seq);
             const long long rid = a.r.rid;
             if (yield) m.set_yield([&] { return lines_posted.load(std::memory_order_acquire) != lines_taken; });
             const bool read = prompt_piece(a.r, " " + std::to_string(rid), [&in, rid] { return in.stopped(rid); }, a.P,
-                                           piece);
+                                           piece, idle && waiting.empty() &&
+                                           lines_posted.load(std::memory_order_acquire) == lines_taken);
             m.set_yield(nullptr);
             if (!read) {
                 a.ended = a.done = true;
@@ -2387,7 +2402,7 @@ int serve(strata::ds4::Model& m, const std::string& eos_list, bool spec, float c
             const bool answering_now = std::any_of(acts.begin(), acts.end(),
                                                    [](const std::unique_ptr<Act>& x) { return !x->reading; });
             if ((!read_pieces && !answering_now) || !a->P.pics.empty()) {
-                read_turn(*a, r.ids.size(), false);
+                read_turn(*a, r.ids.size(), false, acts.empty());
                 if (a->ended) {
                     in.forget(rid);
                     end_if_broken();
@@ -2712,7 +2727,7 @@ int serve(strata::ds4::Model& m, const std::string& eos_list, bool spec, float c
             Act* a = read_line.front();
             read_line.pop_front();
             const bool alone = read_line.empty() && !answering;
-            if (!a->done) read_turn(*a, alone ? a->r.ids.size() : read_piece, alone);
+            if (!a->done) read_turn(*a, alone ? a->r.ids.size() : read_piece, alone, alone);
             if (a->reading && !a->done) {   // (arrival: the prompt in front keeps its turn, the later ones wait for it)
                 if (read_pieces) read_line.push_back(a);
                 else read_line.push_front(a);
@@ -2749,7 +2764,7 @@ int serve(strata::ds4::Model& m, const std::string& eos_list, bool spec, float c
         const auto reap = [&](bool answers) -> bool {
             for (auto& ap : acts)
                 if (!ap->done && in.stopped(ap->r.rid)) {
-                    if (ap->reading) read_turn(*ap, 0, false);
+                    if (ap->reading) read_turn(*ap, 0, false, false);
                     else if (answers) {
                         ap->finish = "cancel";
                         ap->done = true;
@@ -3858,7 +3873,7 @@ int main(int argc, char** argv) {
             }
             o.ablate_default = v == "on" || v == "1";
         }
-        else if (a == "--serve") serve_mode = true;
+        else if (a == "--serve") serve_mode = o.adaptive_prefill = true;
         else if (a == "--remote-part") o.remote_part = val("--remote-part");   // the pool: host:port of the part server
         else if (a == "--part-from") o.part_from = (int) num("--part-from", 1, 1000, true);   // the pool: a part's first layer
         else if (a == "--part-serve") part_port = (int) num("--part-serve", 1, 65535, true);  // the pool: serve as a part

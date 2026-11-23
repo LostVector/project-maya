@@ -42,6 +42,7 @@
 #include "ds4_path_policy.hpp"
 #include "ds4_place.hpp"
 #include "ds4_prefill_stats.hpp"
+#include "ds4_prefill_loan.hpp"
 #include "ds4_prompt_mem.hpp"
 #include "ds4_ram_slice.hpp"
 #include "ds4_store.hpp"
@@ -693,6 +694,8 @@ struct Dev {
     // the region's end and the experts under them are read back into their slots after it
     uint8_t* tail = nullptr;
     size_t tail_bytes = 0, tail_step = 0;
+    uint8_t* loan_host = nullptr;
+    size_t loan_private = 0, loan_live_bytes = 0;
     int tail_k = 0;
     // (--parallel) a multi step's new compressed rows of each row's conversation gathered for the other groups' readers:
     // kWin ckv rows, then kWin index-key rows
@@ -2141,6 +2144,7 @@ struct Model::Impl {
     // a run of chunks borrowing the lending devices' tails (borrow_begin / borrow_end): whether one does now, the
     // pinned staging that reads the experts back after it (rf_bytes each), what that read back in all
     bool lent = false;
+    bool phase_loan = false, wide_prefill = false;
     // (DS4_CHECK_LEND, an EXL3 lender: each lent slot's bytes before the lend, against what borrow_end copies back)
     struct LentCheck {
         int layer, e, slot, m;
@@ -3598,6 +3602,12 @@ struct Model::Impl {
     // ---- loading
     bool load(const Options& opt, std::string& err) {
         o = opt;
+        const int adaptive_max = o.adaptive_prefill
+            ? prefill_loan::parse_max_rows(ds4_env("DS4_ADAPTIVE_PREFILL_MAX")) : 0;
+        if (adaptive_max < 0) {
+            err = "MAYA_DS4_ADAPTIVE_PREFILL_MAX must be 0 or 12288";
+            return false;
+        }
         const double t0 = now_ms();
         // the pool: a part server runs the trunk's layers from part_from on (the others never touched here)
         if (o.part_from > 0) {
@@ -4481,6 +4491,7 @@ struct Model::Impl {
             for (size_t di = 0; di < devs.size(); ++di)
                 if ((sr.ckv[di] != nullptr || sr.ik[di] != nullptr) && devs[di].grp != sg) sr.readers.push_back((int) di);
         }
+        phase_loan = adaptive_max == prefill_loan::wide_rows && supports_prefill_loan();
         for (Group& G : groups) {
             G.ar.nm = (int) G.mem.size();
             G.ar.slots = 4;
@@ -4498,7 +4509,7 @@ struct Model::Impl {
                 return false;
             G.arb = G.ar;   // (a chunk's: two slots of chunk rows)
             G.arb.slots = 2;
-            G.arb.stride = (size_t) chunk * g.dim;
+            G.arb.stride = (size_t) prefill_capacity() * g.dim;
             G.arb.data = G.arb.sums = nullptr;   // (G.ar's: the decode's - a chunk's are its own, or none)
             if (chunk > 0 && G.arb.nm > 1 && !gmap(G, G.arb.flags, (size_t) G.arb.nm * G.arb.slots * 32, err)) return false;
             if (chunk > 0 && G.arb.nm > 2 && !gmap(G, G.arb.bflags, (size_t) 2 * G.arb.nm * G.arb.slots * kArBlocks * 8, err))
@@ -4767,6 +4778,10 @@ struct Model::Impl {
         if (!alloc_seqs(err)) return false;
         // the chunked prompt path's buffers (before the experts: they take what is left)
         if (chunk > 0) alloc_chunks_fit();
+        if (phase_loan && (chunk != prefill_loan::normal_rows || chunks.size() != devs.size() || !chunks[0])) {
+            err = "phase loan requires the full 12K startup workspace";
+            return false;
+        }
         // the CPU lane's experts read in place (decided above): how much of them the load reads ahead, from what VRAM
         // now leaves over
         if (file_experts) {
@@ -5039,6 +5054,15 @@ struct Model::Impl {
                 return false;   // (MAYA_DS4_TP_CHECK=1: at load, no request yet)
             if (helper_n > 0 && !rh_lead && ds4_env("DS4_HELPER_CHECK") != nullptr) helper_check();   // (before the lane runs)
             if (!helper_prefill_open(err)) return false;
+            if (const char* path = ds4_env("DS4_PHASE_LOAN_IDENTITIES")) {
+                std::ofstream out(path);
+                for (const Layer& l : L)
+                    for (int e = 0; e < l.n_exp; ++e)
+                        if (l.slot[(size_t) e] >= 0 || helper_owned(l, e))
+                            out << l.il << ' ' << e << ' ' << l.slot[(size_t) e] << ' ' << helper_owned(l, e) << '\n';
+                out.close();
+                if (!out) { err = "writing phase loan expert identities"; return false; }
+            }
             if (helper_n > 0 && !rh_lead) helper_th = std::thread([this] { helper_loop(); });
             if (helper_n > 0 && hr_want > 0 && !hr_open(err)) return false;
             const int core = !cores.empty() && !cores[0].empty() ? cores[0][0] : -1;
@@ -5096,6 +5120,10 @@ struct Model::Impl {
         if (cp_pin_last()) cp_pin();   // (#589: after every pinned buffer above, before the paths are timed)
 #if defined(STRATA_USE_HIP) || defined(DS4_CUDA_PEER_AR)
         if (!init_peer_ar(err)) return false; // after expert placement: optional scratch does not shrink the expert cache
+        if (phase_loan && !groups[(size_t) devs[(size_t) head_dev].grp].peer_arb_on) {
+            err = "adaptive prefill needs the exact peer reduction";
+            return false;
+        }
 #endif
         // Opt-in startup work only: a calibration of one representative layer does not prepare every
         // CPU format, nor both one-token and multi-token backends. Never defer their parity checks to a
@@ -5167,6 +5195,14 @@ struct Model::Impl {
                 }
                 std::fprintf(stderr, "ds4 pool: %s - every layer runs here\n", e.c_str());
             }
+        }
+        if (phase_loan) {
+            if (!prefill_headroom()) {
+                err = "adaptive prefill startup headroom is below the reserve";
+                return false;
+            }
+            std::fprintf(stderr, "ds4: adaptive prefill available: 8K or 12K, at least %zu fresh tokens for 12K\n",
+                         prefill_loan::min_fresh);
         }
         late_check(true);   // (#1026: what the start took after the experts' plan, against the reserve)
         return true;
@@ -5459,6 +5495,10 @@ struct Model::Impl {
             }
             (void) cudaGetLastError();
             chunks.clear();
+            if (phase_loan) {
+                std::fprintf(stderr, "ds4: adaptive prefill workspace: %s\n", aerr.c_str());
+                return;   // retry the load with the ordinary 8K allocations
+            }
             const int was = chunk;
             chunk = chunk_fallback(chunk);
             if (chunk > 0) {
@@ -5508,6 +5548,61 @@ struct Model::Impl {
         link_bw[d.id] = best;
         return best;
     }
+    int prefill_capacity() const { return phase_loan ? prefill_loan::wide_rows : chunk; }
+    int planned_prefill_chunk() const { return wide_prefill ? prefill_loan::wide_rows : chunk; }
+
+    bool supports_prefill_loan() const {
+#if defined(STRATA_USE_HIP) && defined(__linux__)
+        const char* peer = ds4_env("DS4_HIP_PEER_AR");
+        const char* helper_prefill = ds4_env("DS4_HELPER_PREFILL");
+        if (!peer || std::strcmp(peer, "1") != 0 || !helper_prefill || std::strcmp(helper_prefill, "1") != 0 ||
+            chunk != prefill_loan::normal_rows || devs.size() != 3 || helper_id < 0 || !helper_shared ||
+            recent_n != 0 || pk.gguf || file_experts || o.vision_only || part_srv || !o.remote_part.empty() ||
+            tp_borrow_on() || std::getenv("DS4_CHUNK") || g.nl == 0 ||
+            o.max_context <= int64_t(prefill_loan::min_fresh))
+            return false;
+        const int trunk = L.front().grp;
+        if (groups[(size_t) trunk].mem.size() != 2) return false;
+        for (const Layer& l : L)
+            if (l.n_cls != 1 || (!l.mtp && (l.grp != trunk || l.lay.fmt == gg::kFmtMXFP4))) return false;
+        for (const Dev& d : devs) {
+            cudaDeviceProp prop{};
+            char pci[24]{};
+            if (cudaGetDeviceProperties(&prop, d.id) != cudaSuccess ||
+                std::strncmp(prop.gcnArchName, "gfx12", 5) != 0 ||
+                cudaDeviceGetPCIBusId(pci, sizeof pci, d.id) != cudaSuccess) return false;
+            if (std::ifstream(std::string("/sys/bus/pci/devices/") + pci + "/mem_info_vram_used").fail())
+                return false;
+        }
+        return true;
+#else
+        return false;
+#endif
+    }
+
+    bool prefill_headroom() const {
+        int previous = 0;
+        if (cudaGetDevice(&previous) != cudaSuccess) return false;
+        struct ResetDevice {
+            int device;
+            ~ResetDevice() { (void) cudaSetDevice(device); }
+        } reset{previous};
+        const size_t reserve = size_t(std::max<int64_t>(0, o.reserve_mib)) << 20;
+        for (const Dev& d : devs) {
+            size_t free = 0, total = 0, driver_total = 0, driver_used = 0;
+            char pci[24]{};
+            if (cudaSetDevice(d.id) != cudaSuccess || mem_info(&free, &total) != cudaSuccess ||
+                cudaDeviceGetPCIBusId(pci, sizeof pci, d.id) != cudaSuccess)
+                return false;
+            const std::string at = std::string("/sys/bus/pci/devices/") + pci + "/mem_info_vram_";
+            if (!(std::ifstream(at + "total") >> driver_total) ||
+                !(std::ifstream(at + "used") >> driver_used) || driver_used > driver_total ||
+                !prefill_loan::fits_reserve(free, driver_total - driver_used, reserve))
+                return false;
+        }
+        return true;
+    }
+
     bool alloc_chunks(std::string& err) {
         chunks.resize(devs.size());
         const int D = g.dim;
@@ -5566,8 +5661,8 @@ struct Model::Impl {
             if (o.verbose)
                 std::fprintf(stderr, "ds4: CUDA%d prompt slabs: the attention %d rows, the dense weights' FP16 scratch %zu MB\n",
                              d.id, c.A, c.w16_elems >> 19);
-            const size_t C = (size_t) chunk;
-            c.C = chunk;
+            const size_t C = (size_t) prefill_capacity();
+            c.C = prefill_capacity();
             bool has_eg = false, has_first = false, lend = borrow_on || x3l, x3 = false;
             size_t stride = 0;
             for (const Layer& l : L)
@@ -5580,10 +5675,11 @@ struct Model::Impl {
                         x3 = x3 || l.lay.fmt != gg::kFmtMXFP4;
                     }
             c.has_eg = has_eg, c.has_first = has_first;
-            c.tp_lend = tp_ok[di] && stride > 0;   // (DS4_TP_BORROW: lend is false here - its layers are a group's)
+            c.tp_lend = (phase_loan || tp_ok[di]) && stride > 0;   // (DS4_TP_BORROW: lend is false here - its layers are a group's)
             c.borrow = (lend || c.tp_lend) && stride > 0;
             c.x3_lend = c.borrow && x3;
-            {   // (its own room, laid out once: all of it, or a lending device's buffers of a fixed size)
+            if (!phase_loan || stride != 0) {   // the helper has its own routed-expert workspace
+                // Its own room: all of it, or a lending device's fixed part.
                 const int part = c.borrow ? 1 : 3;
                 c.room_bytes = lay_chunk(c, chunk, nullptr, part);
                 if (!dalloc(d, c.own, c.room_bytes, err)) return false;
@@ -5828,11 +5924,28 @@ struct Model::Impl {
         return true;
     }
 
+    const uint8_t* phase_loan_source(const Layer& l, int m, int e) const {
+        if (!phase_loan || !lent) return nullptr;
+        const int slot = l.slot[(size_t) e];
+        if (slot < l.pv_n) return nullptr;
+        const Layer& x = member(l, m);
+        const Dev& d = devs[(size_t) x.dev];
+        if (!d.loan_live_bytes || slot < l.n_main) return nullptr;
+        const uint8_t* begin = d.tail + d.tail_bytes - d.loan_live_bytes;
+        return d.loan_host + (sat(l, x, slot, unit(x)) - begin);
+    }
+
     // expert e of l (on the CPU lane: its NH column parts) -> member m's VRAM copy at dst, in the GPU layout (the full
     // blob, or a group member's part), by DMA from the pinned parts on the copy stream (in place: from `src`, its file
     // region read into pinned staging)
     bool stream_expert(const Layer& l, int m, int e, uint8_t* dst, cudaStream_t cs, std::string& err,
                        const uint8_t* src = nullptr) {
+        if (const auto* loan = phase_loan_source(l, m, e)) {
+            if (cudaMemcpyAsync(dst, loan, unit(member(l, m)), cudaMemcpyHostToDevice, cs) == cudaSuccess)
+                return true;
+            err = "streaming borrowed phase-loan expert";
+            return false;
+        }
         if (l.lay.fmt == gg::kFmtMXFP4) {   // the blob, or member m's rows / blocks: from `src` (the expert read into
             // pinned staging as its blob) or from the file's mapping
             // Copied GGUF experts hold whole matrix rows on each NUMA node. mx_mat() is only
@@ -6050,6 +6163,10 @@ struct Model::Impl {
     // pool: x3_pool's blob (decided once for the item - stage_streamed and copy_streamed must agree), staged as the
     // slot's layout: the blob, or member mi's part cut from it (blob_to_half) - one copy into the ring
     bool stage_streamed(const Layer& l, int mi, int e, uint8_t* si, const uint8_t* pool = nullptr) const {
+        if (const auto* loan = phase_loan_source(l, mi, e)) {
+            std::memcpy(si, loan, unit(member(l, mi)));
+            return true;
+        }
         if (pool != nullptr) {   // (the readers' pool runs items on the device's own thread too: its device kept)
             int cur = 0;
             const bool got = cudaGetDevice(&cur) == cudaSuccess;
@@ -7639,7 +7756,12 @@ struct Model::Impl {
                 if (gone > (double) (1 << 30))
                     std::fprintf(stderr, "ds4: WARNING - CUDA%d: %.1f GB went to other programs while the engine loaded "
                                          "(nvidia-smi lists them) - the experts' plan works around it\n", dm.id, gone / 1e9);
-                mroom.push_back(std::max(0.0, ((double) fr - (double) keep_b(dm))) * o.vram_experts);
+                // Plan as if the ordinary 8K workspace had already been allocated.
+                // The exact peer arena is allocated after placement in both paths.
+                const size_t deferred = phase_loan ? lay_chunk(*chunks[(size_t) m], prefill_loan::normal_rows,
+                                                               nullptr, dm.id == helper_id ? 3 : 2) : 0;
+                mroom.push_back(std::max(0.0, (double) fr - (double) keep_b(dm) - (double) deferred) *
+                                o.vram_experts);
                 own.push_back(mroom.back());
                 charged = charged || commit_charged(devs[(size_t) m]);
             }
@@ -7866,7 +7988,7 @@ struct Model::Impl {
         // (an EXL3 lender: a layer of its that every expert fitted keeps one out - so it has the cache's slots, the
         //  recent ones its part of the lent tail, their experts copies of RAM's to stream from while lent)
         for (Layer& l : L) {
-            if (chunk <= 0 || l.mtp || l.n_cls > 1 || l.n_vram < l.n_exp || (size_t) l.dev >= chunks.size() ||
+            if (phase_loan || chunk <= 0 || l.mtp || l.n_cls > 1 || l.n_vram < l.n_exp || (size_t) l.dev >= chunks.size() ||
                 chunks[(size_t) l.dev] == nullptr || !chunks[(size_t) l.dev]->x3_lend)
                 continue;
             l.n_vram = l.n_exp - 1;
@@ -7953,11 +8075,24 @@ struct Model::Impl {
                         if (member(l, m).dev == mems[i]) step[i] += align256(unit(member(l, m)));
             }
             const auto needs = [&](int C) {
-                for (size_t i = 0; i < mems.size(); ++i) need[i] = lay_chunk(*chunks[(size_t) mems[i]], C, nullptr, 2);
+                for (size_t i = 0; i < mems.size(); ++i) {
+                    Dev& d = devs[(size_t) mems[i]];
+                    Chunk& c = *chunks[(size_t) mems[i]];
+                    if (phase_loan) {
+                        const size_t normal = lay_chunk(c, prefill_loan::normal_rows, nullptr, 2);
+                        const size_t small = lay_chunk(c, 4096, nullptr, 2);
+                        d.loan_private = normal - std::min(normal - small, prefill_loan::private_reduction);
+                    }
+                    need[i] = lay_chunk(c, C, nullptr, 2) - d.loan_private;
+                }
             };
-            needs(chunk);
+            needs(prefill_capacity());
             const bool gx3 = chunks[(size_t) mems[0]]->x3_lend;   // (an EXL3 group: the cache's slots alone)
-            const int k = tp_tail_k(need, step, gx3 ? std::min(min_slots - 1, recent_n) : min_slots - 1);
+            const int k = tp_tail_k(need, step, gx3 && !phase_loan ? std::min(min_slots - 1, recent_n) : min_slots - 1);
+            if (phase_loan && (k <= 0 || !tp_tail_fits(need, step, k))) {
+                err = "phase loan cannot fit its required tail in the reference expert slots";
+                return false;
+            }
             if (k > 0 && !tp_tail_fits(need, step, k)) {   // (few VRAM slots a layer: chunks the tails hold)
                 int c2 = chunk;
                 while (c2 > 256 && !tp_tail_fits(need, step, k)) {
@@ -7984,8 +8119,13 @@ struct Model::Impl {
                 cudaSetDevice(d.id);
                 const size_t cap = (size_t) k * step[i];
                 uint8_t* t = nullptr;
-                if (!dalloc(d, t, cap, err)) return false;
+                if (!dalloc(d, t, d.loan_private + cap, err)) return false;
                 d.tail = t;
+                if (phase_loan) {
+                    if (!halloc(d.loan_host, cap, err)) return false;
+                    std::fprintf(stderr, "DS4_PHASE_LOAN arena gpu=%d private_bytes=%zu loan_bytes=%zu slots_per_layer=%d\n",
+                                 d.id, d.loan_private, cap, k);
+                }
                 d.tail_bytes = cap;
                 d.tail_step = step[i];
                 d.tail_k = k;
@@ -7996,7 +8136,7 @@ struct Model::Impl {
                     for (int m = 0; m < l.nm; ++m) {
                         Layer& x = member(l, m);
                         if (x.dev != mems[i]) continue;
-                        x.xbase = t + xoff;
+                        x.xbase = d.tail + xoff;
                         x.xstep = step[i];
                         xoff += align256(unit(x));
                         n_tail[(size_t) (&l - &L[0])] = k;
@@ -8004,7 +8144,7 @@ struct Model::Impl {
                 }
                 std::fprintf(stderr, "ds4: CUDA%d lends the prompt path up to %.2f GB of its experts' VRAM (%d slots a "
                                      "layer, its part of each) while a prompt runs: chunks of up to %d tokens "
-                                     "(DS4_TP_BORROW)\n", d.id, cap / 1e9, k, chunk);
+                                     "(DS4_TP_BORROW)\n", d.id, cap / 1e9, k, prefill_capacity());
             }
         }
         // (DS4_RECENT_FIT: the split against the default rule's - the layers it gave recent slots, the statics now and by
@@ -8119,7 +8259,7 @@ struct Model::Impl {
             l.n_main = l.n_slots - std::min(l.n_slots, n_tail[(size_t) (&l - &L[0])]);
             l.pv_n = l.n_slots;
             // (DS4_EXL3_LEND: the tail the cache's slots alone - an expert placed there has no copy in RAM to stream from)
-            if ((l.rc_n == 0 || l.n_main < l.rc_base) && l.n_main < l.n_slots && !l.mtp && chunks.size() > (size_t) l.dev &&
+            if (!phase_loan && (l.rc_n == 0 || l.n_main < l.rc_base) && l.n_main < l.n_slots && !l.mtp && chunks.size() > (size_t) l.dev &&
                 chunks[(size_t) l.dev] != nullptr && chunks[(size_t) l.dev]->x3_lend) {
                 err = "DS4_EXL3_LEND: layer " + std::to_string(l.il) + " keeps " + std::to_string(l.rc_n) +
                       " recent slots, its tail " + std::to_string(l.n_slots - l.n_main) +
@@ -14801,7 +14941,7 @@ struct Model::Impl {
         }
         auto workspace = std::make_unique<helper_prefill::Workspace>();
         const Dev& lead = devs[(size_t) lead_di];
-        if (!workspace->open(helper_id, lead.id, lead.st, chunk, g.dim, g.ff, picks, helper_pool, helper_used,
+        if (!workspace->open(helper_id, lead.id, lead.st, prefill_capacity(), g.dim, g.ff, picks, helper_pool, helper_used,
                              config, err))
             return false;
         helper_pf = std::move(workspace);
@@ -19364,7 +19504,7 @@ struct Model::Impl {
             lm_layers.store((int) li + 1, std::memory_order_release);
         }
         if (!helper_pf || d.id != helper_id)
-            S.report_prefill(d.id, std::accumulate(run.T.begin(), run.T.end(), 0), chunk, c.stream_bytes - stream_start);
+            S.report_prefill(d.id, std::accumulate(run.T.begin(), run.T.end(), 0), planned_prefill_chunk(), c.stream_bytes - stream_start);
         return true;
     }
     bool run_dev_chunks(int di, const Run& run, std::string& err, PrefillCounts& counts) {
@@ -19775,7 +19915,7 @@ struct Model::Impl {
                 if (e) cudaEventDestroy(e);
         }
         if (!helper_pf || d.id != helper_id)
-            S.report_prefill(d.id, std::accumulate(run.T.begin(), run.T.end(), 0), chunk, c.stream_bytes - stream_start);
+            S.report_prefill(d.id, std::accumulate(run.T.begin(), run.T.end(), 0), planned_prefill_chunk(), c.stream_bytes - stream_start);
         if (!c.flow && S.copied + S.skipped + S.pooled > 0 && std::getenv("DS4_FLOW_STATS") != nullptr)
             std::fprintf(stderr, "ds4 prompt batches, CUDA%d: %zu experts copied, %zu unpicked experts skipped, %zu out "
                                  "of the helper's pool%s\n",
@@ -20175,7 +20315,7 @@ struct Model::Impl {
         }
         return -1;
     }
-    // DS4_TEST_LEND_FAULT=take|clear (tests, #884): the first lent_take fails after its copies are queued (as a copy
+    // DS4_TEST_LEND_FAULT=take|clear|phase_restore (tests): the first lent_take fails after its copies are queued (as a copy
     // that failed in flight), or the first clear of a lent room returns out of memory - each once a process
     static bool lend_fault(const char* what) {
         static const char* v = std::getenv("DS4_TEST_LEND_FAULT");
@@ -20270,10 +20410,67 @@ struct Model::Impl {
     // a run of chunks of C rows borrows each lending device's room (Chunk::borrow): its buffers laid out at the end of
     // the tail region (zeroed, as their own room was), and of every layer the slots under them out of the run's VRAM
     // set (pv_n: their experts stream in as the CPU lane's do)
+    bool phase_loan_begin(int rows, std::string& err) {
+        const double start = now_ms();
+        size_t steps = 0;
+        for (size_t di = 0; di < devs.size(); ++di) {
+            const Dev& d = devs[di];
+            if (!d.loan_host) continue;
+            steps = std::max(steps, prefill_loan::steps(lay_chunk(*chunks[di], rows, nullptr, 2),
+                                                       d.loan_private, d.tail_step));
+        }
+        size_t bytes = 0;
+        if (steps != 0) {
+            // A cache move may target a loanable slot. Complete it before taking
+            // any snapshot, and finish both snapshots before overwriting either.
+            cache_drain();
+            for (Dev& d : devs) {
+                if (!d.loan_host) continue;
+                if (steps > size_t(d.tail_k)) {
+                    err = "prefill loan: scratch exceeds its arena";
+                    return false;
+                }
+                CK(cudaSetDevice(d.id));
+                CK(cudaDeviceSynchronize());
+            }
+            // Use a synchronous snapshot per rank so a failure leaves no copy
+            // outstanding and no expert has been overwritten.
+            for (Dev& d : devs) {
+                if (!d.loan_host) continue;
+                const size_t saved = steps * d.tail_step;
+                CK(cudaSetDevice(d.id));
+                CK(cudaMemcpy(d.loan_host, d.tail + d.tail_bytes - saved, saved, cudaMemcpyDeviceToHost));
+                bytes += saved;
+            }
+            for (Dev& d : devs)
+                if (d.loan_host) d.loan_live_bytes = steps * d.tail_step;
+            for (Layer& l : L)
+                if (!l.mtp) l.pv_n = l.n_slots - int(steps);
+            lent = true;
+        }
+        for (size_t di = 0; di < devs.size(); ++di) {
+            Dev& d = devs[di];
+            if (!d.loan_host) continue;
+            Chunk& c = *chunks[di];
+            const size_t need = lay_chunk(c, rows, nullptr, 2);
+            const size_t extra = need > d.loan_private ? need - d.loan_private : 0;
+            uint8_t* base = d.tail + d.tail_bytes - extra;
+            lay_chunk(c, rows, base, 2);
+            c.C = rows;
+            CK(cudaSetDevice(d.id));
+            CK(cudaMemsetAsync(base, 0, need, d.st));
+        }
+        if (steps != 0)
+            std::fprintf(stderr, "DS4_PHASE_LOAN begin rows=%d saved_bytes=%zu elapsed_ms=%.3f\n",
+                         rows, bytes, now_ms() - start);
+        return true;
+    }
+
     bool borrow_begin(int C, std::string& err) {
         bool any = false;
         for (const auto& cp : chunks) any = any || (cp != nullptr && cp->borrow);
         if (!any) return true;
+        if (phase_loan) return phase_loan_begin(C, err);
         bool x3 = false;   // (an EXL3 lender's tail is the recent slots' too: their fills done first, every one)
         for (const auto& cp : chunks) x3 = x3 || (cp != nullptr && cp->x3_lend);
         struct Unflush {
@@ -20541,6 +20738,54 @@ struct Model::Impl {
             std::fprintf(stderr, "ds4: the prompt path's room was not handed back (%s) - the device's state unknown; "
                                  "no further request runs\n", why.c_str());
             return false;
+        }
+        if (phase_loan) {
+            const double start = now_ms();
+            size_t bytes = 0;
+            if (lend_fault("phase_restore")) broken = true;
+            for (const Dev& d : devs) {
+                if (!d.loan_live_bytes) continue;
+                if (cudaSetDevice(d.id) != cudaSuccess ||
+                    cudaMemcpyAsync(d.tail + d.tail_bytes - d.loan_live_bytes, d.loan_host,
+                                    d.loan_live_bytes, cudaMemcpyHostToDevice, d.st) != cudaSuccess)
+                    broken = true;
+                bytes += d.loan_live_bytes;
+            }
+            for (const Dev& d : devs)
+                if (d.loan_live_bytes && (cudaSetDevice(d.id) != cudaSuccess || cudaStreamSynchronize(d.st) != cudaSuccess))
+                    broken = true;
+            if (!broken && ds4_env("DS4_CHECK_LEND")) {
+                const size_t block = size_t(8) << 20;
+                uint8_t* check = nullptr;
+                if (cudaHostAlloc((void**) &check, block, cudaHostAllocPortable) != cudaSuccess) broken = true;
+                for (const Dev& d : devs) {
+                    if (!d.loan_live_bytes || broken) continue;
+                    if (cudaSetDevice(d.id) != cudaSuccess) { broken = true; break; }
+                    for (size_t off = 0; off < d.loan_live_bytes && !broken; off += block) {
+                        const size_t size = std::min(block, d.loan_live_bytes - off);
+                        broken = cudaMemcpy(check, d.tail + d.tail_bytes - d.loan_live_bytes + off, size, cudaMemcpyDeviceToHost) != cudaSuccess ||
+                                 std::memcmp(check, d.loan_host + off, size) != 0;
+                    }
+                }
+                if (check) cudaFreeHost(check);
+            }
+            if (broken) {
+                lend_broken = true;
+                std::fprintf(stderr, "DS4_PHASE_LOAN restore failed; engine reload required\n");
+                return false;
+            }
+            for (Layer& l : L) l.pv_n = l.n_slots;
+            for (Dev& d : devs) d.loan_live_bytes = 0;
+            for (const Dev& d : devs) {
+                size_t free = 0, total = 0;
+                if (cudaSetDevice(d.id) == cudaSuccess && mem_info(&free, &total) == cudaSuccess)
+                    std::fprintf(stderr, "DS4_PHASE_LOAN decode_headroom gpu=%d free_bytes=%zu\n", d.id, free);
+            }
+            const double ms = now_ms() - start;
+            st.lent_back_ms += ms;
+            std::fprintf(stderr, "DS4_PHASE_LOAN restored bytes=%zu elapsed_ms=%.3f verified=%d\n",
+                         bytes, ms, int(ds4_env("DS4_CHECK_LEND") != nullptr));
+            return true;
         }
         struct Job {
             int layer, e;
@@ -21102,7 +21347,7 @@ struct Model::Impl {
         // and at most `chunk` - a short prompt in one chunk ran its groups one after another (4K on 4 GPUs: 4 stages
         // back to back); smaller chunks keep every group busy, each chunk re-streaming the experts it picks
         // (DS4_CHUNK_AUTO=1; unset or 0: `chunk` as before)
-        int cr = chunk;
+        int cr = planned_prefill_chunk();
         {
             static const bool on = std::getenv("DS4_CHUNK_AUTO") != nullptr && std::atoi(std::getenv("DS4_CHUNK_AUTO")) != 0;
             static const int pg = std::getenv("DS4_CHUNK_PER_GROUP") ? std::max(1, std::atoi(std::getenv("DS4_CHUNK_PER_GROUP"))) : 2;
@@ -21110,7 +21355,7 @@ struct Model::Impl {
             const int G = (int) groups.size();
             if (on && G > 1) {
                 const int want = (n + pg * G - 1) / (pg * G);
-                cr = std::min(chunk, std::max(cmin, (want + 15) / 16 * 16));
+                cr = std::min(cr, std::max(cmin, (want + 15) / 16 * 16));
             }
         }
         auto part = [&](int a0, int a1) {   // rows [a0, a1) in equal chunks of at most `cr`
@@ -21578,7 +21823,7 @@ struct Model::Impl {
             const auto& c = helper_pf->counts;
             std::fprintf(stderr, "DS4_PREFILL gpu=%d tokens=%d chunk=%d expert_row_picks=%llu vram_row_picks=%llu "
                                  "unique_expert_uses=%llu vram_unique_expert_uses=%llu streamed_weight_bytes=0\n",
-                         helper_id, n, chunk, (unsigned long long) c.rows, (unsigned long long) c.rows,
+                         helper_id, n, planned_prefill_chunk(), (unsigned long long) c.rows, (unsigned long long) c.rows,
                          (unsigned long long) c.uses, (unsigned long long) c.uses);
         }
         const double trc_back = now_ms();
@@ -23724,6 +23969,15 @@ Model::Model() : p_(new Impl) {}
 Model::~Model() = default;
 bool Model::load(const Options& o, std::string& err) {
     if (p_->load(o, err)) return true;
+    if (p_->phase_loan) {
+        std::fprintf(stderr, "ds4: adaptive prefill unavailable (%s); loading with the ordinary chunk cap\n",
+                     err.c_str());
+        p_.reset(new Impl);
+        Options fallback = o;
+        fallback.adaptive_prefill = false;
+        err.clear();
+        return load(fallback, err);
+    }
     if (!p_->tp_auto_redo) return false;
     // (#766) the first pass measured the members' rooms and chose the FFN parts: everything it loaded goes, the load
     // is made again with the parts (its reads mostly from the page cache now)
@@ -23910,6 +24164,11 @@ bool Model::marks_inside(int n, const std::vector<int64_t>& rel) const {
     }();
     return on && p.inner_cost(n, rel) <= p.chunk;
 }
+bool Model::admit_wide_prefill(size_t fresh, bool idle) {
+    return prefill_loan::eligible(fresh, idle, p_->phase_loan) && p_->prefill_headroom();
+}
+void Model::set_wide_prefill(bool wide) { p_->wide_prefill = wide && p_->phase_loan; }
+
 int Model::feed_unit() const { return p_->chunk > 0 ? std::max(p_->chunk, (int) p_->o.max_context) : kWin; }
 bool Model::feed_plan(int n, int logits_rows, int slot, FeedPlan& plan) {
     Impl& p = *p_;

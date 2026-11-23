@@ -63,6 +63,7 @@ struct Options {
     // -1: 2048 on one GPU, 4096 on several, or 8192 with the experts read in place (every chunk streams them all from
     // the files)
     int prefill_chunk = -1;
+    bool adaptive_prefill = false;   // allow automatic 12K admission in the native server
     bool vision = true;               // the vision tower (the checkpoint's vision.* / aligner.*), when it has one
     bool vision_only = false;         // (tests) load the vision tower alone: encode_image() and nothing else
     bool verbose = false;
@@ -254,6 +255,10 @@ public:
     /// Tokens a feed call takes at a time to use the chunked prompt path (all of a prompt: its chunks run as a
     /// pipeline; 16 without it).
     int feed_unit() const;
+    /// Native server admission, using the fresh suffix after prefix reuse.
+    bool admit_wide_prefill(size_t fresh, bool idle);
+    /// Apply the admitted request's size while feeding that request.
+    void set_wide_prefill(bool wide);
     /// A prompt read in parts of whole chunks (--parallel: the other conversations decode between them).  feed_plan()
     /// plans the next n tokens at pos() as feed() (slot < 0) or feed_mark(..., slot) would read them in one call - the
     /// path, the chunks and the prompt skip's cut decided once, over all n - and is false where that call is not a run
