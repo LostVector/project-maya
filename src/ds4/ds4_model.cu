@@ -8421,16 +8421,29 @@ struct Model::Impl {
             bool help;   // (into the helper GPU's pool)
         };
         std::vector<Job> jobs;
-        size_t maxb = 0;
+        size_t maxb = 0, max_region = 0;
+        int exl3_draft = 0;
         for (const Layer& l : L) {
             maxb = std::max(maxb, l.blob);
+            if (l.lay.fmt != gg::kFmtMXFP4) {
+                if (!l.mtp || l.n_vram != l.n_exp || l.nm != 1) {
+                    err = "a GGUF target requires every EXL3 draft expert on one GPU per block";
+                    return false;
+                }
+                exl3_draft += l.n_exp;
+                for (uint64_t bytes : l.region_bytes) max_region = std::max<size_t>(max_region, bytes);
+            }
             for (int e = 0; e < l.n_exp; ++e)
                 if (l.slot[(size_t) e] >= 0 || helper_owned(l, e)) jobs.push_back({l.il, e, l.slot[(size_t) e] < 0});
         }
         std::sort(jobs.begin(), jobs.end(), [&](const Job& a, const Job& b) {
             const Layer &la = L[(size_t) a.layer], &lb = L[(size_t) b.layer];
-            if (la.mx_file[0] != lb.mx_file[0]) return la.mx_file[0] < lb.mx_file[0];
-            return la.mx_off[0] + (uint64_t) a.e * la.mx_stride[0] < lb.mx_off[0] + (uint64_t) b.e * lb.mx_stride[0];
+            const auto key = [](const Layer& l, int e) {
+                if (l.lay.fmt == gg::kFmtMXFP4)
+                    return std::make_pair(l.mx_file[0], l.mx_off[0] + (uint64_t) e * l.mx_stride[0]);
+                return std::make_pair(l.region_file[(size_t) e], l.region_off[(size_t) e]);
+            };
+            return key(la, a.e) < key(lb, b.e);
         });
         std::atomic<size_t> next{0};
         std::atomic<bool> failed{false};
@@ -8441,6 +8454,7 @@ struct Model::Impl {
         std::vector<std::thread> th;
         for (int t = 0; t < 12; ++t)
             th.emplace_back([&] {
+                std::vector<uint8_t> region(max_region);
                 uint8_t *stage = nullptr, *stage2 = nullptr;
                 cudaHostAlloc((void**) &stage, maxb, cudaHostAllocPortable);
                 cudaHostAlloc((void**) &stage2, maxb, cudaHostAllocPortable);
@@ -8449,7 +8463,15 @@ struct Model::Impl {
                     if (i >= jobs.size() || failed.load()) break;
                     const Layer& l = L[(size_t) jobs[i].layer];
                     const int e = jobs[i].e;
-                    bool ok = stage != nullptr && stage2 != nullptr && read_mx(l, e, stage);
+                    bool ok = stage != nullptr && stage2 != nullptr;
+                    if (ok && l.lay.fmt == gg::kFmtMXFP4) {
+                        ok = read_mx(l, e, stage);
+                    } else if (ok) {
+                        ok = l.esplit[(size_t) e] ? read_split(l, e, region.data())
+                                                : pk.read_at(l.region_file[(size_t) e], l.region_off[(size_t) e],
+                                                             l.region_bytes[(size_t) e], region.data());
+                        if (ok) repack(l, e, region.data(), stage);
+                    }
                     if (jobs[i].help)
                         ok = ok && cudaSetDevice(helper_id) == cudaSuccess &&
                              cudaMemcpy(l.helper[(size_t) e], stage, l.blob, cudaMemcpyHostToDevice) == cudaSuccess;
@@ -8458,7 +8480,7 @@ struct Model::Impl {
                         cudaSetDevice(devs[(size_t) x.dev].id);
                         if (l.nm > 1) blob_to_half(l, stage, m, stage2);
                         ok = cudaMemcpy(sat(l, x, l.slot[(size_t) e], unit(x)), l.nm > 1 ? stage2 : stage,
-                                        unit(x), cudaMemcpyHostToDevice) == cudaSuccess;
+                                        slot_bytes(l, x, l.slot[(size_t) e]), cudaMemcpyHostToDevice) == cudaSuccess;
                     }
                     if (!ok) {
                         std::lock_guard<std::mutex> lk(emu);
@@ -8479,6 +8501,8 @@ struct Model::Impl {
             err = ferr;
             return false;
         }
+        if (exl3_draft > 0)
+            std::fprintf(stderr, "ds4: loaded %d EXL3 DSpark experts with the GGUF target\n", exl3_draft);
         if (helper_n > 0) {   // (the helper's pool filled: what it takes of the host RAM is ram_avail's to see now)
             helper_pending = 0;
             const uint64_t av = ram_avail();
@@ -8493,7 +8517,7 @@ struct Model::Impl {
         };
         std::vector<Warm> warm;
         for (const Layer& l : L) {
-            if (away(l.il)) continue;   // (the pool: the other side's layers - never copied into RAM nor read ahead here)
+            if (l.lay.fmt != gg::kFmtMXFP4 || away(l.il)) continue;   // (the pool: the other side's layers - never copied into RAM nor read ahead here)
             const uint32_t* p = prof.data() + (size_t) l.il * g.n_exp;
             double sum = 0;
             for (int e = 0; e < l.n_exp; ++e) sum += p[e];
@@ -8890,6 +8914,7 @@ struct Model::Impl {
         NH = nh;
         cp_lay.assign(L.size(), {0, 0, 0, 0});
         for (const Layer& l : L) {
+            if (l.lay.fmt != gg::kFmtMXFP4) continue;
             size_t off = 0;
             for (int r = 0; r < 3; ++r) {
                 cp_lay[(size_t) l.il][(size_t) r] = off;
@@ -14833,8 +14858,8 @@ struct Model::Impl {
             return false;
         }
         helper_shared = shared != nullptr && std::strcmp(shared, "1") == 0;
-        if (helper_shared && (pk.gguf || g.n_mtp == 0 || o.tp != 2)) {
-            err = "DS4_HELPER_SHARED: requires EXL3, TP2 and loaded DSpark blocks";
+        if (helper_shared && (g.n_mtp == 0 || o.tp != 2)) {
+            err = "DS4_HELPER_SHARED: requires TP2 and loaded DSpark blocks";
             return false;
         }
         if (!helper_shared && std::find(o.gpus.begin(), o.gpus.end(), (int) id) != o.gpus.end()) {
@@ -14905,8 +14930,8 @@ struct Model::Impl {
             err = "DS4_HELPER_PREFILL expects 0 or 1";
             return false;
         }
-        if (helper_n <= 0 || pk.gguf || rh_lead || rh_only() || chunk <= 0 || hr_want > 0) {
-            err = "DS4_HELPER_PREFILL requires a static integrated EXL3 helper and chunked prefill";
+        if (helper_n <= 0 || rh_lead || rh_only() || chunk <= 0 || hr_want > 0) {
+            err = "DS4_HELPER_PREFILL requires a static helper and chunked prefill";
             return false;
         }
 
@@ -14915,8 +14940,10 @@ struct Model::Impl {
         std::vector<helper_prefill::Layer> config((size_t) g.nl);
         for (int il = 0; il < g.nl; ++il) {
             Layer& l = L[(size_t) il];
-            if (l.grp != group || member(l, 0).dev != lead_di || l.n_cls != 1) {
-                err = "DS4_HELPER_PREFILL requires one trunk group and uniform EXL3 layers";
+            const bool uniform = pk.gguf ? l.lay.fmt == gg::kFmtMXFP4 && gg::mx_experts(l.lay)
+                                         : l.n_cls == 1;
+            if (l.grp != group || member(l, 0).dev != lead_di || !uniform) {
+                err = "DS4_HELPER_PREFILL requires one trunk group and uniform EXL3 or MXFP4 layers";
                 return false;
             }
             for (int m = 0; m < l.nm; ++m) {
@@ -14928,6 +14955,7 @@ struct Model::Impl {
             }
             auto& cfg = config[(size_t) il];
             cfg.layout = l.lay;
+            cfg.stride = align256(l.blob);
             for (int e = 0; e < l.n_exp; ++e) {
                 if (!helper_owned(l, e)) continue;
                 l.prefill_helper.push_back(e);
@@ -15065,6 +15093,18 @@ struct Model::Impl {
             at.push_back({&x, helper_used});
             helper_used += b;
             took += x.share;
+        }
+        const char* prefill = ds4_env("DS4_HELPER_PREFILL");
+        if (pk.gguf && prefill != nullptr && std::strcmp(prefill, "1") == 0) {
+            // Keep the chosen experts and bytes fixed. A layer's MXFP4 set kernels read a strided pool.
+            std::sort(at.begin(), at.end(), [](const auto& a, const auto& b) {
+                return std::tie(a.first->layer, a.first->e) < std::tie(b.first->layer, b.first->e);
+            });
+            size_t offset = 0;
+            for (auto& entry : at) {
+                entry.second = offset;
+                offset += align256(L[(size_t) entry.first->layer].blob);
+            }
         }
         helper_prof = helper_used;   // (the profile's experts' bytes; the pool is these and the recent slots)
         helper_used += hr_bytes;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ds4_gguf.cuh"
 #include "ds4_kernels.cuh"
 #include "strata/kernels/exl3.hpp"
 #include <algorithm>
@@ -14,6 +15,7 @@
 
 namespace strata::ds4::helper_prefill {
 namespace ex = strata::kernels::exl3;
+namespace gg = strata::ds4::gguf;
 
 static __global__ void add_result(float* acc, const float* contribution, size_t n) {
     const size_t i = (size_t) blockIdx.x * blockDim.x + threadIdx.x;
@@ -22,6 +24,7 @@ static __global__ void add_result(float* acc, const float* contribution, size_t 
 
 struct Layer {
     ex::ExpertLayout layout;
+    size_t stride = 0;
     std::vector<uint8_t*> pointers;
 };
 
@@ -45,6 +48,8 @@ struct Workspace {
     std::vector<ex::ExpertLayout> layouts;
     std::vector<unsigned long long*> tables;
     std::vector<int> sizes;
+    std::vector<const uint8_t*> bases;
+    std::vector<size_t> strides;
     Counts counts;
 
     // A failed dispatch can leave another rank in the reduction and the helper still accessing the lead's buffers.
@@ -147,7 +152,16 @@ struct Workspace {
             layouts.push_back(l.layout);
             sizes.push_back((int) l.pointers.size());
             unsigned long long* table = nullptr;
-            if (!l.pointers.empty()) {
+            const uint8_t* base = l.pointers.empty() ? nullptr : l.pointers.front();
+            bases.push_back(base);
+            strides.push_back(l.stride);
+            if (base != nullptr && l.layout.fmt == gg::kFmtMXFP4) {
+                for (size_t i = 0; i < l.pointers.size(); ++i)
+                    if (l.pointers[i] != base + i * l.stride) {
+                        err = "DS4_HELPER_PREFILL: MXFP4 expert pointers must be contiguous within a layer";
+                        return false;
+                    }
+            } else if (base != nullptr) {
                 if (!ex::mixed_supported(l.layout)) {
                     err = "DS4_HELPER_PREFILL: unsupported indirect expert layout";
                     return false;
@@ -201,13 +215,10 @@ struct Workspace {
                 "weight copy");
         require(cudaMemsetAsync(acc, 0, activation, stream), "zero helper sum");
 
-        const int launch_errors = ex::launch_errors();
+        const auto& layout = layouts[(size_t) il];
+        const bool mx = layout.fmt == gg::kFmtMXFP4;
+        const int launch_errors = mx ? gg::launch_errors() : ex::launch_errors();
         ex::SetArgs a;
-        a.mix.n = 1;
-        a.mix.lo[0] = (unsigned long long) pool;
-        a.mix.hi[0] = (unsigned long long) pool + pool_bytes;
-        a.mix.lay[0] = layouts[(size_t) il];
-        a.eptr = tables[(size_t) il];
         a.n_exp = ne;
         a.bounds = bounds + first;
         a.row0 = r0;
@@ -215,10 +226,23 @@ struct Workspace {
         a.n_embd = D;
         a.n_ff = FF;
         a.limit = limit;
-        ex::set_gate_up(a, x, D, tokens + r0, hidden, FF, stream);
-        ex::set_down(a, hidden, FF, y, D, stream);
+        if (mx) {
+            a.lay = layout;
+            a.wbase = bases[(size_t) il];
+            a.stride = strides[(size_t) il];
+            gg::set_gate_up(a, x, D, tokens + r0, hidden, FF, stream);
+            gg::set_down(a, hidden, FF, y, D, stream);
+        } else {
+            a.mix.n = 1;
+            a.mix.lo[0] = (unsigned long long) pool;
+            a.mix.hi[0] = (unsigned long long) pool + pool_bytes;
+            a.mix.lay[0] = layout;
+            a.eptr = tables[(size_t) il];
+            ex::set_gate_up(a, x, D, tokens + r0, hidden, FF, stream);
+            ex::set_down(a, hidden, FF, y, D, stream);
+        }
         moe_combine(acc, y, positions, weights, T, k, r0, r1, D, stream);
-        if (ex::launch_errors() != launch_errors) fatal("expert library launch");
+        if ((mx ? gg::launch_errors() : ex::launch_errors()) != launch_errors) fatal("expert library launch");
         require(cudaGetLastError(), "expert kernels");
 
         // Return on the source stream so completion covers both the kernels and the copy.
