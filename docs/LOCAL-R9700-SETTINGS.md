@@ -154,3 +154,23 @@ In two 512-token coding turns, the 3-bit pack freed 1,620 MiB on GPU 2 and
 raised median decode throughput by 3.8% and 7.8%. Each configuration had two
 independent loads. The generated responses differed, and two 16-token turns
 showed mixed results.
+
+## Optional Q4 XL profile
+
+For DeepSeek V4.1 Flash `UD-Q4_K_XL`, keep `--prefill-chunk 8192` and the
+2,048 MiB reserve. The tested profile uses TP2 on GPUs 0 and 1, with the shared
+helper and 3-bit EXL3 DSpark on GPU 2 and vision enabled. Omit the EXL3 target
+packing flag for this profile and use:
+
+```json
+{
+  "MAYA_DS4_MXFP4_PACKED_HOST": "1",
+  "MAYA_DS4_MXFP4_KEEP_CPU": "16"
+}
+```
+
+With the hybrid host layout, median fresh 32K TTFT went from 50.7 to 40.6 s.
+Resumed 32K decode went from 27.1 to 26.8 tok/s, and warm short decode went
+from 30.1 to 28.3 tok/s. Use the ordinary host layout when short decode
+throughput takes priority. The fixed 12K experiment reached 37.5 s and dropped
+below 2,048 MiB of driver-reported free VRAM on GPU 0.

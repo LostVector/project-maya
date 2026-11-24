@@ -2032,6 +2032,7 @@ struct Model::Impl {
 #endif
     }
     bool copy_mode = false;
+    std::vector<uint8_t> mx_packed_slots;   // RAM slots stored as two GPU-ready shards
     static constexpr int kMaxNH = 4;               // (DS4_COPY_NUMA: up to a part per node of a 4-socket host)
     std::vector<std::array<uint8_t*, kMaxNH>> ram_part;   // slot -> its parts
     std::vector<std::array<size_t, 4>> cp_lay;       // layer -> part offsets of gate, up, down rows; a part's bytes
@@ -3267,8 +3268,19 @@ struct Model::Impl {
         }
         return true;
     }
+    bool mx_packed_slot(int slot) const {
+        return slot >= 0 && (size_t) slot < mx_packed_slots.size() && mx_packed_slots[(size_t) slot] != 0;
+    }
+    uint8_t* mx_packed_part(const Layer& l, int slot, int m) const {
+        return ram_part[(size_t) slot][0] + (m == 0 ? 0 : unit(member(l, 0)));
+    }
+    const uint8_t* mx_packed_expert(const Layer& l, int e, int m) const {
+        const int slot = l.ram.empty() ? -1 : l.ram[(size_t) e];
+        return mx_packed_slot(slot) ? mx_packed_part(l, slot, m) : nullptr;
+    }
+
     const uint8_t* mx_mat(const Layer& l, int e, int r) const {   // expert e's matrix r: its RAM-tier slot, else the file's
-        if (!l.ram.empty() && l.ram[(size_t) e] >= 0)   // (a copy with NH > 1: part 0's rows only - whole: read_mx)
+        if (!l.ram.empty() && l.ram[(size_t) e] >= 0 && !mx_packed_slot(l.ram[(size_t) e]))   // (a copy with NH > 1: part 0's rows only - whole: read_mx)
             return copy_mode ? ram_part[(size_t) l.ram[(size_t) e]][0] + cp_lay[(size_t) l.il][(size_t) r]
                              : ram_slots[(size_t) l.ram[(size_t) e]] + l.lay.trellis[r];
         return pk.at(l.mx_file[r], l.mx_off[r] + (uint64_t) e * l.mx_stride[r]);
@@ -3282,7 +3294,7 @@ struct Model::Impl {
     size_t mx_row_b(const Layer& l, int r) const { return mx_part_bytes(l, r) / (size_t) mx_n(r); }
     // part X's rows [X n / NH, ..) of expert e's matrix r: its copy's part on node X, else where the file has them
     const uint8_t* mx_part_ptr(const Layer& l, int e, int r, int X) const {
-        if (copy_mode && l.ram[(size_t) e] >= 0)
+        if (copy_mode && l.ram[(size_t) e] >= 0 && !mx_packed_slot(l.ram[(size_t) e]))
             return ram_part[(size_t) l.ram[(size_t) e]][(size_t) X] + cp_lay[(size_t) l.il][(size_t) r];
         return mx_mat(l, e, r) + (size_t) X * (size_t) (mx_n(r) / NH) * mx_row_b(l, r);
     }
@@ -3294,6 +3306,10 @@ struct Model::Impl {
     }
     // a copy's NH parts -> the blob, and back (each matrix's rows of part X at X n / NH rows into the blob's matrix)
     void ram_to_blob(const Layer& l, int s, uint8_t* blob) const {
+        if (mx_packed_slot(s)) {
+            for (int m = 0; m < l.nm; ++m) mx_half_to_blob(l, mx_packed_part(l, s, m), m, blob);
+            return;
+        }
         for (int r = 0; r < 3; ++r) {
             const size_t nb = (size_t) (mx_n(r) / NH) * mx_row_b(l, r);
             for (int X = 0; X < NH; ++X)
@@ -3301,6 +3317,10 @@ struct Model::Impl {
         }
     }
     void blob_to_ram(const Layer& l, const uint8_t* blob, int s) const {
+        if (mx_packed_slot(s)) {
+            for (int m = 0; m < l.nm; ++m) mx_blob_to_half(l, blob, m, mx_packed_part(l, s, m));
+            return;
+        }
         for (int r = 0; r < 3; ++r) {
             const size_t nb = (size_t) (mx_n(r) / NH) * mx_row_b(l, r);
             for (int X = 0; X < NH; ++X)
@@ -3358,6 +3378,10 @@ struct Model::Impl {
     // of the part where a copy of the whole blob and a 2D copy of the down's rows took ~8x the memcpy and ~35 ms
     bool read_mx_part(const Layer& l, int e, int m, uint8_t* dst) const {
         const Layer& x = member(l, m);
+        if (const uint8_t* packed = mx_packed_expert(l, e, m)) {
+            std::memcpy(dst, packed, unit(x));
+            return true;
+        }
         const size_t dr = gg::type_row_bytes(gg::expert_type(l.lay, 2), g.ff),
                      d0 = gg::type_row_bytes(gg::expert_type(l.lay, 2), x.ff0),
                      dh = gg::type_row_bytes(gg::expert_type(l.lay, 2), x.ffn);
@@ -5950,6 +5974,12 @@ struct Model::Impl {
             // pinned staging as its blob) or from the file's mapping
             // Copied GGUF experts hold whole matrix rows on each NUMA node. mx_mat() is only
             // part 0 in this case; reading a full matrix from it corrupts its second half.
+            if (const uint8_t* packed = src == nullptr ? mx_packed_expert(l, e, m) : nullptr) {
+                if (cudaMemcpyAsync(dst, packed, unit(member(l, m)), cudaMemcpyHostToDevice, cs) == cudaSuccess)
+                    return true;
+                err = "streaming packed MXFP4 layer " + std::to_string(l.il) + " expert " + std::to_string(e);
+                return false;
+            }
             const bool copied = src == nullptr && copy_mode && !l.ram.empty() && l.ram[(size_t) e] >= 0;
             auto copy_rows = [&](int r, uint8_t* out, size_t out_pitch, int first, int rows,
                                  size_t col, size_t width) {
@@ -6150,7 +6180,10 @@ struct Model::Impl {
     bool stream_direct(const Layer& l, int e) const {
         return cp_dma && l.lay.fmt == gg::kFmtMXFP4 && !l.ram.empty() && l.ram[(size_t) e] >= 0;
     }
-    bool stage_needed(const Layer& l, int e) const { return !stream_direct(l, e) || l.nm > 1; }
+    bool stage_needed(const Layer& l, int e) const {
+        if (cp_dma && mx_packed_expert(l, e, 0) != nullptr) return false;
+        return !stream_direct(l, e) || l.nm > 1;
+    }
     // (DS4_FLOW_HELPER, an EXL3 pack in place) expert e of l in the helper's pool: its blob there - the VRAM slots'
     // layout, the bytes its file region repacks to - which the prompt's copy is staged out of instead of the files
     // (the helper's static pool: never rewritten while it holds e).  nullptr: from the files, as before
@@ -6180,7 +6213,8 @@ struct Model::Impl {
             }
             return !flow_check_now || pool_same(l, mi, e, si);
         }
-        if (stream_direct(l, e)) {
+        if (cp_dma && mx_packed_expert(l, e, mi) != nullptr) return true;
+        if (stream_direct(l, e) && mx_packed_expert(l, e, mi) == nullptr) {
             if (l.nm > 1) mx_down_member(l, e, mi, si);
             return true;
         }
@@ -6216,7 +6250,9 @@ struct Model::Impl {
             if (!ok) err = "streaming layer " + std::to_string(l.il) + " expert " + std::to_string(e) + " failed";
             return ok;
         }
-        if (stream_direct(l, e) && (l.nm == 1 || si != nullptr)) {
+        if (const uint8_t* packed = mx_packed_expert(l, e, mi)) {
+            ok = cp(dst, cp_dma ? packed : si, unit(member(l, mi)));
+        } else if (stream_direct(l, e) && (l.nm == 1 || si != nullptr)) {
             const int s = l.ram[(size_t) e];
             if (l.nm == 1) {
                 for (int r = 0; r < 3; ++r) {
@@ -8842,6 +8878,33 @@ struct Model::Impl {
         if (const char* v = std::getenv("DS4_COPY_NUMA"))   // (0 / 1: one part; 2-4: that many, a node each; more
             nh = std::max(1, std::min(kMaxNH, std::atoi(v)));   // than the host's nodes: a test on fewer)
         if (g.ff % nh != 0 || g.dim % nh != 0) nh = 1;
+        const char* packed_env = ds4_env("DS4_MXFP4_PACKED_HOST");
+        const bool pack_mx = packed_env != nullptr && std::strcmp(packed_env, "1") == 0;
+        int keep_cpu_layout = 0;
+        if (pack_mx) {
+            if (const char* keep = ds4_env("DS4_MXFP4_KEEP_CPU")) {
+                char* end = nullptr;
+                const long n = std::strtol(keep, &end, 10);
+                if (end == keep || *end != '\0' || n < 0 || n > g.n_exp) {
+                    err = "DS4_MXFP4_KEEP_CPU must be a number of copied experts per layer";
+                    return false;
+                }
+                keep_cpu_layout = (int) n;
+            }
+            const char* flow_tp = std::getenv("DS4_FLOW_TP");
+            if (nh != 1 || copy_swap || lane_par || direct_copy ||
+                (flow_tp != nullptr && std::atoi(flow_tp) != 0)) {
+                err = "DS4_MXFP4_PACKED_HOST needs one NUMA part, batched prefill, and ordinary static CPU expert copies";
+                return false;
+            }
+            for (const auto& [il, e] : hot) {
+                const Layer& l = L[(size_t) il];
+                if (l.nm != 2 || !gg::mx_experts(l.lay) || unit(member(l, 0)) + unit(member(l, 1)) != l.blob) {
+                    err = "DS4_MXFP4_PACKED_HOST requires MXFP4 TP2 shards with no extra padding";
+                    return false;
+                }
+            }
+        }
         // DS4_COPY_HUGETLB: the copies on explicit 2 MB pages out of the kernel's reserved pool (`sysctl
         // vm.nr_hugepages=N`), so a pin of them (cp_pin, zc_pin) registers 2 MB pages - a transparent-huge-page arena
         // pinned is registered in 4 KB pages, the DMA's translations 512 times as many.  Unset: on only when the
@@ -8987,12 +9050,17 @@ struct Model::Impl {
             int layer, e, slot;
         };
         std::vector<Job> jobs;
+        if (pack_mx) mx_packed_slots.assign(ram_part.size(), 0);
         {
             std::vector<int> next = first;
             for (size_t i = 0; i < take; ++i) {
                 const int il = hot[i].first;
                 if (n_copy[(size_t) il] == 0) continue;
-                jobs.push_back({il, hot[i].second, next[(size_t) il]++});
+                const int slot = next[(size_t) il]++;
+                // hot keeps each layer in decreasing routing-profile order even when layers are interleaved.
+                if (pack_mx && slot - first[(size_t) il] >= keep_cpu_layout)
+                    mx_packed_slots[(size_t) slot] = 1;
+                jobs.push_back({il, hot[i].second, slot});
             }
         }
         if (strict_ram && jobs.size() != hot.size()) { err = "strict RAM: incomplete CPU expert allocation"; return false; }
@@ -9010,10 +9078,15 @@ struct Model::Impl {
         for (int t = 0; t < 12 && !jobs.empty(); ++t)
             th.emplace_back([&] {
                 std::vector<uint8_t> direct_staging;   // thread-local scratch; never aliases NUMA model storage
+                std::vector<uint8_t> packed_source;
                 for (size_t i; (i = ji.fetch_add(1)) < jobs.size() && !bad.load();) {
                     const Job& j = jobs[i];
                     const Layer& l = L[(size_t) j.layer];
-                    for (int r = 0; r < 3; ++r) {
+                    if (mx_packed_slot(j.slot)) {
+                        packed_source.resize(l.blob);
+                        if (!read_mx_file(l, j.e, packed_source.data())) bad.store(true);
+                        else blob_to_ram(l, packed_source.data(), j.slot);
+                    } else for (int r = 0; r < 3; ++r) {
                         const size_t nb = (size_t) (mx_n(r) / NH) * mx_row_b(l, r);
                         for (int X = 0; X < NH; ++X) {
                             const uint64_t off = l.mx_off[r] + (uint64_t) j.e * l.mx_stride[r] + (uint64_t) X * nb;
@@ -9066,6 +9139,9 @@ struct Model::Impl {
 #endif
         }
         copy_mode = true;
+        if (pack_mx)
+            std::fprintf(stderr, "ds4: packed MXFP4 RAM cache holds %zu of %zu experts in TP2 GPU layouts, keeping %d per layer in CPU layout\n",
+                         (size_t) std::count(mx_packed_slots.begin(), mx_packed_slots.end(), 1), jobs.size(), keep_cpu_layout);
         ram_held = (int) jobs.size();
         zc_pin();
         if (!cp_pin_last()) cp_pin();   // (else at the load's end: #589)
@@ -9623,8 +9699,9 @@ struct Model::Impl {
         return true;
     }
     bool zc_ok(const Layer& l, int e) const {   // expert e pulled in place: it has a pinned copy
-        if (!ln_zc || l.ram.empty() || l.ram[(size_t) e] < 0) return false;
-        return zc_slot[(size_t) l.ram[(size_t) e]] != 0;
+        if (!ln_zc || l.ram.empty()) return false;
+        const int slot = l.ram[(size_t) e];
+        return slot >= 0 && !mx_packed_slot(slot) && zc_slot[(size_t) slot] != 0;
     }
     bool zc_layer_full(const Layer& l) const {
         // The device decides before the service thread returns this route's mask, so route-local coverage is not enough.
@@ -11466,8 +11543,23 @@ struct Model::Impl {
                     up[i] = yu[i];
                 }
                 // (part X's rows, from where they are: a copy's part on node X, or the file's)
-                gg::mx_rows(ent_part(l, en, 0, X), gr, E, r0 - X * FFh, r1 - X * FFh, ap, en.n, gp);
-                gg::mx_rows(ent_part(l, en, 1, X), gr, E, r0 - X * FFh, r1 - X * FFh, ap, en.n, up);
+                if (en.src[0] == nullptr && mx_packed_expert(l, en.e, 0) != nullptr) {
+                    for (int m = 0; m < l.nm; ++m) {
+                        const Layer& shard = member(l, m);
+                        const int begin = std::max(r0, shard.ff0), end = std::min(r1, shard.ff0 + shard.ffn);
+                        if (begin >= end) continue;
+                        for (int i = 0; i < en.n; ++i) {
+                            gp[i] = yg[i] + (begin - r0);
+                            up[i] = yu[i] + (begin - r0);
+                        }
+                        const uint8_t* p = mx_packed_expert(l, en.e, m);
+                        gg::mx_rows(p + shard.hlay.trellis[0], gr, E, begin - shard.ff0, end - shard.ff0, ap, en.n, gp);
+                        gg::mx_rows(p + shard.hlay.trellis[1], gr, E, begin - shard.ff0, end - shard.ff0, ap, en.n, up);
+                    }
+                } else {
+                    gg::mx_rows(ent_part(l, en, 0, X), gr, E, r0 - X * FFh, r1 - X * FFh, ap, en.n, gp);
+                    gg::mx_rows(ent_part(l, en, 1, X), gr, E, r0 - X * FFh, r1 - X * FFh, ap, en.n, up);
+                }
                 for (int i = 0; i < en.n; ++i) {
                     float* h = band_q ? yg[i] : c_xhd.data() + (size_t) (en.slot0 + i) * FF + r0;
                     for (int r = r0; r < r1; ++r) {
@@ -11506,7 +11598,21 @@ struct Model::Impl {
                     }
                     yp[i] = c_yd.data() + (size_t) (en.slot0 + i) * E + r0;
                 }
-                gg::mx_rows(ent_part(l, en, 2, X), dr, FF, r0 - X * Eh, r1 - X * Eh, ap, en.n, yp);
+                if (en.src[2] == nullptr && mx_packed_expert(l, en.e, 0) != nullptr) {
+                    // Preserve full-row accumulation order on the CPU. Reassemble just this job's rows.
+                    thread_local std::vector<uint8_t> rows;
+                    rows.resize((size_t) (r1 - r0) * dr);
+                    for (int m = 0; m < l.nm; ++m) {
+                        const Layer& shard = member(l, m);
+                        const size_t width = gg::mx_row_bytes(shard.ffn);
+                        const size_t offset = gg::mx_row_bytes(shard.ff0);
+                        const uint8_t* p = mx_packed_expert(l, en.e, m) + shard.hlay.trellis[2];
+                        for (int r = r0; r < r1; ++r)
+                            std::memcpy(rows.data() + (size_t) (r - r0) * dr + offset, p + (size_t) r * width, width);
+                    }
+                    gg::mx_rows(rows.data(), dr, FF, 0, r1 - r0, ap, en.n, yp);
+                } else
+                    gg::mx_rows(ent_part(l, en, 2, X), dr, FF, r0 - X * Eh, r1 - X * Eh, ap, en.n, yp);
             };
         run_nodes(ne * DB, f);
     }
@@ -13558,7 +13664,9 @@ struct Model::Impl {
         constexpr size_t kGuard = 256;
         const size_t u = unit(x), dev_bytes = u + 2 * kGuard;
         std::vector<uint8_t> whole(l.blob), want(u, 0);
-        if (!read_mx(l, e, whole.data())) return fail("not read");
+        const bool original = mx_packed_expert(l, e, m) != nullptr
+                                  ? read_mx_file(l, e, whole.data()) : read_mx(l, e, whole.data());
+        if (!original) return fail("not read");
         if (l.nm > 1) mx_blob_to_half(l, whole.data(), m, want.data());
         else std::memcpy(want.data(), whole.data(), u);
         uint8_t *stage = nullptr, *back = nullptr, *dv = nullptr;
@@ -14739,20 +14847,23 @@ struct Model::Impl {
                     const Chunk* cp = (size_t) x.dev < chunks.size() ? chunks[(size_t) x.dev].get() : nullptr;
                     if (cp == nullptr || cp->stage == nullptr || cp->flow) continue;
                     any = true;
-                    int e_ram = -1, e_file = -1;
+                    int e_ram = -1, e_packed = -1, e_file = -1;
                     for (int e = 0; e < l.n_exp; ++e) {
-                        const bool in_ram = !l.ram.empty() && l.ram[(size_t) e] >= 0;
-                        if (in_ram && e_ram < 0) e_ram = e;
-                        if (!in_ram && e_file < 0) e_file = e;
+                        const int ram = l.ram.empty() ? -1 : l.ram[(size_t) e];
+                        if (mx_packed_slot(ram)) {
+                            if (e_packed < 0) e_packed = e;
+                        } else if (ram >= 0) {
+                            if (e_ram < 0) e_ram = e;
+                        } else if (e_file < 0) e_file = e;
                     }
-                    for (int e : {e_ram, e_file}) {
+                    for (int e : {e_ram, e_packed, e_file}) {
                         if (e < 0) continue;
                         size_t bad = 0, bad_guard = 0;
                         if (!tp_copy_member(l, m, e, bad, bad_guard, err)) return false;
                         if (bad + bad_guard > 0) {
                             std::fprintf(stderr, "ds4: TP check: prompt copies %s (layer %d, member %d takes %d of %d, expert "
                                                  "%d from %s%s) FAILED: %zu bytes, %zu guard bytes differ\n",
-                                         format(l).c_str(), l.il, m, x.ffn, g.ff, e, e == e_ram ? "RAM" : "the file",
+                                         format(l).c_str(), l.il, m, x.ffn, g.ff, e, e == e_ram ? "RAM" : e == e_packed ? "packed RAM" : "the file",
                                          stream_direct(l, e) ? ", in place" : "", bad, bad_guard);
                             err = "TP check FAILED: prompt copies (layer " + std::to_string(l.il) + ")";
                             return false;
