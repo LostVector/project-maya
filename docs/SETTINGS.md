@@ -2173,6 +2173,7 @@ the first read of the chat 16.7 -> 17.7 s.
 | `MAYA_DS4_RESTORE_TAIL_AUTO` | 1 | the engine leaves the tail point out where it measured its cost higher than reading its tokens again (above); `0`: kept on every read, as before |
 | `MAYA_DS4_MARKS_INSIDE` | on (1) | `0`: the read stops at every point, as before |
 | `MAYA_DS4_BATCH_MARKED_TAIL` | 0 | `1`: for fresh text prompts with a retained tail point, allow a scheduled piece to batch up to 512 rows past that point and save the point inside the feed. |
+| `MAYA_DS4_RESUMED_BATCH_MIN` | off (0) | A minimum of 2–128 fresh tokens enables batched prefill for an idle text request with a reused prefix when the whole remaining suffix fits in one piece and has at most 128 tokens. Requests with images, queued work, or a split suffix take the existing path. |
 
 The opt-in tail batching path keeps the existing scheduler boundary. It applies when the last unshared restore point
 is the requested tail, the piece has at least one prompt chunk before it, and the marked-feed cost check passes.

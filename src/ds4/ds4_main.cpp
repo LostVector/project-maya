@@ -1769,6 +1769,13 @@ int serve(maya::ds4::Model& m, const std::string& eos_list, bool spec, float con
             const char* v = ds4_env("DS4_BATCH_MARKED_TAIL");
             return v != nullptr && std::strcmp(v, "1") == 0;
         }();
+        static const int resumed_batch_min = [] {
+            const char* value = ds4_env("DS4_RESUMED_BATCH_MIN");
+            if (value == nullptr) return 0;
+            char* end = nullptr;
+            const long min = std::strtol(value, &end, 10);
+            return end != value && *end == '\0' && min >= 2 && min <= 128 ? (int) min : 0;
+        }();
         m.set_cancel(stop_now);
         std::string err;
         bool ok = true, stopped = false;
@@ -1832,7 +1839,9 @@ int serve(maya::ds4::Model& m, const std::string& eos_list, bool spec, float con
                     ok = ok && m.feed(r.ids.data() + P.done + n - 1, 1, 1, err);
                 }
             } else {
-                ok = fin ? m.feed_mark(r.ids.data() + P.done, (int) n, 1, 1, err)
+                const bool resumed_batch = resumed_batch_min > 0 && !last_window && fin && idle && !in.queued() &&
+                    P.pics.empty() && P.from > 0 && P.done == P.from && n >= (size_t) resumed_batch_min && n <= 128;
+                ok = fin ? m.feed_mark(r.ids.data() + P.done, (int) n, 1, 1, err, resumed_batch)
                          : m.feed(r.ids.data() + P.done, (int) n, 0, err, (int) (upto - P.done - n));
                 if (ok) took = (size_t) m.fed();
             }
