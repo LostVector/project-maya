@@ -215,13 +215,23 @@ calibration with at least 1,760 MiB on GPU 0. The calibrated run kept at least
 26.58 tok/s, so prefer 8K for decode-heavy use. Confirm the VRAM floor under
 load before using fixed 12K with a different placement or build.
 
-### Experimental FP8 MXFP4 prefill
+### FP8 MXFP4 prefill modes
 
-Set `"MAYA_DS4_MXFP4_WMMA_FP8": "1"` in the engine's `env` to try FP8 matrix
-instructions for the routed MXFP4 prefill tiles. The engine selects the path
-per device on HIP gfx1200 and gfx1201. It retains the usual kernels on other
-devices, for light expert groups, and when tensor cores are disabled.
+Set `MAYA_DS4_MXFP4_WMMA_FP8` in the engine's `env` before startup:
 
-The model files and PCIe payloads remain MXFP4. The GPU expands the weight
-codes to FP8 and rounds activations to FP8 per 32-value block. Leave the
-setting unset for the default FP16 path while model quality is being evaluated.
+| Value | Routed expert matrix prefill |
+| --- | --- |
+| Unset or `0` | FP16, the default |
+| `1` | E4M3 activations with an unrounded amax/448 scale |
+| `2` | E4M3 activations with DeepSeek-style power-of-two E8M0 scales |
+
+Both FP8 modes use groups of 32 activation values and keep the MXFP4
+weight files and PCIe payloads. On mode 2, the activation recipe matches
+DeepSeek's quantizer on Maya's existing FP16 input buffers. Runtime logs
+identify the scale mode. The FP8 paths require HIP gfx1200 or gfx1201 and
+enabled matrix cores. Light expert groups keep their existing kernels.
+
+On our three R9700s, mode 2 cut fresh 32K TTFT by about 13% on two Q4 XL
+prompts at the same residency. Resumed decode was 0.9% and 3.9% slower on
+those continuations. The two FP8 modes traded wins on the prefill timings.
+All three modes passed the same four of five saved coding cases.
