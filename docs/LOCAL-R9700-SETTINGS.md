@@ -215,13 +215,26 @@ calibration with at least 1,760 MiB on GPU 0. The calibrated run kept at least
 26.58 tok/s, so prefer 8K for decode-heavy use. Confirm the VRAM floor under
 load before using fixed 12K with a different placement or build.
 
-### Experimental FP8 MXFP4 prefill
+### FP8 MXFP4 prefill modes
 
-Set `"MAYA_DS4_MXFP4_WMMA_FP8": "1"` in the engine's `env` to try FP8 matrix
-instructions for the routed MXFP4 prefill tiles. The engine selects the path
-per device on HIP gfx1200 and gfx1201. It retains the usual kernels on other
-devices, for light expert groups, and when tensor cores are disabled.
+Set `MAYA_DS4_MXFP4_WMMA_FP8` in the engine's `env` before startup:
 
-The model files and PCIe payloads remain MXFP4. The GPU expands the weight
-codes to FP8 and rounds activations to FP8 per 32-value block. Leave the
-setting unset for the default FP16 path while model quality is being evaluated.
+| Value | Routed expert matrix prefill |
+| --- | --- |
+| Unset or `0` | FP16, the default |
+| `1` | E4M3 activations with an unrounded amax/448 scale |
+| `2` | DeepSeek-style BF16 inputs and E4M3 activations with power-of-two E8M0 scales |
+
+Both FP8 modes quantize groups of 32 activation values and keep the MXFP4
+weight files and PCIe payloads. Mode 2 rounds to BF16 before quantization at
+the gate/up input and after SwiGLU when both projections use MXFP4. A
+mixed-format expert keeps the FP16 intermediate. The FP8 paths require HIP
+gfx1200 or gfx1201 and enabled matrix cores. Light groups keep their
+existing kernels.
+
+On our three R9700s, the earlier E8M0 prototype with FP16 inputs cut fresh
+32K TTFT by about 13% over FP16 matrix prefill on two Q4 XL prompts at the
+same residency. With BF16 inputs, those two prompts took 29.55 and 28.61 s
+versus 30.22 and 28.65 s on a repeated FP16-input E8M0 control. Resumed
+decode was mixed. The coding smoke results cover the earlier FP16-input
+prototype. FP16 matrix prefill remains the default.
