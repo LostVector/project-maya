@@ -223,15 +223,18 @@ Set `MAYA_DS4_MXFP4_WMMA_FP8` in the engine's `env` before startup:
 | --- | --- |
 | Unset or `0` | FP16, the default |
 | `1` | E4M3 activations with an unrounded amax/448 scale |
-| `2` | E4M3 activations with DeepSeek-style power-of-two E8M0 scales |
+| `2` | DeepSeek-style BF16 inputs and E4M3 activations with power-of-two E8M0 scales |
 
-Both FP8 modes use groups of 32 activation values and keep the MXFP4
-weight files and PCIe payloads. On mode 2, the activation recipe matches
-DeepSeek's quantizer on Maya's existing FP16 input buffers. Runtime logs
-identify the scale mode. The FP8 paths require HIP gfx1200 or gfx1201 and
-enabled matrix cores. Light expert groups keep their existing kernels.
+Both FP8 modes quantize groups of 32 activation values and keep the MXFP4
+weight files and PCIe payloads. Mode 2 rounds to BF16 before quantization at
+the gate/up input and after SwiGLU when both projections use MXFP4. A
+mixed-format expert keeps the FP16 intermediate. The FP8 paths require HIP
+gfx1200 or gfx1201 and enabled matrix cores. Light groups keep their
+existing kernels.
 
-On our three R9700s, mode 2 cut fresh 32K TTFT by about 13% on two Q4 XL
-prompts at the same residency. Resumed decode was 0.9% and 3.9% slower on
-those continuations. The two FP8 modes traded wins on the prefill timings.
-All three modes passed the same four of five saved coding cases.
+On our three R9700s, the earlier E8M0 prototype with FP16 inputs cut fresh
+32K TTFT by about 13% over FP16 matrix prefill on two Q4 XL prompts at the
+same residency. With BF16 inputs, those two prompts took 29.55 and 28.61 s
+versus 30.22 and 28.65 s on a repeated FP16-input E8M0 control. Resumed
+decode was mixed. The coding smoke results cover the earlier FP16-input
+prototype. FP16 matrix prefill remains the default.
