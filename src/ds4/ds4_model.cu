@@ -21,7 +21,7 @@
 #include "ds4_helper_prefill.hpp"
 
 #include "ds4_gguf.cuh"
-#if defined(STRATA_USE_HIP)
+#if defined(MAYA_USE_HIP)
 #include "ds4_iq.cuh"
 #endif
 #include "ds4_gguf_cpu.hpp"
@@ -37,6 +37,7 @@
 #include "ds4_part_net.hpp"
 #include "ds4_pcie.cuh"
 #include "ds4_pcie.hpp"
+#include "../core/vram_late.hpp"
 #include "ds4_q6k.cuh"
 #include "ds4_pool.hpp"
 #include "ds4_path_policy.hpp"
@@ -47,13 +48,13 @@
 #include "ds4_ram_slice.hpp"
 #include "ds4_store.hpp"
 #include "ds4_vision.cuh"
-#include "strata/kernels/cpu/exl3_cpu.hpp"
-#include "strata/kernels/exl3.hpp"
-#include "strata/kernels/f16_bits.hpp"
-#include "strata/kernels/glm_fast.hpp"
-#include "strata/kernels/sampler.hpp"
-#include "strata/platform/dedicated.hpp"
-#include "strata/platform/idle_gate.hpp"
+#include "maya/kernels/cpu/exl3_cpu.hpp"
+#include "maya/kernels/exl3.hpp"
+#include "maya/kernels/f16_bits.hpp"
+#include "maya/kernels/glm_fast.hpp"
+#include "maya/kernels/sampler.hpp"
+#include "maya/platform/dedicated.hpp"
+#include "maya/platform/idle_gate.hpp"
 
 #include <cublas_v2.h>
 #include <cuda_runtime.h>
@@ -94,11 +95,11 @@
 #define strtok_r strtok_s
 #endif
 
-namespace strata::ds4 {
-namespace x3 = strata::kernels::exl3;
-namespace kc = strata::kernels::cpu;
-namespace gf = strata::kernels::glmf;
-namespace gg = strata::ds4::gguf;
+namespace maya::ds4 {
+namespace x3 = maya::kernels::exl3;
+namespace kc = maya::kernels::cpu;
+namespace gf = maya::kernels::glmf;
+namespace gg = maya::ds4::gguf;
 
 #define CK(call)                                                                            \
     do {                                                                                    \
@@ -119,7 +120,7 @@ size_t align256(size_t n) { return (n + 255) & ~(size_t) 255; }
 
 // cudaMemGetInfo for the current device - on Windows, an APU's kept within its DEDICATED memory: HIP counts its
 // carve-out plus shared system memory there, and what fills into the shared part pages (Maya-S on a 160 GB Strix Halo,
-// HIP's 172: 2.45 tok/s - strata/platform/dedicated.hpp).  Its total is then the dedicated memory, its free what of
+// HIP's 172: 2.45 tok/s - maya/platform/dedicated.hpp).  Its total is then the dedicated memory, its free what of
 // that is not in use, so every budget read from it (the experts', the prompt path's room, the split's) keeps within
 // it.  DS4_APU_DEDICATED_GB=<n>: n GB (a test: a smaller carve-out), =0: HIP's figures.
 // Linux, an integrated NVIDIA GPU (a DGX Spark's GB10: one memory with the CPU), DS4_UMA_FREE=1 (opt-in until
@@ -130,7 +131,7 @@ size_t align256(size_t n) { return (n + 255) & ~(size_t) 255; }
 uint64_t ram_avail();
 cudaError_t mem_info(size_t* free_b, size_t* total_b) {
     const cudaError_t e = cudaMemGetInfo(free_b, total_b);
-#if !defined(_WIN32) && !defined(STRATA_USE_HIP)
+#if !defined(_WIN32) && !defined(MAYA_USE_HIP)
     const auto env = [](const char* k) {   // (MAYA_DS4_*, else DS4_*)
         const char* v = std::getenv((std::string("MAYA_") + k).c_str());
         return v != nullptr ? v : std::getenv(k);
@@ -147,7 +148,7 @@ cudaError_t mem_info(size_t* free_b, size_t* total_b) {
         }
     }
 #endif
-#if defined(_WIN32) && defined(STRATA_USE_HIP)
+#if defined(_WIN32) && defined(MAYA_USE_HIP)
     int dev = 0;
     if (e != cudaSuccess || cudaGetDevice(&dev) != cudaSuccess) return e;
     static std::mutex mu;
@@ -164,7 +165,7 @@ cudaError_t mem_info(size_t* free_b, size_t* total_b) {
                 ded = (size_t) (std::atof(v) * 1073741824.0);
             } else if (integ != 0) {
                 if (cudaGetDeviceProperties(&prop, dev) == cudaSuccess)
-                    ded = (size_t) strata::platform::dedicated_bytes(prop.luid);
+                    ded = (size_t) maya::platform::dedicated_bytes(prop.luid);
                 else
                     (void) cudaGetLastError();
             }
@@ -620,7 +621,8 @@ struct Dev {
     // (#1026) the VRAM this PC's start and requests allocate after the experts' plan (measured, kept in
     // <pack>/vram-late.txt): kept free beside the reserve, so the reserve is what stays free; late_kept: the file's
     // figure, fr_min: the least free VRAM this run has seen
-    size_t late = 0, late_kept = 0, fr_min = ~(size_t) 0;
+    // late_room: the room the experts' plan had on this GPU at this start - all the figure can still grow by (#1156)
+    size_t late = 0, late_kept = 0, fr_min = ~(size_t) 0, late_room = ~(size_t) 0 >> 2;
     // (the Monitor's map: the prompt chunks' buffers, out of scratch; of the weights, the copies a group's members
     // each hold of the tensors they do not split - what tensor parallel costs beyond one copy, its members' share)
     size_t prompt = 0, tp_w = 0;
@@ -1072,7 +1074,7 @@ struct Worker {
 struct Group {
     std::vector<int> mem;   // device indices, member order (member 0 the lead)
     ArGroup ar, arb;        // a window's all-reduces, a chunk's
-#if defined(STRATA_USE_HIP) || defined(DS4_CUDA_PEER_AR)
+#if defined(MAYA_USE_HIP) || defined(DS4_CUDA_PEER_AR)
     std::array<PeerAr, 2> peer_arb{};
     bool peer_arb_on = false;
 #endif
@@ -1112,7 +1114,7 @@ struct WinPlan {
 // ------------------------------------------------------------------ the model
 struct Model::Impl {
     Options o;
-#if defined(STRATA_USE_HIP) || defined(DS4_CUDA_PEER_AR)
+#if defined(MAYA_USE_HIP) || defined(DS4_CUDA_PEER_AR)
     std::atomic<bool> peer_ar_failed{false}; // sticky across reset: reload after a transport failure
 #endif
     // abliteration (ds4_ablate.hpp): the direction on the host, its scale, the start-up line describing it
@@ -1292,8 +1294,8 @@ struct Model::Impl {
     // a sampled round's drafts: the distribution q each one was drawn from (its kept list, on the head device) for
     // verify()'s rule - a point at the draft for the drafter's argmax; and the chain they were drawn with (verify()
     // checks it is its own)
-    strata::kernels::SpecList* d_specq = nullptr;
-    std::vector<strata::kernels::SpecList> h_specq = std::vector<strata::kernels::SpecList>(kWin);
+    maya::kernels::SpecList* d_specq = nullptr;
+    std::vector<maya::kernels::SpecList> h_specq = std::vector<maya::kernels::SpecList>(kWin);
     bool drafts_q = false;
     float dq_temp = 0.0f, dq_top_p = 1.0f, dq_min_p = 0.0f;
     int dq_top_k = 0;
@@ -1722,7 +1724,7 @@ struct Model::Impl {
     // tokens), a group's beside its all-reduces.  HIP keeps them on the layer's stream: its two cross-stream waits a layer
     // may each cost a round trip through the host on Windows (~1 ms a layer: DS4_HOST_FREE's note).  DS4_HC_STREAM=0 /
     // 1: never / always
-#if defined(STRATA_USE_HIP)
+#if defined(MAYA_USE_HIP)
     static constexpr bool kHcStream = false;
 #else
     static constexpr bool kHcStream = true;
@@ -2165,7 +2167,7 @@ struct Model::Impl {
     // CPU lane (helper_dead) and the layer devices go on
     bool broken() {
         if (lend_broken || front_dead) return true;
-#if defined(STRATA_USE_HIP) || defined(DS4_CUDA_PEER_AR)
+#if defined(MAYA_USE_HIP) || defined(DS4_CUDA_PEER_AR)
         // A timed-out peer collective can leave valid GPU streams but invalid model state.
         // Its error stays set for this process, so reset cannot make a later request safe.
         if (peer_ar_failed.load(std::memory_order_relaxed)) return true;
@@ -2554,7 +2556,7 @@ struct Model::Impl {
         if (d.abl_r == nullptr || abl_on.empty()) return;
         if (wp.nrow <= 0 || wp.nrow != T) {
             if (!abl_on[(size_t) abl_seq()]) return;
-            if (strata::ablcap::on()) return strata::ablcap::put(y, T, g.dim, s);   // (a fitting run: read out)
+            if (maya::ablcap::on()) return maya::ablcap::put(y, T, g.dim, s);   // (a fitting run: read out)
             project_out(y, d.abl_r, abl_scale, g.dim, T, s);
             return;
         }
@@ -2671,7 +2673,7 @@ struct Model::Impl {
         // (a member with a small BAR1 - 256 MiB, no ReBAR - takes the copy engines' P2P but not the kernels' loads
         // and stores: ar2_kernel spun forever on a pair of them, whichever side held the buffers, even 64 KB of them)
         bool reach = true;
-#if defined(STRATA_USE_HIP)
+#if defined(MAYA_USE_HIP)
         // (#809: with the BAR read right, AMD cards engage the peer buffers and the first request hangs in ar2_kernel on
         // a 2x RX 7900 XTX pair; until that is understood they stay host-mapped, as they did while the BAR read as 0)
         reach = false;
@@ -3098,7 +3100,7 @@ struct Model::Impl {
     // same bits (gemv_f32 widens each value exactly; DS4_ROUTER_CHECK=1 compares them at load) - another dtype as F32
     // (f32()).  0 (NVIDIA's default): the F32 copy for every dtype, as before
     bool gate(Dev& d, const std::string& name, GateW& g, std::string& err, size_t* acct, size_t want) {
-#if defined(STRATA_USE_HIP)
+#if defined(MAYA_USE_HIP)
         constexpr bool kBf16Default = true;
 #else
         constexpr bool kBf16Default = false;
@@ -3144,7 +3146,7 @@ struct Model::Impl {
                 if (t->dtype == "F32") std::memcpy(&v, raw.data() + i * 4, 4);
                 else if (t->dtype == "Q8_0") v = q[i];
                 else v = bf16_to_f32(((const uint16_t*) raw.data())[i]);
-                h[i] = strata::kernels::f16_from_f32(v);
+                h[i] = maya::kernels::f16_from_f32(v);
             }
             if (!dalloc(d, p, n, err, acct)) return false;
             cudaSetDevice(d.id);
@@ -3702,7 +3704,7 @@ struct Model::Impl {
             // (#621, 2x / 4x Radeon PRO V620) - there every stream keeps the default priority, as before v1.1.31.
             static const char* prio_env = std::getenv("DS4_STREAM_PRIO");
             bool prio_on = prio_env == nullptr || std::atoi(prio_env) != 0;
-#if defined(STRATA_USE_HIP)
+#if defined(MAYA_USE_HIP)
             if (prio_env == nullptr) {
                 cudaDeviceProp prop{};
                 if (cudaGetDeviceProperties(&prop, d.id) == cudaSuccess && std::strncmp(prop.gcnArchName, "gfx103", 6) == 0) {
@@ -3771,7 +3773,7 @@ struct Model::Impl {
             }
             hc_fuse = std::strcmp(v, "1") == 0 || std::strcmp(v, "2") == 0;
             hc_fuse_win = std::strcmp(v, "2") == 0;
-#ifdef STRATA_HIP_WAVE64
+#ifdef MAYA_HIP_WAVE64
             if (hc_fuse) {   // (its warp roundings are a 32-lane warp's)
                 err = std::string("DS4_HC_FUSE=") + v + " on a wave64 build";
                 return false;
@@ -3837,7 +3839,7 @@ struct Model::Impl {
                 return false;
             }
             decode_trim = (int) b;
-#ifdef STRATA_HIP_WAVE64
+#ifdef MAYA_HIP_WAVE64
             if (decode_trim & 3) {   // (the int8 roundings are a 32-lane warp's)
                 err = std::string("DS4_DECODE_TRIM=") + v + ": bits 1 / 2 on a wave64 build";
                 return false;
@@ -3863,7 +3865,7 @@ struct Model::Impl {
             }
             route_fuse = std::strcmp(v, "1") == 0 || std::strcmp(v, "2") == 0;
             route_fuse_win = std::strcmp(v, "2") == 0;
-#ifdef STRATA_HIP_WAVE64
+#ifdef MAYA_HIP_WAVE64
             if (route_fuse) {   // (its warp reductions are a 32-lane warp's)
                 err = std::string("DS4_ROUTE_FUSE=") + v + " on a wave64 build";
                 return false;
@@ -4285,15 +4287,26 @@ struct Model::Impl {
                     last = l.il;
                 }
             }
-            const Dev& d = devs[di];
-            const double room = (double) d.free0 - (double) keep_b(d);
+            Dev& d = devs[di];
+            double room = (double) d.free0 - (double) keep_b(d);
             if (!whole || need <= 0 || need <= room) continue;
+            // (#1156) the measured figure never keeps a model out that the reserve alone lets in (v1.1.73/74 refused
+            //  here once the figure had grown): it gives way, said once, and cannot grow at this start
+            if (d.late > 0) {
+                const double give = std::min((double) d.late, need - room);
+                const size_t left = (size_t) (((double) d.late - give) / (double) vramlate::kStep) * (size_t) vramlate::kStep;
+                std::fprintf(stderr, "ds4: CUDA%d keeps %zu instead of %zu MiB free beside the %lld MiB reserve: the dense "
+                                     "weights need the room\n", d.id, left >> 20, d.late >> 20, (long long) o.reserve_mib);
+                d.late = left, d.late_room = 0;
+                room = (double) d.free0 - (double) keep_b(d);
+                if (need <= room) continue;
+            }
             char msg[1024];
             std::snprintf(msg, sizeof msg,
                           "CUDA%d has %.2f GB free of %.2f GB, but the dense weights of %s%s need %.2f GB on it "
                           "(attention, shared experts%s): they always stay in VRAM - the CPU lane and --vram-experts "
                           "move only the routed experts. To run it: %s, or more GPUs (the layers are split across "
-                          "them), or close other programs using this GPU",
+                          "them), or close other programs using this GPU%s",
                           d.id, (double) d.free0 / 1e9, (double) d.total / 1e9,
                           first < 0 ? "the drafter"
                                     : ("layers " + std::to_string(first) + "-" + std::to_string(last)).c_str(),
@@ -4303,7 +4316,8 @@ struct Model::Impl {
                                                   std::to_string((int) std::ceil((need + 2.5e9) / 1e9)) +
                                                   " GB of VRAM or more"
                                             : std::string("GPUs with more free VRAM"))
-                              .c_str());
+                              .c_str(),
+                          o.reserve_mib > 0 && need <= (double) d.free0 ? ", or a lower --vram-reserve-mib" : "");
             err = msg;
             return false;
         }
@@ -4562,28 +4576,36 @@ struct Model::Impl {
                 if (!gmap(G, G.arb.pflags, (size_t) G.arb.nm * G.arb.slots * kAr2Blocks * 16, err)) return false;
                 G.arb.ar2 = ar2();
             }
-            // DS4_AR2_DECODE=1 (unset: as before): the decode windows' all-reduces of a group of two (G.ar: the
-            // attention output's and the MoE's, a window's rows) in ar2_kernel too - its exact mode only (1: member 0's
-            // partial plus member 1's, ar_sum_kernel's bits), one launch where xfer_put and ar_sum_kernel were two, the
-            // other's rows read 16 bytes a lane.  Its own progress words: G.arb was copied from G.ar before, so it
-            // shares none of them
-            if (G.ar.nm == 2 && ar2_decode()) {
+            // DS4_AR2_DECODE=1 / 2 (unset: as before): the decode windows' all-reduces of a group of two (G.ar: the
+            // attention output's and the MoE's, a window's rows) in ar2_kernel too, one launch where xfer_put and
+            // ar_sum_kernel were two, the other's rows read 16 bytes a lane.  1: exact (member 0's partial plus member
+            // 1's, ar_sum_kernel's bits); 2: FP16 on the wire, as DS4_AR2=2 (both partials rounded alike, summed in F32
+            // in member order, so the members' copies stay equal; half the bytes over host-mapped rows).  Its own
+            // progress words: G.arb was copied from G.ar before, so it shares none of them
+            if (G.ar.nm == 2 && ar2_decode() > 0) {
                 if (!gmap(G, G.ar.pflags, (size_t) G.ar.nm * G.ar.slots * kAr2Blocks * 16, err)) return false;
-                G.ar.ar2 = 1;
+                G.ar.ar2 = ar2_decode();
             }
         }
         if (ar2() < 0) {
             err = "DS4_AR2 takes 0, 1 or 2";
             return false;
         }
-        if (ar2_decode()) {
+        if (ar2_decode() < 0) {
+            err = "DS4_AR2_DECODE takes 0, 1 or 2";
+            return false;
+        }
+        if (ar2_decode() > 0) {
             std::string on;
             for (const Group& G : groups)
                 if (G.ar.ar2 > 0)
                     for (int m : G.mem) on += (on.empty() ? "CUDA" : ", CUDA") + std::to_string(devs[(size_t) m].id);
             std::fprintf(stderr, "%s%s%s\n", on.empty() ? "ds4: DS4_AR2_DECODE: no group of two - not used" :
                                                        "ds4: DS4_AR2_DECODE: the decode windows' all-reduces on ",
-                         on.c_str(), on.empty() ? "" : " in one launch, the other member's rows read 16 bytes a lane; "
+                         on.c_str(), on.empty() ? "" : ar2_decode() == 2 ?
+                                                       " in one launch, the other member's rows read 16 bytes a lane; "
+                                                       "FP16 on the wire (both partials rounded, summed in F32 in member order)" :
+                                                       " in one launch, the other member's rows read 16 bytes a lane; "
                                                        "the sums bit for bit");
         }
         if (ar2() > 0) {
@@ -4788,12 +4810,32 @@ struct Model::Impl {
         }
         prof.assign((size_t) (g.nl + g.n_mtp) * g.n_exp, 0u);
         if (!o.profile.empty()) {
-            std::FILE* f = std::fopen(o.profile.c_str(), "rb");
-            if (f != nullptr) {
+            std::string from = o.profile;
+            std::FILE* f = std::fopen(from.c_str(), "rb");
+            if (f == nullptr && !o.profile_seed.empty()) {   // (the pack has none yet: the shipped one, as setup copies)
+                from = o.profile_seed;
+                f = std::fopen(from.c_str(), "rb");
+            }
+            if (f == nullptr) {
+                std::fprintf(stderr, "ds4: no expert profile (%s not found): VRAM starts with the experts in their order, "
+                                     "not the most-routed first\n", o.profile.c_str());
+            } else {
                 std::vector<uint32_t> p(prof.size());
                 const size_t n = std::fread(p.data(), 4, p.size(), f);
-                if (n == p.size() || n == (size_t) g.nl * g.n_exp) std::copy(p.begin(), p.begin() + (long) n, prof.begin());
                 std::fclose(f);
+                if (n == p.size() || n == (size_t) g.nl * g.n_exp) {
+                    std::copy(p.begin(), p.begin() + (long) n, prof.begin());
+                    if (from == o.profile)
+                        std::fprintf(stderr, "ds4: expert profile %s\n", from.c_str());
+                    else
+                        std::fprintf(stderr, "ds4: expert profile %s (the shipped one: %s does not exist yet%s)\n",
+                                     from.c_str(), o.profile.c_str(),
+                                     o.profile_readonly ? "" : "; what this run learns is saved there if it can be written");
+                } else {
+                    std::fprintf(stderr, "ds4: expert profile %s ignored: %zu counts, this model takes %zu (%d layers x %d "
+                                         "experts%s)\n", from.c_str(), n, prof.size(), g.nl + g.n_mtp, g.n_exp,
+                                 g.n_mtp > 0 ? ", or the trunk's alone" : "");
+                }
             }
         }
         prof_load = prof;
@@ -5142,7 +5184,7 @@ struct Model::Impl {
                 workers.back()->start();
             }
         if (cp_pin_last()) cp_pin();   // (#589: after every pinned buffer above, before the paths are timed)
-#if defined(STRATA_USE_HIP) || defined(DS4_CUDA_PEER_AR)
+#if defined(MAYA_USE_HIP) || defined(DS4_CUDA_PEER_AR)
         if (!init_peer_ar(err)) return false; // after expert placement: optional scratch does not shrink the expert cache
         if (phase_loan && !groups[(size_t) devs[(size_t) head_dev].grp].peer_arb_on) {
             err = "adaptive prefill needs the exact peer reduction";
@@ -5299,7 +5341,7 @@ struct Model::Impl {
                               (int) D, c.o16, CUDA_R_16F, (int) D, &zero, c.q, CUDA_R_32F, (int) nc, CUBLAS_COMPUTE_32F,
                               CUBLAS_GEMM_DEFAULT_TENSOR_OP) == CUBLAS_STATUS_SUCCESS;
         }
-#if defined(STRATA_USE_HIP)
+#if defined(MAYA_USE_HIP)
         if (ok && nc >= 128 && nc * R <= qn && prompt_f16(devs[di])) {   // (DS4_PROMPT_F16: its FP16-out kernels too)
             ok = cublasGemmEx(c.blas, CUBLAS_OP_T, CUBLAS_OP_N, (int) nc, (int) R, (int) D, &one, c.w16, CUDA_R_16F, (int) D,
                               c.o16, CUDA_R_16F, (int) D, &zero, c.q, CUDA_R_16F, (int) (2 * nc), CUBLAS_COMPUTE_32F,
@@ -5410,7 +5452,7 @@ struct Model::Impl {
     // Maya-XS, experts resident: 16K prompt 524 -> 550 tok/s, the first one after a start 475 -> 550; 1K 492, 256
     // 340) - so the default is capped there; DS4_CHUNK_GFX11=N changes the cap, 0 leaves the default
     int gfx11_chunk_cap(int C) const {
-#if defined(STRATA_USE_HIP)
+#if defined(MAYA_USE_HIP)
         const char* e = std::getenv("DS4_CHUNK_GFX11");
         const int cap = e != nullptr ? std::atoi(e) : kGfx11Chunk;
         if (cap <= 0 || C <= cap || devs.empty()) return C;
@@ -5576,7 +5618,7 @@ struct Model::Impl {
     int planned_prefill_chunk() const { return wide_prefill ? prefill_loan::wide_rows : chunk; }
 
     bool supports_prefill_loan() const {
-#if defined(STRATA_USE_HIP) && defined(__linux__)
+#if defined(MAYA_USE_HIP) && defined(__linux__)
         const char* peer = ds4_env("DS4_HIP_PEER_AR");
         const char* helper_prefill = ds4_env("DS4_HELPER_PREFILL");
         if (!peer || std::strcmp(peer, "1") != 0 || !helper_prefill || std::strcmp(helper_prefill, "1") != 0 ||
@@ -5779,7 +5821,7 @@ struct Model::Impl {
         return true;
     }
 
-#if defined(STRATA_USE_HIP)
+#if defined(MAYA_USE_HIP)
     // MAYA_DS4_PROMPT_F16=1: the prompt's dense GEMMs FP16 in and FP16 out on gfx103x (RDNA 2), widened in place.  rocBLAS
     // is tuned there only for FP16 out (37.7 TFLOPS on an RX 6900 XT, rocBLAS 5.6); FP16 in, FP32 out is a generic fallback
     // (5.6 TFLOPS; both measured with rocBLAS on that card).  Not bit-identical: each output is rounded to
@@ -5817,7 +5859,7 @@ struct Model::Impl {
             const int nc = std::min(cols, m.n - c0);
             if (m.fmt != 0) gg::rows(nc == m.n ? m : gg::view(m, c0, nc), c.w16, false, d.st);   // (a GGUF's)
             else x3::reconstruct_rows(nc == m.n ? m : x3::view(m, c0, nc), c.w16, false, d.st);
-#if defined(STRATA_USE_HIP)
+#if defined(MAYA_USE_HIP)
             if (beta == 0.0f && prompt_f16(d)) {   // (FP16 written at the start of each FP32 row: 2 ldy halves apart)
                 const float one16 = 1.0f;
                 const cublasStatus_t f16 = cublasGemmEx(c.blas, CUBLAS_OP_T, CUBLAS_OP_N, nc, rows, m.k, &one16, c.w16, CUDA_R_16F,
@@ -5853,7 +5895,7 @@ struct Model::Impl {
         return n;
     }
     bool fat_ready(Dev& d, Chunk& c, int D, int FF) {
-#if defined(STRATA_USE_HIP)
+#if defined(MAYA_USE_HIP)
         (void) d, (void) c, (void) D, (void) FF;
         return false;
 #else
@@ -6301,7 +6343,7 @@ struct Model::Impl {
             const char* v = std::getenv("DS4_SKIP_UNPICKED");
             if (v != nullptr && std::strcmp(v, "alt") == 0) return INT_MIN;
             if (v != nullptr) return std::atoi(v) != 0 ? INT_MAX : 0;
-#if defined(STRATA_USE_HIP)
+#if defined(MAYA_USE_HIP)
             return kSkipFiles;
 #else
             const char* r = std::getenv("DS4_SKIP_UNPICKED_ROWS");
@@ -6980,7 +7022,7 @@ struct Model::Impl {
             for (int i = i0; i < j; ++i) max_rows = std::max(max_rows, b[i + 1] - b[i]);
             if (nrows > 0) {
                 x3::SetArgs sa;
-#if defined(STRATA_USE_HIP)
+#if defined(MAYA_USE_HIP)
                 gg::iq::MmqRowsScope mmq_rows(nrows, b + i0);
                 gg::iq::FusedScratchScope fused_x(c.y, (size_t) c.C * D * sizeof(float));   // (the int8 rows)
 #endif
@@ -7199,7 +7241,7 @@ struct Model::Impl {
                         return false;
                     }
                     if (th->dtype == "BF16")
-                        for (uint16_t& h : rows) h = strata::kernels::f16_from_f32(bf16_to_f32(h));
+                        for (uint16_t& h : rows) h = maya::kernels::f16_from_f32(bf16_to_f32(h));
                     if (!dalloc(d, d.mk_share, rows.size(), err, acct) || !dalloc(d, d.mk_erow, (size_t) R, err) ||
                         !dalloc(d, d.mk_ints, (size_t) kWin + 2, err))
                         return false;
@@ -7798,6 +7840,8 @@ struct Model::Impl {
                                                                nullptr, dm.id == helper_id ? 3 : 2) : 0;
                 mroom.push_back(std::max(0.0, (double) fr - (double) keep_b(dm) - (double) deferred) *
                                 o.vram_experts);
+                // (#1156: the experts' room is all the figure can still grow by - a plan with none left is not "short")
+                if (dm.late_room != 0) dm.late_room = (size_t) mroom.back();
                 own.push_back(mroom.back());
                 charged = charged || commit_charged(devs[(size_t) m]);
             }
@@ -8940,7 +8984,7 @@ struct Model::Impl {
         // (Strix Halo) reports itself integrated too, but its GPU memory is mostly a BIOS carve-out apart from the OS's
         // RAM, so it keeps the copy as before until measured there
         bool integ = false;
-#if !defined(STRATA_USE_HIP)
+#if !defined(MAYA_USE_HIP)
         for (const Dev& d : devs) {
             int v = 0;
             if (cudaDeviceGetAttribute(&v, cudaDevAttrIntegrated, d.id) != cudaSuccess) (void) cudaGetLastError();
@@ -9169,7 +9213,7 @@ struct Model::Impl {
     // Windows' one-GPU path pins by need by default (MAYA_DS4_PIN_BY_NEED=0 turns it off): WDDM locks about half
     // the RAM, so pinning every copy fails, and its mapped pointer (one GPU) is what pin by need already takes
     bool pin_by_need() const {
-#if defined(_WIN32) && !defined(STRATA_USE_HIP)
+#if defined(_WIN32) && !defined(MAYA_USE_HIP)
         const char* v = std::getenv("MAYA_DS4_PIN_BY_NEED");
         if (ln_one && (v == nullptr || v[0] == '\0')) return true;
 #endif
@@ -9223,8 +9267,12 @@ struct Model::Impl {
                " dspark " + std::to_string((int) o.dspark) + " vision " + std::to_string((int) o.vision) + " share " +
                std::to_string((int) (o.vram_experts * 1000));
     }
+    static const char* late_fixed() {   // (MAYA_DS4_LATE_MB / DS4_LATE_MB, else every engine's MAYA_VRAM_LATE_MB)
+        const char* v = ds4_env("DS4_LATE_MB");
+        return v != nullptr ? v : std::getenv("MAYA_VRAM_LATE_MB");
+    }
     void late_read() {
-        const char* fixed = ds4_env("DS4_LATE_MB");
+        const char* fixed = late_fixed();
         const std::string f = late_file();
         for (size_t di = 0; di < devs.size(); ++di) {
             Dev& d = devs[di];
@@ -9232,16 +9280,16 @@ struct Model::Impl {
                 d.late = (size_t) std::max(0LL, std::atoll(fixed)) << 20;
             } else if (!f.empty()) {
                 const std::string v = pcie::cal_get(f, late_key(di));
-                d.late = d.late_kept = v.empty() ? 0 : (size_t) std::max(0LL, std::atoll(v.c_str())) << 20;
+                d.late_kept = v.empty() ? 0 : (size_t) std::max(0LL, std::atoll(v.c_str())) << 20;
                 // (the default reserve, not asked for: v1.1.72's plan wherever it holds what the run takes after the
                 //  plan with 128 MiB to spare - only a PC whose default reserve it uses up keeps more free)
-                const size_t res = (size_t) std::max<int64_t>(0, o.reserve_mib) << 20;
-                if (!o.reserve_given && d.late + (128u << 20) <= res) d.late = 0;
+                d.late = vramlate::kept_for(d.late_kept, (size_t) std::max<int64_t>(0, o.reserve_mib) << 20,
+                                            vramlate::asked(o.reserve_given, (size_t) std::max<int64_t>(0, o.reserve_mib) << 20));
             }
             if (d.late > 0)
-                std::fprintf(stderr, "ds4: CUDA%d keeps %zu MiB free beside the %lld MiB reserve: what this PC's start "
-                                     "and requests allocate after the experts' plan%s\n", d.id, d.late >> 20,
-                             (long long) o.reserve_mib, fixed != nullptr ? " (MAYA_DS4_LATE_MB)" : " (measured before)");
+                std::fprintf(stderr, "ds4: CUDA%d keeps %zu MiB free beside the %lld MiB reserve%s\n", d.id, d.late >> 20,
+                             (long long) o.reserve_mib, vramlate::why(fixed != nullptr,
+                                           vramlate::asked(o.reserve_given, (size_t) std::max<int64_t>(0, o.reserve_mib) << 20)).c_str());
         }
     }
     // once loaded (`loaded`) and between requests: the least free VRAM this run has seen against the reserve - the
@@ -9249,11 +9297,11 @@ struct Model::Impl {
     // of the card (not another program's), in steps of 32 MiB; written when it moves by 32 MiB or more, and a reserve
     // found short is said (once a step)
     void late_check(bool loaded) {
-        if (ds4_env("DS4_LATE_MB") != nullptr) return;
+        if (late_fixed() != nullptr) return;
         int cur = 0;
         if (cudaGetDevice(&cur) != cudaSuccess) (void) cudaGetLastError();
         const std::string f = late_file();
-        const int64_t res = (int64_t) std::max<int64_t>(0, o.reserve_mib) << 20, step = 32ll << 20;
+        const int64_t res = (int64_t) std::max<int64_t>(0, o.reserve_mib) << 20;
         for (size_t di = 0; di < devs.size(); ++di) {
             Dev& d = devs[di];
             size_t fr = 0, tot = 0;
@@ -9265,21 +9313,19 @@ struct Model::Impl {
                 std::fprintf(stderr, "ds4: CUDA%d: %zu MiB of VRAM free with everything loaded (the reserve %lld MiB%s)\n",
                              d.id, fr >> 20, (long long) (res >> 20),
                              d.late > 0 ? (", " + std::to_string(d.late >> 20) + " MiB more kept beside it").c_str() : "");
-            if (fr >= d.fr_min) continue;
-            d.fr_min = fr;
-            int64_t want = (int64_t) d.late + res - (int64_t) fr;
-            want = std::min<int64_t>(std::max<int64_t>(0, want), (int64_t) tot / 4);
-            want = (want + step - 1) / step * step;
-            if (std::llabs(want - (int64_t) d.late_kept) < step) continue;
-            if ((int64_t) fr + 2 * step < res && (o.reserve_given || want + 4 * step > res))   // (late_read keeps it)
+            vramlate::Gpu lg{d.late, d.late_kept, d.fr_min};   // (the engines' shared step: src/core/vram_late.hpp)
+            const bool asked = vramlate::asked(o.reserve_given, (size_t) std::max<int64_t>(0, o.reserve_mib) << 20);
+            const vramlate::Step st = vramlate::check(lg, fr, tot, (size_t) res, asked, d.late_room);
+            d.fr_min = lg.fr_min, d.late_kept = lg.kept;
+            if (!st.moved) continue;
+            const int64_t want = st.want;
+            if (st.short_)   // (late_read keeps it)
                 std::fprintf(stderr, "ds4: WARNING - CUDA%d: %zu MiB free, short of the %lld MiB reserve - the next start "
                                      "keeps %lld MiB free beside it for what the start and the requests allocate after "
                                      "the experts' plan%s\n", d.id, fr >> 20, (long long) (res >> 20),
                              (long long) (want >> 20), f.empty() ? " (MAYA_DS4_LATE_FILE=none: not kept)" : "");
-            d.late_kept = (size_t) want;
             // (a start found short, the figure kept for the next one: the server starts the engine once more - #1026)
-            if (loaded && !f.empty() && (int64_t) fr + 2 * step < res && (o.reserve_given || want + 4 * step > res))
-                reserve_short_mib = std::max(reserve_short_mib, (int) (want >> 20));
+            if (loaded && !f.empty() && st.short_) reserve_short_mib = std::max(reserve_short_mib, (int) (want >> 20));
             if (!f.empty())
                 pcie::cal_put(f, late_key(di), std::to_string(want >> 20),
                               [](const std::string& a, const std::string& b) { return os::replace_file(a, b); });
@@ -9294,7 +9340,7 @@ struct Model::Impl {
     void one_gpu_path() {
         bool one = false;
         const char* why = "off (v1.1.27's path: not NVIDIA + one GPU)";
-#if !defined(STRATA_USE_HIP)
+#if !defined(MAYA_USE_HIP)
         one = devs.size() == 1 && groups.size() == 1 && groups[0].mem.size() == 1 && helper_id < 0;
         if (one) {
             cudaDeviceProp pr{};
@@ -9519,7 +9565,7 @@ struct Model::Impl {
     unsigned copy_pin_flags(unsigned f) const {
         if (tri_of(ds4_env("DS4_COPY_PIN_RO")) != 1) return f;
         static bool said = false;
-#if !defined(STRATA_USE_HIP)
+#if !defined(MAYA_USE_HIP)
         bool all = !devs.empty();
         for (const Dev& d : devs) {
             int v = 0;
@@ -9541,7 +9587,7 @@ struct Model::Impl {
     // tp 8 (orcarouter's Mix-256G), the 72 readers ~33 GB/s together, the prompt's limit (nsys: each member's thread
     // staging ~20 of 38 s).  All or none (DS4_COPY_PIN=0: none - the staging, as before); zc_pin's chunks count
     bool cp_dma = false;
-#if defined(_WIN32) && !defined(STRATA_USE_HIP)
+#if defined(_WIN32) && !defined(MAYA_USE_HIP)
     // #794 (Windows, NVIDIA): every GPU's free VRAM in MiB now (-1: the driver's read failed), the current device kept
     std::vector<long long> free_mib_all() const {
         int cur = 0;
@@ -9584,7 +9630,7 @@ struct Model::Impl {
         if (!copy_mode || chunk <= 0 || ram_chunks.empty()) return;
         if (const char* v = std::getenv("DS4_COPY_PIN"); v != nullptr && std::atoi(v) == 0) return;
         const double t0 = now_ms();
-#if defined(_WIN32) && !defined(STRATA_USE_HIP)
+#if defined(_WIN32) && !defined(MAYA_USE_HIP)
         const std::vector<long long> pre = free_mib_all();   // (#794: what the pin does to every GPU's free VRAM)
 #endif
         const size_t nc = ram_chunks.size();
@@ -9611,7 +9657,7 @@ struct Model::Impl {
             for (size_t c = 0; c < nc; ++c)
                 if (mine[c] == 1) cudaHostUnregister(ram_chunks[c]);
             std::fprintf(stderr, "ds4: pinning the copied experts (%.1f GB) failed - the prompt path stages them as before\n", gb);
-#if defined(_WIN32) && !defined(STRATA_USE_HIP)
+#if defined(_WIN32) && !defined(MAYA_USE_HIP)
             {   // (#794: a failed pin, given back, that still left a GPU near empty - said with the numbers)
                 const std::vector<long long> post = free_mib_all();
                 const int h = pin_hurt_dev(pre, post);
@@ -9634,7 +9680,7 @@ struct Model::Impl {
                          gb, pin_room_gb());
             return;
         }
-#if defined(_WIN32) && !defined(STRATA_USE_HIP)
+#if defined(_WIN32) && !defined(MAYA_USE_HIP)
         // #794: on Windows with several NVIDIA GPUs the pin left every GPU at "0 MiB free" and the first request failed
         // with out of memory (DS4_COPY_PIN=0 ran).  A pin that leaves a GPU near empty goes back - the staging, as
         // when the pin fails - and the log has the numbers either way
@@ -9671,7 +9717,7 @@ struct Model::Impl {
         static const bool on = [] {
             const char* v = ds4_env("DS4_PIN_LAST");
             if (v != nullptr && v[0] != '\0') return std::atoi(v) != 0;
-#if defined(_WIN32) && !defined(STRATA_USE_HIP)
+#if defined(_WIN32) && !defined(MAYA_USE_HIP)
             return true;
 #else
             return false;
@@ -10954,7 +11000,7 @@ struct Model::Impl {
             return ec ? 0ull : (unsigned long long) s;
         };
         std::ostringstream id;
-        id << "maya-ds4-session-2 engine=" << STRATA_VERSION << " mtp=" << g.n_mtp << " dim=" << g.dim << " hd=" << g.hd
+        id << "maya-ds4-session-2 engine=" << MAYA_VERSION << " mtp=" << g.n_mtp << " dim=" << g.dim << " hd=" << g.hd
            << " win=" << g.win << " ratios=";
         for (int r : g.ratios) id << r << ",";
         id << " kv=";
@@ -16151,7 +16197,7 @@ struct Model::Impl {
         // 2 ms spin and 20 us sleeps always) without a route it polls every 0.1 ms, after 10x that every 2 ms, and
         // after MAYA_DS4_SERVICE_DEEP_S (60; 0 = never) of quiet it sleeps on the idle gate, MAYA_DS4_SERVICE_DEEP_MS
         // (100) at a time: the thread that reads the engine's input pokes the gate at each line, so the next request
-        // finds it awake (strata/platform/idle_gate.hpp).  The first route after a quiet spell is answered up to one
+        // finds it awake (maya/platform/idle_gate.hpp).  The first route after a quiet spell is answered up to one
         // sleep later, as the GLM path's service thread (src/core/glm_fast_path.cu) already does.
         static const int kIdleMs = [] {
             const char* v = ds4_env("DS4_SERVICE_IDLE_MS");
@@ -16166,11 +16212,11 @@ struct Model::Impl {
             return v ? std::max(1, std::atoi(v)) : 100;
         }();
         // the two sleeps' lengths (issue #951): MAYA_DS4_SERVICE_NAP_US (100) and MAYA_DS4_SERVICE_SLEEP_MS (2)
-        static const int kNapUs = strata::platform::idle_sleep_setting(
-            ds4_env("DS4_SERVICE_NAP_US"), 100, strata::platform::kIdleNapUsMin, strata::platform::kIdleNapUsMax);
-        static const int kSleepMs = strata::platform::idle_sleep_setting(
-            ds4_env("DS4_SERVICE_SLEEP_MS"), 2, strata::platform::kIdleSleepMsMin, strata::platform::kIdleSleepMsMax);
-        strata::platform::IdleGate& gate = strata::platform::idle_gate();
+        static const int kNapUs = maya::platform::idle_sleep_setting(
+            ds4_env("DS4_SERVICE_NAP_US"), 100, maya::platform::kIdleNapUsMin, maya::platform::kIdleNapUsMax);
+        static const int kSleepMs = maya::platform::idle_sleep_setting(
+            ds4_env("DS4_SERVICE_SLEEP_MS"), 2, maya::platform::kIdleSleepMsMin, maya::platform::kIdleSleepMsMax);
+        maya::platform::IdleGate& gate = maya::platform::idle_gate();
         uint64_t gate_seen = 0;
         bool deep = false;
         std::vector<Ent> ents, hents;
@@ -16547,7 +16593,7 @@ struct Model::Impl {
             cudaGetLastError();
             prop.name[0] = 0;
         }
-        return std::string(STRATA_VERSION) + " " + __DATE__ + " " + __TIME__ + " | " + o.pack + " | " + bus + " " +
+        return std::string(MAYA_VERSION) + " " + __DATE__ + " " + __TIME__ + " | " + o.pack + " | " + bus + " " +
                prop.name;
     }
     void lane_put(const std::string& key, const std::string& vals) {
@@ -17755,7 +17801,7 @@ struct Model::Impl {
     // running product at least cum_min) - the lazy head stops where it stops, but not before min_n rows
     bool draft_(int y, std::vector<int>& out, std::vector<float>& conf, std::string& err, int max_n = 0,
                 float conf_min = 0.0f, float cum_min = 0.0f, int min_n = 0) {
-#if defined(STRATA_USE_HIP) || defined(DS4_CUDA_PEER_AR)
+#if defined(MAYA_USE_HIP) || defined(DS4_CUDA_PEER_AR)
         if (peer_ar_failed.load(std::memory_order_relaxed)) {
             err = "peer all-reduce failed; model reload required";
             return false;
@@ -17908,7 +17954,7 @@ struct Model::Impl {
         }
         pp_mark(7);
         h_idx[0] = y;
-        strata::kernels::SamplerParams sp;
+        maya::kernels::SamplerParams sp;
         sp.greedy = true;
         sp.temperature = 0.0f;
         if (drafts_q) {   // the request's own chain: draft i drawn as the model's token i would be (verify's counter + i)
@@ -17926,9 +17972,9 @@ struct Model::Impl {
                 else markov_add(row, d_mk_embed, d_mk_head, d_ints + i, V, R, hd.st);
                 if (drafts_q) {
                     sp.counter = dq_counter + (uint64_t) i;
-                    strata::kernels::sample_draft(hd.logits + (size_t) i * V, 1, V, sp, d_specq + i, d_ints + i + 1, hd.st);
+                    maya::kernels::sample_draft(hd.logits + (size_t) i * V, 1, V, sp, d_specq + i, d_ints + i + 1, hd.st);
                 } else
-                    strata::kernels::sample_tokens(hd.logits + (size_t) i * V, 1, V, nullptr, 0, sp, d_ints + i + 1, hd.st);
+                    maya::kernels::sample_tokens(hd.logits + (size_t) i * V, 1, V, nullptr, 0, sp, d_ints + i + 1, hd.st);
             }
         };
         int made = T;   // the drafts made (rows 0 .. made of the block)
@@ -18225,7 +18271,7 @@ struct Model::Impl {
             cudaSetDevice(hd.id);
         } else {
             CK(cudaMemcpyAsync(d_ints, h_idx, (size_t) n * W * 4, cudaMemcpyHostToDevice, hd.st));
-            strata::kernels::SamplerParams sp;
+            maya::kernels::SamplerParams sp;
             sp.greedy = true;
             sp.temperature = 0.0f;
             for (int c = 0; c < n; ++c)
@@ -18234,7 +18280,7 @@ struct Model::Impl {
                     int* ic = d_ints + (size_t) c * W;
                     if (markov_q8) markov_add_q8(row, d_mk_embed, d_mk_head_q8, ic + i, V, R, hd.st);
                     else markov_add(row, d_mk_embed, d_mk_head, ic + i, V, R, hd.st);
-                    strata::kernels::sample_tokens(row, 1, V, nullptr, 0, sp, ic + i + 1, hd.st);
+                    maya::kernels::sample_tokens(row, 1, V, nullptr, 0, sp, ic + i + 1, hd.st);
                 }
         }
         for (int c = 0; c < n; ++c)
@@ -18254,7 +18300,7 @@ struct Model::Impl {
     // the penalty rows of T picks (on the head device, its stream): row t the last h of toks[0 .. end0 + t), -1 in
     // front; the penalties into sp.  nullptr and h = 0 (sp untouched) for a request without penalties
     // (hist: whose tokens - null: the bound conversation's; a multi step's row: its own conversation's)
-    const int* pen_rows(int64_t end0, int T, strata::kernels::SamplerParams& sp, int& h,
+    const int* pen_rows(int64_t end0, int T, maya::kernels::SamplerParams& sp, int& h,
                         const std::vector<int32_t>* hist = nullptr) {
         const std::vector<int32_t>& toks = hist != nullptr ? *hist : this->toks;
         h = 0;
@@ -18315,7 +18361,7 @@ struct Model::Impl {
         for (int i = 0; i < T; ++i) h_lp_ids[i] = ids[i];
         if (lp_force >= 0) h_lp_ids[T - 1] = lp_force;
         cudaMemcpyAsync(d_lp_ids, h_lp_ids, (size_t) T * sizeof(int32_t), cudaMemcpyHostToDevice, d.st);
-        strata::kernels::SamplerParams sp;
+        maya::kernels::SamplerParams sp;
         int h = 0;
         const int* hr = pen_rows(end0, T, sp, h, hist);
         logprob_rows(rows, g.vocab, T, hr, h, sp.penalty_repeat, sp.penalty_freq, sp.penalty_present, d_lp_ids, lp_k,
@@ -18331,7 +18377,7 @@ struct Model::Impl {
     }
     // DS4_LOGPROBS_CHECK: lp_rows against the host's reference over the same rows and penalty windows (h_pen: the rows
     // pen_rows staged).  A top id may differ where its value agrees with the reference's to 1e-4 (a near tie)
-    void lp_check_rows(const float* rows, int T, const int32_t* pen, int h, const strata::kernels::SamplerParams& sp) {
+    void lp_check_rows(const float* rows, int T, const int32_t* pen, int h, const maya::kernels::SamplerParams& sp) {
         std::vector<float> host((size_t) T * g.vocab);
         if (cudaMemcpy(host.data(), rows, host.size() * sizeof(float), cudaMemcpyDeviceToHost) != cudaSuccess) return;
         for (int t = 0; t < T; ++t) {
@@ -18394,7 +18440,7 @@ struct Model::Impl {
                    const float* bias, int64_t hist_end) {
         Dev& d = devs[(size_t) head_dev];
         cudaSetDevice(d.id);
-        strata::kernels::SamplerParams sp;
+        maya::kernels::SamplerParams sp;
         sp.temperature = temperature;
         sp.greedy = temperature <= 0.0f;
         sp.top_p = top_p;
@@ -18405,7 +18451,7 @@ struct Model::Impl {
         sp.logit_bias = bias;
         int h = 0;
         const int* hr = pen_rows(hist_end, 1, sp, h);
-        strata::kernels::sample_tokens(d.logits + (size_t) row * g.vocab, 1, g.vocab, hr, h, sp, d.tok, d.st);
+        maya::kernels::sample_tokens(d.logits + (size_t) row * g.vocab, 1, g.vocab, hr, h, sp, d.tok, d.st);
         return tok_back(d);
     }
 
@@ -18435,13 +18481,13 @@ struct Model::Impl {
         int m = 0;
         // (penalties: row t counts the tokens up to its own position - y and the drafts before it, toks[0 .. p0 + 1 + t))
         if (temperature <= 0.0f) {
-            strata::kernels::SamplerParams sp;
+            maya::kernels::SamplerParams sp;
             sp.greedy = true;
             sp.temperature = 0.0f;
             sp.logit_bias = cur_bias;
             int h = 0;
             const int* hr = pen_rows(p0 + 1, T, sp, h);
-            strata::kernels::sample_tokens(hd.logits, T, V, hr, h, sp, d_ints + 16, hd.st);   // (the T rows at once)
+            maya::kernels::sample_tokens(hd.logits, T, V, hr, h, sp, d_ints + 16, hd.st);   // (the T rows at once)
             CK(cudaMemcpyAsync(h_idx, d_ints + 16, (size_t) T * 4, cudaMemcpyDeviceToHost, hd.st));
             CK(cudaStreamSynchronize(hd.st));
             while (m < n && h_idx[m] == drafts[(size_t) m]) ++m;
@@ -18459,12 +18505,12 @@ struct Model::Impl {
                     h_specq[(size_t) i].ids[0] = drafts[(size_t) i];
                     h_specq[(size_t) i].p[0] = 1.0;
                 }
-                CK(cudaMemcpyAsync(d_specq, h_specq.data(), (size_t) n * sizeof(strata::kernels::SpecList),
+                CK(cudaMemcpyAsync(d_specq, h_specq.data(), (size_t) n * sizeof(maya::kernels::SpecList),
                                    cudaMemcpyHostToDevice, hd.st));
             }
             for (int i = 0; i < n; ++i) h_idx[i] = drafts[(size_t) i];
             CK(cudaMemcpyAsync(d_ints + 32, h_idx, (size_t) n * 4, cudaMemcpyHostToDevice, hd.st));
-            strata::kernels::SamplerParams sp;
+            maya::kernels::SamplerParams sp;
             sp.greedy = false;
             sp.temperature = temperature;
             sp.top_p = top_p;
@@ -18475,7 +18521,7 @@ struct Model::Impl {
             sp.logit_bias = cur_bias;
             int h = 0;
             const int* hr = pen_rows(p0 + 1, n, sp, h);
-            strata::kernels::sample_verify(hd.logits, n, V, sp, d_specq, d_ints + 32, d_ints + 16, hd.st, hr, h);
+            maya::kernels::sample_verify(hd.logits, n, V, sp, d_specq, d_ints + 32, d_ints + 16, hd.st, hr, h);
             CK(cudaMemcpyAsync(h_idx, d_ints + 16, (size_t) n * 4, cudaMemcpyDeviceToHost, hd.st));
             CK(cudaStreamSynchronize(hd.st));
             while (m < n && h_idx[m] == drafts[(size_t) m]) ++m;
@@ -18577,13 +18623,13 @@ struct Model::Impl {
     // DS4_AR2=1 / 2 (0 / unset: off): a group of two's chunk all-reduces - the attention output's and the MoE's - in
     // ar2_kernel: the put and the sums pipelined in pieces, the other member's rows read 16 bytes a lane.  1:
     // ar_sum_kernel's sums bit for bit; 2: FP16 on the wire (both partials rounded, summed in F32 in member order).
-    // Decode's all-reduces (G.ar) never take it.  Another value: the load refuses (-1).  Unset: 1 on NVIDIA (the same
+    // Decode's all-reduces (G.ar) take DS4_AR2_DECODE's instead.  Another value: the load refuses (-1).  Unset: 1 on NVIDIA (the same
     // sums, prompt +1.5% at 8K and +3% at 32K on 3x V100 --tp 2, v1.1.55), 0 on AMD (its peer path's calibration
     // decides there, below)
     static int ar2() {
         static const int v = [] {
             const char* e = ds4_env("DS4_AR2");
-#if defined(STRATA_USE_HIP)
+#if defined(MAYA_USE_HIP)
             if (e == nullptr || *e == 0) return 0;
 #else
             if (e == nullptr || *e == 0) return 1;
@@ -18593,14 +18639,16 @@ struct Model::Impl {
         }();
         return v;
     }
-    static bool ar2_decode() {   // (DS4_AR2_DECODE: see the groups' setup)
-        static const bool on = [] {
+    static int ar2_decode() {   // (DS4_AR2_DECODE 0 / 1 / 2: see the groups' setup; another value -1, the load refuses)
+        static const int v = [] {
             const char* e = ds4_env("DS4_AR2_DECODE");
-            return e != nullptr && std::atoi(e) != 0;
+            if (e == nullptr || *e == 0) return 0;
+            const int x = std::atoi(e);
+            return (x >= 0 && x <= 2 && std::strspn(e, "0123456789") == std::strlen(e)) ? x : -1;
         }();
-        return on;
+        return v;
     }
-#if defined(STRATA_USE_HIP) || defined(DS4_CUDA_PEER_AR)
+#if defined(MAYA_USE_HIP) || defined(DS4_CUDA_PEER_AR)
     // Optional transport scratch is allocated only after expert placement. Failure leaves the
     // original host transport intact for both ranks, without changing expert cache capacity.
     bool init_peer_ar(std::string& err) {
@@ -18814,7 +18862,7 @@ struct Model::Impl {
             const char* e = std::getenv("DS4_AR_DMA");
             return e == nullptr || std::atoi(e) != 0;
         }();
-#if defined(STRATA_USE_HIP) || defined(DS4_CUDA_PEER_AR)
+#if defined(MAYA_USE_HIP) || defined(DS4_CUDA_PEER_AR)
         Group& pg = groups[(size_t) d.grp];
         if (pg.peer_arb_on) {
             // A failed launch cannot silently switch a single rank to another transport.
@@ -21568,7 +21616,7 @@ struct Model::Impl {
     bool forward_chunks(const int* tk, int n, int logits_rows, std::string& err, int snap_slot = -1,
                         const FeedPlan* whole = nullptr, int k0 = 0, int k1 = 0, int after = 0,
                         const std::vector<std::pair<int64_t, bool>>* inner = nullptr) {
-#if defined(STRATA_USE_HIP) || defined(DS4_CUDA_PEER_AR)
+#if defined(MAYA_USE_HIP) || defined(DS4_CUDA_PEER_AR)
         if (peer_ar_failed.load(std::memory_order_relaxed)) {
             err = "peer all-reduce failed; model reload required";
             return false;
@@ -21931,7 +21979,7 @@ struct Model::Impl {
                              "(rows handed over in %.0f ms%s)\n", n, run.T.size(), trc_lent - trc_t0, trc_go - trc_lent,
                              trc_done - trc_go, now_ms() - trc_done, ptx.send_ms, ptx.shm ? ", shared memory" : "");
         }
-#if defined(STRATA_USE_HIP) || defined(DS4_CUDA_PEER_AR)
+#if defined(MAYA_USE_HIP) || defined(DS4_CUDA_PEER_AR)
         if (!check_peer_ar(err)) return false;
         // A worker's early failure can leave peers with different submission sequences. Do not reuse the model.
         for (const std::string& e : errs)
@@ -21980,7 +22028,7 @@ struct Model::Impl {
         const double trc_back = now_ms();
         st.layer_ms += now_ms() - tl;
         eg_stats();
-#if defined(STRATA_USE_HIP)
+#if defined(MAYA_USE_HIP)
         if (prompt_f16_check())   // (DS4_PROMPT_F16_CHECK: FP16's range, on every device)
             for (Dev& dv : devs) {
                 if (!prompt_f16(dv)) continue;
@@ -22284,7 +22332,7 @@ struct Model::Impl {
     }
 
     bool forward(const int* tk, int T, int logits_rows, std::string& err, int seed_rows = -1) {
-#if defined(STRATA_USE_HIP) || defined(DS4_CUDA_PEER_AR)
+#if defined(MAYA_USE_HIP) || defined(DS4_CUDA_PEER_AR)
         if (peer_ar_failed.load(std::memory_order_relaxed)) {
             err = "peer all-reduce failed; model reload required";
             return false;
@@ -23563,7 +23611,7 @@ struct Model::Impl {
         if (part_link()) return part_sample(temperature, top_p, top_k, min_p, seed, counter);
         Dev& d = devs[(size_t) head_dev];
         cudaSetDevice(d.id);
-        strata::kernels::SamplerParams sp;
+        maya::kernels::SamplerParams sp;
         sp.temperature = temperature;
         sp.greedy = temperature <= 0.0f;
         sp.top_p = top_p;
@@ -23575,7 +23623,7 @@ struct Model::Impl {
         int h = 0;
         const int* hr = pen_rows((int64_t) toks.size(), 1, sp, h);   // (the last fed token's row: every token consumed)
         const float* row = d.logits + (size_t) std::max(0, n_logits - 1) * g.vocab;
-        strata::kernels::sample_tokens(row, 1, g.vocab, hr, h, sp, d.tok, d.st);
+        maya::kernels::sample_tokens(row, 1, g.vocab, hr, h, sp, d.tok, d.st);
         const int t = tok_back(d);
         if (t >= 0) lp_pick(row, 1, &t, (int64_t) toks.size());
         return t;
@@ -23614,7 +23662,7 @@ struct Model::Impl {
     // `spec` each run is a verify window (its backups kept, its drafter rings left for verify_multi to seed with the
     // rows it keeps), without it every row seeds its conversation's drafter rings here
     bool step_runs(const int* sv, const int* const* toks, const int* lens, int n, bool spec, std::string& err) {
-#if defined(STRATA_USE_HIP) || defined(DS4_CUDA_PEER_AR)
+#if defined(MAYA_USE_HIP) || defined(DS4_CUDA_PEER_AR)
         if (peer_ar_failed.load(std::memory_order_relaxed)) {
             err = "peer all-reduce failed; model reload required";
             return false;
@@ -23770,19 +23818,19 @@ struct Model::Impl {
         int m = 0;
         // (penalties: row t counts the tokens up to its own position - y and the drafts before it, q.toks[0 .. p0 + 1 + t))
         if (temperature <= 0.0f) {
-            strata::kernels::SamplerParams sp;
+            maya::kernels::SamplerParams sp;
             sp.greedy = true;
             sp.temperature = 0.0f;
             sp.logit_bias = cur_bias;
             int h = 0;
             const int* hr = pen_rows(r.p0 + 1, r.n, sp, h, &q.toks);
-            strata::kernels::sample_tokens(lg, r.n, V, hr, h, sp, d_ints + 16, hd.st);
+            maya::kernels::sample_tokens(lg, r.n, V, hr, h, sp, d_ints + 16, hd.st);
             CK(cudaMemcpyAsync(h_idx, d_ints + 16, (size_t) r.n * 4, cudaMemcpyDeviceToHost, hd.st));
             CK(cudaStreamSynchronize(hd.st));
             while (m < n && h_idx[m] == drafts[(size_t) m]) ++m;
             next = h_idx[m];
         } else {   // (the drafter's argmax: q a point at each draft - verify()'s rule)
-            strata::kernels::SamplerParams sp;
+            maya::kernels::SamplerParams sp;
             sp.greedy = false;
             sp.temperature = temperature;
             sp.top_p = top_p;
@@ -23798,12 +23846,12 @@ struct Model::Impl {
                     h_specq[(size_t) k].p[0] = 1.0;
                     h_idx[k] = drafts[(size_t) k];
                 }
-                CK(cudaMemcpyAsync(d_specq, h_specq.data(), (size_t) n * sizeof(strata::kernels::SpecList),
+                CK(cudaMemcpyAsync(d_specq, h_specq.data(), (size_t) n * sizeof(maya::kernels::SpecList),
                                    cudaMemcpyHostToDevice, hd.st));
                 CK(cudaMemcpyAsync(d_ints + 32, h_idx, (size_t) n * 4, cudaMemcpyHostToDevice, hd.st));
                 int h = 0;
                 const int* hr = pen_rows(r.p0 + 1, n, sp, h, &q.toks);
-                strata::kernels::sample_verify(lg, n, V, sp, d_specq, d_ints + 32, d_ints + 16, hd.st, hr, h);
+                maya::kernels::sample_verify(lg, n, V, sp, d_specq, d_ints + 32, d_ints + 16, hd.st, hr, h);
                 CK(cudaMemcpyAsync(h_idx, d_ints + 16, (size_t) n * 4, cudaMemcpyDeviceToHost, hd.st));
                 CK(cudaStreamSynchronize(hd.st));
                 while (m < n && h_idx[m] == drafts[(size_t) m]) ++m;
@@ -23813,7 +23861,7 @@ struct Model::Impl {
                 sp.counter = counter + (uint64_t) n;
                 int h = 0;
                 const int* hr = pen_rows(r.p0 + 1 + n, 1, sp, h, &q.toks);
-                strata::kernels::sample_tokens(lg + (size_t) n * V, 1, V, hr, h, sp, hd.tok, hd.st);
+                maya::kernels::sample_tokens(lg + (size_t) n * V, 1, V, hr, h, sp, hd.tok, hd.st);
                 CK(cudaMemcpyAsync(&next, hd.tok, 4, cudaMemcpyDeviceToHost, hd.st));
                 CK(cudaStreamSynchronize(hd.st));
             }
@@ -23900,7 +23948,7 @@ struct Model::Impl {
         if (row < 0 || row >= (int) mrows.size() || row >= n_logits) return -1;
         Dev& d = devs[(size_t) head_dev];
         cudaSetDevice(d.id);
-        strata::kernels::SamplerParams sp;
+        maya::kernels::SamplerParams sp;
         sp.temperature = temperature;
         sp.greedy = temperature <= 0.0f;
         sp.top_p = top_p;
@@ -23912,7 +23960,7 @@ struct Model::Impl {
         const std::vector<int32_t>& hist = seq_tokens(mrows[(size_t) row]);
         int h = 0;
         const int* hr = pen_rows((int64_t) hist.size(), 1, sp, h, &hist);
-        strata::kernels::sample_tokens(d.logits + (size_t) row * g.vocab, 1, g.vocab, hr, h, sp, d.tok, d.st);
+        maya::kernels::sample_tokens(d.logits + (size_t) row * g.vocab, 1, g.vocab, hr, h, sp, d.tok, d.st);
         const int t = tok_back(d);
         if (t >= 0) lp_pick(d.logits + (size_t) row * g.vocab, 1, &t, (int64_t) hist.size(), &hist);
         return t;
@@ -24582,4 +24630,4 @@ Model::Tiers Model::tiers() const {
     return t;
 }
 
-}  // namespace strata::ds4
+}  // namespace maya::ds4

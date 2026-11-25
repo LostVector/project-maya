@@ -4,7 +4,7 @@
 #include <array>
 #include <thread>
 
-using strata::ds4::PrefillCounts;
+using maya::ds4::PrefillCounts;
 #define CHECK(expr) do { if (!(expr)) { std::fprintf(stderr, "line %d: %s\n", __LINE__, #expr); return 1; } } while (0)
 
 int main() {
@@ -60,7 +60,7 @@ int main() {
     for (int i = 0; i < devices; ++i)
         workers[i] = std::thread([&, i] {
             PrefillCounts local;
-            strata::ds4::PrefillCountsCapture capture{per_device[i], local};
+            maya::ds4::PrefillCountsCapture capture{per_device[i], local};
             const int count = i == 0 ? 0 : i == devices - 1 ? rounds / 4 : rounds;
             const int bounds[] = {0, 2, 5, 10};
             for (int j = 0; j < rounds; ++j) {
@@ -92,9 +92,9 @@ int main() {
     CHECK(cumulative.picks == 2 * expected_picks && cumulative.vram_picks == 2 * expected_hits);
     PrefillCounts delegated, outer;
     {
-        strata::ds4::PrefillCountsCapture outer_capture{delegated, outer};
+        maya::ds4::PrefillCountsCapture outer_capture{delegated, outer};
         PrefillCounts inner;
-        strata::ds4::PrefillCountsCapture inner_capture{delegated, inner};
+        maya::ds4::PrefillCountsCapture inner_capture{delegated, inner};
         CHECK(inner.add_bounds(a, 3, 2));
     }
     CHECK(delegated.picks == 101 && delegated.vram_picks == 100);

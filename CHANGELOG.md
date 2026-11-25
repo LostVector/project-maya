@@ -4,6 +4,85 @@ Every release is on GitHub (Releases) with these notes; every published change m
 page's Settings › About and updates (About > Update before the redesign; from v1.0.18), or `git pull`, then `./setup.sh` (Windows: `START-MAYA.bat`) - it recompiles
 only what changed and starts; the model is not downloaded again.
 
+## v1.1.78 - 2026-11-24
+
+The full GLM-5.3 runs again, Inkling 2 Mini keeps its drafter with pictures on, and the setup is shorter and quieter.
+
+- **Fix: the full GLM-5.3 failed every request since v1.1.75 (#1200, #1191)** with "kernel launch(es) failed". It answers again. GLM-5.3-Flash was not affected. Maya now checks this at load, and every release is tested with the full model too.
+- **Fix: Inkling 2 Mini lost its drafter on 24 GB cards when pictures were on** (the setup's default), so it decoded at plain speed. The drafter now always loads; the picture reader uses the GPU when there is room at that moment and the CPU otherwise. Verified on a card limited to 24 GB - if you have a 24 GB RTX card, please report your `./maya.sh --bench` line.
+- **Fix: DeepSeek could end a turn empty after thinking (#1206, #1207).** The turn now gets its answer, and a tool call written inside the thinking is read out of it.
+- **Fix: stopping the server while a model was loading left the engine running (#1181).** The engine now ends with the server, on Linux and Windows.
+- **Fix: temporary picture folders piled up (#1180).** They are removed when the server ends, and old ones are cleaned at start.
+- **Fix: GLM on Linux kept several GB of file mappings in memory after loading (#1182).** They are released once the model is in VRAM: about 6.4 GB less on GLM-5.3-Flash, the same answers and speed.
+- **Fix: the DeepSeek speed calibration could be fooled by a kept conversation (#1203);** it now measures on a clean slot.
+- **DeepSeek across PCs on a slow link (#1143):** the choice near the 1 ms mark no longer flips between starts (`MAYA_DS4_RING_FAST_LINK=0` keeps the old mark).
+- **Setup: shorter and quieter.** The picture reader compiles only what Maya's models use (19-28% less time for that step, identical results), and each compile step shows one progress line; the full output goes to `build-engine.log` / `build-vision.log` (`--full-build-output` shows it as before). If the lean build fails, the setup falls back to the full one.
+- **A note at start** when NVIDIA-only DeepSeek switches are set on a single AMD GPU, where they do not apply (#1120).
+- **Benchmark:** `--bench` now starts the engine exactly as the server does, and `--bench --bench-smoke` gives a short check.
+- **Credits.** #1191 was contributed by @Cass67, and #1207 by @lmh555168. The rest of this release is by @mw00 (peasantsmith).
+
+## v1.1.77 - 2026-11-24
+
+Fixes for PCs that could not run Maya, steadier answers, and a batch of same-answer speed-ups from the community.
+
+- **Fix: DeepSeek could read out of range when a routing row had no valid score (#1114).** It now stays in range and drops that pick.
+- **Fix: DeepSeek packs without an expert profile (#1161)** start from the profile Maya ships, and the load says which profile it read.
+- **Fix: GLM-5.3-Flash with the DFlash drafter (#1137):** the first answer token after a forced end of thinking continued the thinking.
+- **Fix: pictures (#915):** picture data is kept while a request is being prepared.
+- **Fix: Windows setup (#1128)** also finds Visual Studio through a standalone `vswhere` on the PATH.
+- **Fix: Inkling 2 Mini's engine could hang on exit after a fatal error (#1136);** it now ends at once.
+- **Fix: building with plain `cmake`** (without Maya's setup) failed since v1.1.75.
+- **Inkling 2 Mini on small NVIDIA cards: the first start runs at full speed.** The one-time drafting measurement no longer borrows VRAM from the experts for the rest of that session, and it times plain decoding on the real layout.
+- **GLM-5.3-Flash: answers stay the same after an update.** The CPU timing Maya measures once is now kept per PC, not per version; `--speed-calibration` measures again. On Linux PCs with two CPU sockets and three or more GPUs, the CPU helper threads are pinned one per core (`MAYA_GLM_CPU_PIN=0` turns it off), so a fresh measurement is the same every time; a fresh install there may word answers differently from a fresh v1.1.76 install, an updated one keeps its answers.
+- **Same-answer speed-ups from the community:** Hy4-Flash on AMD with the CPU helping under tensor parallel (#1168, the author measured +53% on Maya-M), faster sums on Radeon RDNA cards (#1164), Hy4-Flash on Radeon RX 7900-class cards (#1150, #1151), and GLM-5.3-Flash decoding (#1138, #1139). #1168, #1150 and #1151 run on hardware we do not own - please report how they do.
+- **A malformed request now gets a clear "400 bad request"** on all three APIs instead of an internal error.
+- **Benchmark and release checks:** `--bench` fixes (the first-start label, the Windows log, `--bench-lock-ok`), and new tools that test only what a release changed and compare every night against the last release (docs/RELEASE-CHECKS.md).
+- **Credits.** #1168, #1164, #1161, #1151 and #1150 were contributed by @Antero128; #1139, #1138 and #1137 by @vdkcf; #1128 by @Thymos2027; #915 by @jorphex. The rest of this release is by @mw00 (peasantsmith).
+
+## v1.1.76 - 2026-11-23
+
+A fix release: since v1.1.73 some PCs could no longer load a model when a VRAM reserve was set. That is fixed, and the VRAM Maya keeps free is now always shown.
+
+- **Fix: a model that no longer loaded with a VRAM reserve (#1026).** Since v1.1.73 Maya keeps a measured amount of VRAM free on top of your reserve, so the reserve stays free while it runs. On cards with little room that amount could keep growing (up to a quarter of the card), and DeepSeek then refused to load a model that loaded before. It is now capped at 1 GB, DeepSeek lowers it instead of refusing, and amounts saved by earlier versions shrink by themselves.
+- **Nothing kept free silently (#1156).** Every engine now says at the start how much VRAM it keeps free beside the reserve and why, and `MAYA_VRAM_LATE_MB=0` turns it off (DeepSeek honours it too). When a model truly cannot fit, the message names `--vram-reserve-mib` where lowering it helps.
+- **AMD:** the reserve the setup writes by itself is treated as the default, so nothing extra is kept on top of it; a reserve you set keeps the measured extra as above. Existing configs get this at the next setup.
+- **Fix: a slow server start where the network's name lookups are slow or down.** The server looked up its own address's host name at every start (nothing used the answer); it no longer does.
+- **Without a reserve setting nothing changes:** the same placement, answers and speed as v1.1.75.
+
+## v1.1.75 - 2026-11-23
+
+Inkling 2 Mini drafting is the star of this release: on an RTX 3090 new code goes from 140 to about 200 tok/s with the same tokens, drafting now works at every context up to 1M, and Maya turns it on wherever your PC measures it faster. GLM-5.3-Flash gives the same answers on every start, and a standard benchmark compares two builds in minutes.
+
+- **Inkling 2 Mini drafting (#1154).** The drafter loads as a GGUF, fits beside the full 262,144-token context on a 24 GB card, and each drafting step is about 30% shorter, with the same tokens as without drafting.
+- **Drafting at every context, up to 1M.** Above 262K on a 24 GB card the experts that don't fit stay in RAM; drafting now works there too, with the same tokens.
+- **Drafting wherever it is faster.** `--drafting auto` (the default) measures your PC once - no drafting, earlier text of the chat, the drafter - and keeps the fastest, now also on V100 / RTX 20 cards, on two GPUs, and where the CPU helps with experts. Deep in a long chat the drafter steps aside while it is not winning.
+- **Inkling 2 Mini's drafter and picture file come from Maya's own repo.** The setup downloads the GGUF drafter (0.4 GB) at your next setup; existing copies are reused.
+- **Inkling 2 Mini on Radeon cards from 12 GB (Linux).** The experts that don't fit stay in RAM, as on NVIDIA. We tested it with a Gorgon Halo set as a 12 / 16 GB card; reports from Radeon owners are very welcome.
+- **GLM-5.3-Flash: the same answers on every start.** Choices that followed how fast something happened to run are now measured once on your PC and kept. Prompt reading is about 2% slower for it; answers may be worded differently from v1.1.74's. `MAYA_GLM_SAME_ANSWERS=0` brings back the old behaviour.
+- **GLM-5.3-Flash: faster decoding on three or more V100s.**
+- **Hy4-Flash: the first start answers like the rest.** Maya ships each size's expert-use file, so a fresh install places its experts the same way from the very first start.
+- **Hy4-Flash on the Monitor (#1127):** the Saved line, VRAM hit, what fills the GPUs and where the experts live, from the start.
+- **A standard benchmark.** `./maya.sh --bench` checks the PC is quiet, warms up and reports medians with one result line; `./maya.sh --bench --compare <folder or git ref>` compares two builds on the same PC, answers first, in a few minutes.
+- **Fix: Inkling 2 Mini on two GPUs through the server** stopped at the first request in v1.1.74.
+- **Maya's own names inside:** the engine's internal folders and build options are now Maya's (`include/maya`, `MAYA_*`); the old `STRATA_*` options and settings still work for now.
+- **Credits.** Inkling 2 Mini's drafting (#1154) and the Hy4-Flash Monitor (#1127) were contributed by @needmorevram. The rest of this release is by @mw00 (peasantsmith).
+
+## v1.1.74 - 2026-11-22
+
+Inkling 2 Mini now runs on Windows, on two GPUs and with up to its full 1M-token context, and answers several chats at once. Hy4-Flash is faster on tensor parallel, and there are fixes for the VRAM reserve and GPU-to-GPU copies.
+
+- **Inkling 2 Mini on Windows (NVIDIA).** The same cards as on Linux: V100 / RTX 20 and newer from 8 GB, with the experts that don't fit in RAM.
+- **Inkling 2 Mini on two GPUs (Linux).** Where one card can't hold the model, the second holds the next experts before RAM, with the same answers as one card. Where one card holds everything, it runs alone.
+- **Long context for Inkling 2 Mini, up to 1M tokens.** The conversation cache stays on the GPU and experts move to RAM first, so long chats stay usable; the cache's still-empty space holds extra experts until the chat needs it. On V100 cards, new messages deep in a long chat are read much faster. The setup still recommends up to 262K and offers 512K and 1M.
+- **Several chats at once for Inkling 2 Mini** (Answers at once on the Models page, where every expert fits on one GPU). Each answer is the same as when it runs alone.
+- **Inkling 2 Mini on the Monitor:** where its experts live, what fills the GPU, and status lines; a watchdog names a stuck step, and the engine stops at once when asked.
+- **Hy4-Flash on tensor parallel: faster token windows (#1122)**, with the same tokens. The author measured 205 -> 267 tok/s at 256K with `--mtp` on eight RTX 5060 Ti and an RTX 3090.
+- **Fix: the VRAM reserve for GLM, MiniMax and Hy4-Flash (#1026).** Like DeepSeek in v1.1.73, they now keep the reserve free for the whole run; the first start after updating may restart the engine once by itself to measure it.
+- **Fix: MiniMax on two or more GPUs** now copies between them directly only where a test copy works, and otherwise through RAM (as Hy4-Flash in v1.1.73, #1100).
+- **Opt-ins:** `MAYA_DS4_AR2_DECODE=2` for DeepSeek on GPU pairs (#1094), and an RDNA 4 kernel for DeepSeek's indexer, `DS4_INDEX_TC_GFX12=1` (#1097, untested on our side - please report).
+- **Dashboard:** CPU temperature beside the GPU temperature (#893), and Qwen's completed expert promotions (#1103).
+- **Credits.** The Hy4-Flash tensor-parallel windows (#1122) were contributed by @needmorevram, the DeepSeek pair decode option (#1094) by @pepuscz, the RDNA 4 kernel (#1097) by @honozakka, the CPU temperature (#893) by @org-tekeli-borisp and Qwen's promotions (#1103) by @jaffer1979. The rest of this release is by @mw00 (peasantsmith).
+
 ## v1.1.73 - 2026-11-22
 
 Inkling 2 Mini runs on far more PCs: NVIDIA cards from 8 GB (the experts that do not fit stay in RAM), V100 and RTX 20
@@ -15,7 +94,7 @@ DeepSeek keeps the reserve for the whole run (#1026); Hy4-Flash on two GPUs copi
 - **Inkling 2 Mini on cards from 8 GB (NVIDIA, Linux):** where the card does not hold every expert, the most-used experts stay in VRAM (from a profile shipped with Maya) and the others in RAM; for each token, the GPU copies the missing experts in or the CPU computes them beside it, split by rates measured once on the PC and saved (`~/.maya/ik2-offload-calib.txt`). An expert gives the same result wherever it runs, so the answers do not depend on the split. RAM holds only the experts the card does not keep: about 13 GB with an 8 GB card, 9 GB with 12 GB, 5 GB with 16 GB. The setup's verdict says what a PC needs and refuses in one line where RAM and VRAM together cannot hold the model. Where every expert fits, the v1.1.72 path runs unchanged.
 - **Inkling 2 Mini on V100 and RTX 20:** their own tensor-core kernels (Volta and Turing); the setup accepts them and refuses only older GPUs, with the reason.
 - **Inkling 2 Mini on AMD (Linux):** `maya-ik2` is built in HIP builds for RDNA 3 / 3.5 / 4 and runs where every expert fits: a Radeon with 24 GB or a Halo / APU with that much free memory. Prompts use the matrix cores and hipBLASLt picks measured once and kept beside the model (a read-only folder says so once). Tested on a Radeon 8065S; Radeon RX 7000 / 9000 cards are built but untested - please report.
-- **Inkling 2 Mini drafting (`--drafting auto`, the setup's default where it can run):** the official drafter (`mtp.safetensors`, 0.6 GB, downloaded and checked by the setup) and prompt lookup (earlier text of the conversation) propose tokens, and one window checks them with the same math as one token at a time, so drafting on and off give the same answers. The first start measures no drafting, lookup and the drafter once and keeps the fastest for the PC (`--speed-calibration` measures again; `--drafting off|on` by hand). A drafter that would change the context or the pictures is left out with a NOTE (on a 24 GB card it fits up to about 200K positions; the lookup still drafts). Off for now on V100 / RTX 20 and where experts stay in RAM.
+- **Inkling 2 Mini drafting (`--drafting auto`, the setup's default where it can run):** the official drafter (`mtp.safetensors`, 0.6 GB, downloaded and checked by the setup) and prompt lookup (earlier text of the conversation) propose tokens, and one window checks them with the same math as one token at a time, so drafting on and off give the same answers. The first start measures no drafting, lookup and the drafter once and keeps the fastest for the PC (`--speed-calibration` measures again; `--drafting off|on` by hand). A drafter that would change the context or the pictures is left out with a NOTE (on a 24 GB card it fits up to about 200K positions; the lookup still drafts). On V100 / RTX 20 and where experts stay in RAM since v1.1.75.
 - **Inkling 2 Mini: the looped layers' gate step is faster on every card**, with bit-identical results.
 - **Inkling 2 Mini: the Monitor** no longer shows a "0% of experts in VRAM" card for it.
 - **Fix: `--vram-reserve-mib` on a normal start (#1026):** `./maya.sh --vram-reserve-mib N` was only taken by the setup (GLM and DeepSeek); a start now writes it into the config as each engine's own setting, and the MiniMax, Hy4-Flash and Qwen setups take it too.

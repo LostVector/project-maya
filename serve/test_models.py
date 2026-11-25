@@ -334,7 +334,7 @@ class Settings(unittest.TestCase):
         return p
 
     def test_ik2_read_and_written_with_its_own_flags(self):
-        """Inkling-2-Mini's preview on the Models page: its context, cache format and one GPU - maya-ik2's own flags
+        """Inkling-2-Mini's preview on the Models page: its context, cache format and one or two GPUs - maya-ik2's own flags
         only; drafting (auto, the drafter by hand, off); what it does not have yet (answers at once) said, and pictures where the setup
         left out the image encoder."""
         cards = mock.patch.object(M, "machine_gpus", return_value=[{"index": 0, "name": "RTX 3090", "vram_gb": 24.0},
@@ -345,7 +345,7 @@ class Settings(unittest.TestCase):
         cfg = M.read(path)
         self.assertEqual(M.family(cfg), "ik2")
         self.assertEqual(M.settings_of(cfg), {"context": 262144, "gpus": [0], "env": {}, "ablate": False,
-                                              "images": False, "kv": "fp8", "draft": "none"})
+                                              "images": False, "kv": "fp8", "draft": "none", "parallel": 1})
         self.assertEqual(M.choices(cfg)["draft"], ["auto", "none"])   # (no drafter downloaded: the prompt lookup)
         self.assertFalse(M.choices(cfg)["images"])
         self.assertEqual(M.quant_label(cfg, path), "unsloth UD-Q4_K_XL")
@@ -360,7 +360,14 @@ class Settings(unittest.TestCase):
         # maya-ik2 stops at a flag it does not know: only its own
         self.assertEqual({x for x in M.apply(cfg, {"context": 65536})["args"] if x.startswith("--")},
                          {"--model", "--max-context"})
-        for bad, why in (({"gpus": [0, 1]}, "one GPU"), ({"parallel": 2}, "one request at a time"),
+        # (two GPUs: the split, --gpus 2; back to one: no --gpus)
+        two = M.apply(cfg, {"gpus": [0, 1]})
+        self.assertEqual(M.flag(two["args"], "--gpus"), "2")
+        self.assertIsNone(M.flag(M.apply(two, {"gpus": [0]})["args"], "--gpus"))
+        # (Answers at once: --parallel, written where it changes, 1-8)
+        self.assertEqual(M.flag(M.apply(cfg, {"parallel": 2})["args"], "--parallel"), "2")
+        self.assertIsNone(M.flag(M.apply(cfg, {"parallel": 1})["args"], "--parallel"))
+        for bad, why in (({"gpus": [0, 1, 2]}, "one or two GPUs"), ({"parallel": 9}, "Answers at once"),
                          ({"draft": "dspark"}, "this setup has no drafter"), ({"draft": "mtp"}, "auto, the drafter"),
                          ({"kv": "int8"}, "FP8 or F16"), ({"images": True}, "set up without its image encoder"),
                          ({"reserve_mib": 512}, "not a setting")):
@@ -380,11 +387,12 @@ class Settings(unittest.TestCase):
                              (how, "/m/mtp.safetensors"), want)
             self.assertEqual(M.settings_of(new)["draft"], want)
 
-    def test_ik2_drafting_unavailable_on_volta_and_offload(self):
-        """Volta / Turing cards and the offload layout: the Drafting setting offers Off only."""
+    def test_ik2_drafting_unavailable_without_room(self):
+        """A card whose tier has no room for the drafter: the Drafting setting offers Off only; Volta / Turing draft
+        as the newer cards do."""
         path = self.ik2_cfg()
-        for gpu, want in (({"arch": "70", "vram_gb": 32.0}, ["none"]), ({"arch": "86", "vram_gb": 8.0}, ["none"]),
-                          ({"arch": "86", "vram_gb": 24.0}, ["auto", "none"])):
+        for gpu, want in (({"arch": "70", "vram_gb": 32.0}, ["auto", "none"]), ({"arch": "86", "vram_gb": 8.0}, ["none"]),
+                          ({"arch": "75", "vram_gb": 24.0}, ["auto", "none"]), ({"arch": "86", "vram_gb": 24.0}, ["auto", "none"])):
             with mock.patch.object(M, "machine_gpus", return_value=[{"index": 0, "name": "GPU", **gpu}]):
                 self.assertEqual(M.choices(M.read(path))["draft"], want, gpu)
 
@@ -417,12 +425,13 @@ class Settings(unittest.TestCase):
         self.assertEqual(m["settings"]["kv"], "fp8")
         cfg = M.read(self.d / "maya-inkling-2-mini.json")
         self.assertEqual(M.apply(cfg, {"env": {"IK2_KV": "f16"}})["env"]["IK2_KV"], "f16")   # (typed by hand)
-        self.assertEqual(m["contexts"], [32768, 65536, 131072, 262144])
+        self.assertEqual(m["contexts"], [32768, 65536, 131072, 262144, 524288, 1048576])   # (to the trained 1M)
         self.assertEqual(m["context_range"]["tested"], 262144)
         self.assertEqual(m["ik2_kv_bytes"], {"fp8": 16384, "f16": 32768})
         self.assertEqual({k: v for k, v in m["ik2_fit"]["fp8"]["262144"].items() if k in ("resident", "layout")},
                          {"resident": True, "layout": "resident"})
-        self.assertEqual(m["ik2_fit"]["f16"]["262144"]["layout"], "offload")   # (the offload path: a tier on the card)
+        self.assertEqual(m["ik2_fit"]["f16"]["262144"]["layout"], "offload")    # (the experts leave the card first,
+        self.assertFalse(m["ik2_fit"]["fp8"]["1048576"]["kv_streamed"])         #  the whole cache stays in VRAM)
         self.assertGreaterEqual(m["size"], 1000)                               # (the GGUF)
         plan = M.delete_plan(self.d, self.d / "maya-inkling-2-mini.json")
         self.assertTrue(plan["ok"], plan.get("why"))

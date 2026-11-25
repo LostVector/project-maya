@@ -15,6 +15,7 @@
 #include <cuda_fp16.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -1884,7 +1885,7 @@ void test_fp8_kv() {
                 nan_ok &= ((hk[b] & 0x7FFF) > 0x7C00) && ((hv[b] & 0x7FFF) > 0x7C00);
             } else {
                 const uint16_t want_bits = f2h_host(e4m3fn_to_f32_host((uint8_t) b));
-#ifdef STRATA_USE_HIP
+#ifdef MAYA_USE_HIP
                 // (AMD: -0 comes out +0 - the compiler's mixed-precision multiply by the scale; a zero's sign does
                 //  not reach a dot product's value)
                 if (want_bits == 0x8000u) {
@@ -2518,7 +2519,7 @@ void test_round6() {
 
 // One token's NVFP4 experts through the tensor cores against the scalar kernels over the same blocks (every scale
 // byte, the subnormal ones and 0x7F with them): gate | up with the input as two FP16 limbs, down over the FP16 h.
-#ifdef STRATA_USE_HIP
+#ifdef MAYA_USE_HIP
 // AMD: the grouped prompt experts on the matrix cores (ik2_rdna.inc) against double references - rows grouped by
 // expert (37 = a tile of 32 and one of 5, 1, 6), gate / up + SwiGLU (FP16 out), down, each token's picks summed
 void test_experts_rdna() {
@@ -2667,9 +2668,11 @@ void test_experts_mma() {
 
 // The exact verify window (drafting on = off): each of T tokens' values from the window's kernels the one-token
 // path's to the bit - mv_q8p_cols vs mv_q8p, experts_*_mem vs experts_gate_up_swiglu / experts_down (NVFP4, Q8_0),
-// experts_block_gu / _down vs experts_gate_up_swiglu_mma / experts_down_mma (sm_80 on) - Inkling-2-Mini's sizes.
+// experts_block_gu / _down vs experts_gate_up_swiglu_mma / experts_down_mma (each class's kernels: Ampere on, Turing,
+// Volta's mma.m8n8k4) - Inkling-2-Mini's sizes.  And two GPUs: the groups the other GPU runs left alone on each, its
+// rows taken (two_take_rows_g) - the one-GPU window to the bit.
 void test_window_exact(bool mma) {
-#ifdef STRATA_USE_HIP
+#ifdef MAYA_USE_HIP
     mma = false;   // (AMD: the token path's experts are the row dots - IK2_EXPERT_MMA's default 0 there)
 #endif
     constexpr int C = 2304, F = 1152, K = 8, E = 24;   // (E 24: a window of 5 picks about 2.6x one token's experts)
@@ -2799,6 +2802,38 @@ void test_window_exact(bool mma) {
                 h_same &= !std::memcmp(host(h1, (size_t) K * F).data(), hw.data() + (size_t) t * K * F, (size_t) K * F * 2);
                 y_same &= !std::memcmp(host(y1, (size_t) K * C).data(), yw.data() + (size_t) t * K * C, (size_t) K * C * 4);
             }
+            {   // two GPUs: GPU 0's table marks the even experts kHeldElsewhere, GPU 1's holds only those
+                std::vector<const uint8_t*> t0(tab), t1(tab);
+                for (int e = 0; e < E; ++e) (e % 2 ? t1[e] : t0[e]) = e % 2 ? nullptr : (const uint8_t*) k::kHeldElsewhere;
+                auto **dt0 = dev(t0), **dt1 = dev(t1);
+                const uint8_t** gb1 = dev_n<const uint8_t*>(S);
+                auto *h0 = dev_n<uint16_t>((size_t) S * F), *h1g = dev_n<uint16_t>((size_t) S * F);
+                auto *y0 = dev_n<float>((size_t) S * C), *y1g = dev_n<float>((size_t) S * C);
+                CU(cudaMemset(y0, 0xA5, (size_t) S * C * 4));
+                CU(cudaMemset(y1g, 0x5A, (size_t) S * C * 4));
+                auto run = [&](const uint8_t** tb, const uint8_t** gb, uint16_t* hh, float* yy) {
+                    k::group_route(dtop, dw, S, K, tb, dsg_t, dsu_t, nullptr, gb, gn, gtok, grow, gsg, gsu, gwt, ginv, 0);
+                    if (tc) {
+                        k::experts_block_gu(gb, gn, gtok, grow, S, T, mb, C, F, limbs, gsg, gsu, 20, 20, hh, 0);
+                        k::experts_block_down(gb, gn, grow, S, 2 * mb, C, F, hh, yy, 0);
+                    } else {
+                        k::experts_gate_up_swiglu_mem(gb, gn, gtok, grow, S, ty, ty, mb, dx, C, F, gsg, gsu, 20, 20, hh, 0);
+                        k::experts_down_mem(gb, gn, grow, S, ty, 2 * mb, hh, C, F, yy, 0);
+                    }
+                };
+                if (tc) k::f16_limbs_rows(dx, T, C, limbs, 0);
+                run(dt1, gb1, h1g, y1g);   // (GPU 1's share)
+                run(dt0, gblob, h0, y0);   // (GPU 0's, then GPU 1's rows taken)
+                k::two_take_rows_g(gblob, gn, grow, y1g, S, C, y0, 0);
+                const bool two_same = !std::memcmp(host(y0, (size_t) S * C).data(), yw.data(), (size_t) S * C * 4);
+                char nm[160];
+                std::snprintf(nm, sizeof nm, "window experts %s (%s), %d tokens, split over two GPUs: y the one-GPU "
+                              "window's to the bit", ty == k::kNVFP4 ? "NVFP4" : "Q8_0", tc ? "tensor cores" : "row dots", T);
+                expect_true(nm, two_same);
+                for (void* p : {(void*) dt0, (void*) dt1, (void*) gb1, (void*) h0, (void*) h1g, (void*) y0, (void*) y1g})
+                    CU(cudaFree(p));
+                k::group_route(dtop, dw, S, K, dtab, dsg_t, dsu_t, nullptr, gblob, gn, gtok, grow, gsg, gsu, gwt, ginv, 0);
+            }
             if (getenv("IK2_TEST_WINDOW_TIME")) {   // (T tokens' experts one token at a time against the window's)
                 cudaEvent_t e0, e1;
                 CU(cudaEventCreate(&e0));
@@ -2849,6 +2884,316 @@ void test_window_exact(bool mma) {
     }
 }
 
+// The exact window's shared launches and the drafter's kernels (PR: the window's products with loads ahead, its
+// tokens' attention as one launch, the drafter as a recorded graph): each against the launches it replaces, to the
+// bit - mv_q8p_cols with rows that have an input of their own and K of 24 steps, attn_decode_mma_toks against
+// attn_decode_mma a token at a time, loop_gates' block a (rank, gate) against a block a (rank, gate, token),
+// conv_block2 and rms_f16_jobs against their single launches, draft_attn_dyn against draft_attn - and the drafter's
+// own: draft_attn_fp8 and q8_tile against double references, argmax_gemv_i8 (with a sampled draft's noise too)
+// against the host's sums.
+void test_window_launches() {
+    const bool mma = k::arch_class() >= 75;   // (Turing on: its window runs Ampere's kernels on its mma16816)
+    {   // mv_q8p_cols: rows with their own inputs (one launch) against the ranges a launch each; K 3072
+        for (int K : {2304, 3072}) {
+            const int N = 4112, T = 5;
+            std::vector<int8_t> q((size_t) N * K);
+            for (auto& v : q) v = (int8_t) (rng() & 0xFF);
+            std::vector<uint16_t> d((size_t) N * (K / 32));
+            for (auto& v : d) v = f2h_host(std::uniform_real_distribution<float>(0.001f, 0.02f)(rng));
+            int8_t* dq = dev(q);
+            uint16_t* dd = dev(d);
+            float *x0 = dev(fvec((size_t) T * K, 2.0f)), *x1 = dev(fvec((size_t) T * K, 2.0f)),
+                  *x2 = dev(fvec((size_t) T * K, 2.0f));
+            auto *ya = dev_n<float>((size_t) T * N), *yb = dev_n<float>((size_t) T * N), *y1 = dev_n<float>((size_t) N);
+            const k::MvAlt a0{x1, 1024, 2048}, a1{x2, 3072, 16};
+            bool same = true;
+            if (k::mv_q8p_cols_alts(K, T, a0, a1)) {
+                k::mv_q8p_cols(dq, dd, N, K, x0, K, T, ya, N, 0, a0, a1);
+                const auto got = host(ya, (size_t) T * N);
+                for (int t = 0; t < T; ++t)
+                    for (int r = 0; r < 4; ++r) {   // (the four ranges, each with its input, the one-token kernel)
+                        const int r0 = r == 0 ? 0 : r == 1 ? 1024 : r == 2 ? 3072 : 3088;
+                        const int n = r == 0 ? 1024 : r == 1 ? 2048 : r == 2 ? 16 : N - 3088;
+                        const float* x = (r == 1 ? x1 : r == 2 ? x2 : x0) + (size_t) t * K;
+                        k::mv_q8p(dq + (size_t) r0 * K, dd + (size_t) r0 * (K / 32), n, K, x, y1, 0);
+                        same &= !std::memcmp(host(y1, n).data(), got.data() + (size_t) t * N + r0, (size_t) n * 4);
+                    }
+            }
+            (void) yb;
+            expect_true(K == 2304 ? "mv_q8p_cols, rows with an input of their own = mv_q8p, to the bit (K 2304)"
+                                  : "mv_q8p_cols, rows with an input of their own = mv_q8p, to the bit (K 3072)", same);
+            cudaFree(dq), cudaFree(dd);
+            for (float* p : {x0, x1, x2, ya, yb, y1}) cudaFree(p);
+        }
+    }
+    if (mma) {   // a window's tokens' attention as one launch against a token at a time
+        // (without a sliding window the tokens share a key's rows - attn_decode_mma_win_kernel: windows that cross
+        //  a multiple of 16 keys (a token ends a step before the others), 1 to 3 tiles of columns, a warp of several
+        //  steps, a window whose tokens' warps differ (the tokens' own blocks), a first window)
+        const int D = 128, d_rel = 16, H = 24, KV = 8, HD = H * D;
+        struct Case {
+            int qpos, window, extent, kv_cap, n_split, T;
+        };
+        for (int fp8 = 0; fp8 < 2; ++fp8)
+            for (const Case& c : {Case{700, 1 << 30, 1024, 0, 5, 5}, Case{3000, 1024, 1024, 1056, 4, 5},
+                                  Case{2, 1 << 30, 64, 0, 3, 5}, Case{0, 1 << 30, 64, 0, 3, 2}, Case{13, 1 << 30, 8, 0, 41, 8},
+                                  Case{637, 1 << 30, 1024, 0, 5, 5}, Case{6000, 1 << 30, 1024, 0, 7, 3},
+                                  Case{6010, 1 << 30, 300, 0, 41, 6}, Case{20470, 1 << 30, 1024, 0, 41, 8},
+                                  Case{1023, 1 << 30, 1024, 0, 16, 4}, Case{318, 1 << 30, 64, 0, 5, 2}}) {
+                const int T = c.T;
+                const int n_pos = c.qpos + T, rows = c.kv_cap > 0 ? c.kv_cap : n_pos;
+                std::vector<uint16_t> k16, v16;
+                std::vector<uint8_t> k8, v8;
+                if (fp8) {
+                    k8.resize((size_t) rows * KV * D), v8.resize(k8.size());
+                    for (auto& b : k8) { b = (uint8_t) (rng() & 0xFFu); if ((b & 0x7F) >= 0x60) b &= 0xDFu; }
+                    for (auto& b : v8) { b = (uint8_t) (rng() & 0xFFu); if ((b & 0x7F) >= 0x60) b &= 0xDFu; }
+                } else {
+                    k16.resize((size_t) rows * KV * D), v16.resize(k16.size());
+                    for (auto& b : k16) b = f2h_host(frand(1.0f));
+                    for (auto& b : v16) b = f2h_host(frand(1.0f));
+                }
+                const int r_ld = H * d_rel + 16, g_ld = HD + 32;   // (rows apart, as a fused matrix's output)
+                auto qf = fvec((size_t) T * HD, 2.0f);
+                std::vector<uint16_t> q16(qf.size());
+                for (size_t i = 0; i < qf.size(); ++i) q16[i] = f2h_host(qf[i]);
+                uint16_t *dqa = dev(q16), *dqb = dev(q16);   // (the outputs' FP16 copies go where the q were)
+                float *dr = dev(fvec((size_t) T * r_ld, 2.0f)), *dp = dev(fvec((size_t) c.extent * d_rel)),
+                      *ds = dev(fvec((size_t) T * H, 3.0f)), *dg = dev(fvec((size_t) T * g_ld, 3.0f));
+                float *oa = dev_n<float>((size_t) T * HD), *ob = dev_n<float>((size_t) T * HD);
+                float* scr = dev_n<float>((size_t) T * k::attn_decode_mma_scratch(H, c.n_split));
+                std::vector<int> ph(T);
+                for (int t = 0; t < T; ++t) ph[t] = c.qpos + t;
+                int* dpos = dev(ph);
+                const float scale = 1.0f / std::sqrt((float) D);
+                bool ok = true;
+                if (fp8) {
+                    uint8_t *dk = dev(k8), *dv = dev(v8);
+                    ok = k::attn_decode_mma_toks_fp8(dqa, HD, dr, r_ld, ds, dk, dv, c.kv_cap, H, KV, dpos, T, c.n_split,
+                                                     scale / 16.0f, 1.0f / 32.0f, dp, d_rel, c.extent, c.window, scr, oa,
+                                                     dg, g_ld, dqa, 0);
+                    for (int t = 0; t < T; ++t)
+                        k::attn_decode_mma_fp8(dqb + (size_t) t * HD, dr + (size_t) t * r_ld, ds + (size_t) t * H, dk, dv,
+                                               c.kv_cap, H, KV, dpos + t, -1, c.n_split, scale / 16.0f, 1.0f / 32.0f, dp,
+                                               d_rel, c.extent, c.window, scr, ob + (size_t) t * HD,
+                                               dg + (size_t) t * g_ld, dqb + (size_t) t * HD, 0);
+                    CU(cudaDeviceSynchronize());
+                    cudaFree(dk), cudaFree(dv);
+                } else {
+                    uint16_t *dk = dev(k16), *dv = dev(v16);
+                    ok = k::attn_decode_mma_toks_f16(dqa, HD, dr, r_ld, ds, dk, dv, c.kv_cap, H, KV, dpos, T, c.n_split,
+                                                     scale, dp, d_rel, c.extent, c.window, scr, oa, dg, g_ld, dqa, 0);
+                    for (int t = 0; t < T; ++t)
+                        k::attn_decode_mma_f16(dqb + (size_t) t * HD, dr + (size_t) t * r_ld, ds + (size_t) t * H, dk, dv,
+                                               c.kv_cap, H, KV, dpos + t, -1, c.n_split, scale, dp, d_rel, c.extent,
+                                               c.window, scr, ob + (size_t) t * HD, dg + (size_t) t * g_ld,
+                                               dqb + (size_t) t * HD, 0);
+                    CU(cudaDeviceSynchronize());
+                    cudaFree(dk), cudaFree(dv);
+                }
+                const bool same = ok && !std::memcmp(host(oa, (size_t) T * HD).data(), host(ob, (size_t) T * HD).data(),
+                                                     (size_t) T * HD * 4) &&
+                                  !std::memcmp(host(dqa, (size_t) T * HD).data(), host(dqb, (size_t) T * HD).data(),
+                                               (size_t) T * HD * 2);
+                char label[112];
+                std::snprintf(label, sizeof label, "attn_decode_mma_toks %s = a token at a time, to the bit (%d at %d, %s)",
+                              fp8 ? "fp8" : "f16", T, c.qpos, c.kv_cap ? "a ring" : "linear");
+                expect_true(label, same);
+                cudaFree(dqa), cudaFree(dqb), cudaFree(dpos);
+                for (float* p : {dr, dp, ds, dg, oa, ob, scr}) cudaFree(p);
+            }
+    }
+    {   // loop_gates: a block a (rank, gate) for every token (T <= 8) against a block a (rank, gate, token) (T 9)
+        const int C = 2304, R = 64, T9 = 9;
+        const float eps = 1e-6f;
+        float *x = dev(fvec((size_t) 3 * T9 * C, 2.0f)), *m = dev(fvec((size_t) 3 * T9 * C, 2.0f));
+        float *Dm = dev(fvec((size_t) 3 * R * 2 * C, 0.05f)), *Fm = dev(fvec((size_t) 3 * R * C, 0.05f)),
+              *Gm = dev(fvec((size_t) 3 * R * C, 0.05f));
+        float *y8 = dev_n<float>((size_t) 3 * T9 * C), *y9 = dev_n<float>((size_t) 3 * T9 * C);
+        float* sc = dev_n<float>((size_t) 3 * T9 * (2 * R + 2));
+        bool same = true;
+        for (int n : {1, 3}) {
+            k::LoopGate g8[3], g9[3];
+            for (int j = 0; j < 3; ++j) {
+                g8[j] = {x + (size_t) j * T9 * C, m + (size_t) j * T9 * C, Dm + (size_t) j * R * 2 * C,
+                         Fm + (size_t) j * R * C, Gm + (size_t) j * R * C, y8 + (size_t) j * T9 * C};
+                g9[j] = g8[j];
+                g9[j].y = y9 + (size_t) j * T9 * C;
+            }
+            for (int T : {1, 5, 8}) {
+                k::loop_gates(g9, n, T9, C, R, eps, sc, 0);
+                k::loop_gates(g8, n, T, C, R, eps, sc, 0);
+                for (int j = 0; j < n; ++j)
+                    same &= !std::memcmp(host(y8 + (size_t) j * T9 * C, (size_t) T * C).data(),
+                                         host(y9 + (size_t) j * T9 * C, (size_t) T * C).data(), (size_t) T * C * 4);
+            }
+        }
+        expect_true("loop_gates of 1 .. 8 tokens = the kernel of more, to the bit (1 and 3 gates)", same);
+        for (float* p : {x, m, Dm, Fm, Gm, y8, y9, sc}) cudaFree(p);
+    }
+    {   // conv_block2 against two conv_block; rms_f16_jobs against three rms_f16
+        const int C = 1024, T = 5, N = 4112, heads = 8, DL = heads * 4;
+        bool same = true;
+        for (int dyn = 0; dyn < 2; ++dyn) {
+            const auto xh = fvec((size_t) T * N, 2.0f), hh = fvec((size_t) 2 * 3 * C), wh = fvec((size_t) 2 * C * 4),
+                       dh = fvec((size_t) 2 * T * DL);
+            float* xd = dev(xh);
+            float *h1 = dev(hh), *h2 = dev(hh), *wd = dev(wh), *dd = dev(dh);
+            float *ya = dev_n<float>((size_t) 2 * T * C), *yb = dev_n<float>((size_t) 2 * T * C);
+            float *ro1 = dev_n<float>((size_t) 2 * 3 * C), *ro2 = dev_n<float>((size_t) 2 * 3 * C);
+            float *rx1 = dev_n<float>((size_t) 2 * T * C), *rx2 = dev_n<float>((size_t) 2 * T * C);
+            const float *da = dyn ? dd : nullptr, *db = dyn ? dd + (size_t) T * DL : nullptr;
+            k::conv_block2(xd + 16, h1, wd, da, ya, ro1, rx1, xd + 16 + C, h1 + 3 * C, wd + (size_t) C * 4, db,
+                           ya + (size_t) T * C, ro1 + 3 * C, rx1 + (size_t) T * C, N, DL, heads, T, C, C, 0);
+            k::conv_block(xd + 16, N, h2, wd, da, DL, heads, T, C, nullptr, 0, yb, C, ro2, rx2, 0);
+            k::conv_block(xd + 16 + C, N, h2 + 3 * C, wd + (size_t) C * 4, db, DL, heads, T, C, nullptr, 0,
+                          yb + (size_t) T * C, C, ro2 + 3 * C, rx2 + (size_t) T * C, 0);
+            auto eq = [&](const float* a, const float* b, size_t n) {
+                return !std::memcmp(host(a, n).data(), host(b, n).data(), n * 4);
+            };
+            same &= eq(ya, yb, (size_t) 2 * T * C) && eq(h1, h2, (size_t) 6 * C) && eq(ro1, ro2, (size_t) 6 * C) &&
+                    eq(rx1, rx2, (size_t) 2 * T * C);
+            for (float* p : {xd, h1, h2, wd, dd, ya, yb, ro1, ro2, rx1, rx2}) cudaFree(p);
+        }
+        expect_true("conv_block2 = two conv_block, to the bit (with and without dynamic taps)", same);
+        const int D = 2304;
+        float *x3 = dev(fvec((size_t) 3 * T * D, 3.0f)), *w3 = dev(fvec((size_t) 3 * D, 1.5f));
+        float *ja = dev_n<float>((size_t) 3 * T * D), *jb = dev_n<float>((size_t) 3 * T * D);
+        uint16_t *ha = dev_n<uint16_t>((size_t) 3 * T * D), *hb = dev_n<uint16_t>((size_t) 3 * T * D);
+        const float* xs[3] = {x3, x3 + (size_t) T * D, x3 + (size_t) 2 * T * D};
+        const float* ws[3] = {w3, w3 + D, w3 + 2 * D};
+        uint16_t* y16[3] = {ha, ha + (size_t) T * D, ha + (size_t) 2 * T * D};
+        float* y32[3] = {ja, ja + (size_t) T * D, ja + (size_t) 2 * T * D};
+        k::rms_f16_jobs(xs, ws, y16, y32, 3, T, D, 1e-6f, 0);
+        for (int j = 0; j < 3; ++j)
+            k::rms_f16(xs[j], ws[j], T, D, 1e-6f, hb + (size_t) j * T * D, jb + (size_t) j * T * D, 0);
+        expect_true("rms_f16_jobs = three rms_f16, to the bit",
+                    !std::memcmp(host(ja, (size_t) 3 * T * D).data(), host(jb, (size_t) 3 * T * D).data(),
+                                 (size_t) 3 * T * D * 4) &&
+                        !std::memcmp(host(ha, (size_t) 3 * T * D).data(), host(hb, (size_t) 3 * T * D).data(),
+                                     (size_t) 3 * T * D * 2));
+        for (float* p : {x3, w3, ja, jb}) cudaFree(p);
+        cudaFree(ha), cudaFree(hb);
+    }
+    {   // the drafter's attention: an FP8 context against a double reference; its position on the device = given
+        const int nq = 8, H = 24, KV = 8, KD = KV * 128;
+        const float scale = 1.0f / std::sqrt(128.0f), ks = 16.0f, vs = 4.0f;
+        for (const auto& c : {std::array<int, 3>{0, 37, 70000}, std::array<int, 3>{1234, 2257, 70000},
+                              std::array<int, 3>{2500, 5499, 3000}, std::array<int, 3>{9000, 69000, 70000}}) {
+            const int k_lo = c[0], k_hi = c[1], cap = c[2];
+            std::vector<uint8_t> kc((size_t) cap * KD), vc((size_t) cap * KD);
+            for (auto& b : kc) { b = (uint8_t) (rng() & 0xFFu); if ((b & 0x7F) >= 0x60) b &= 0xDFu; }
+            for (auto& b : vc) { b = (uint8_t) (rng() & 0xFFu); if ((b & 0x7F) >= 0x60) b &= 0xDFu; }
+            const auto q = fvec((size_t) nq * H * 128, 0.3f), kb = fvec((size_t) nq * KD), vb = fvec((size_t) nq * KD);
+            float *dq = dev(q), *dkb = dev(kb), *dvb = dev(vb), *o1 = dev_n<float>(q.size()), *o2 = dev_n<float>(q.size());
+            float* scr = dev_n<float>(k::draft_attn_scratch(H));
+            uint8_t *dk = dev(kc), *dv = dev(vc);
+            k::draft_attn_fp8(dq, dk, dv, k_lo, k_hi, dkb, dvb, nq, H, KV, scale, 1.0f / ks, 1.0f / vs, scr, o1, 0, cap);
+            const auto got = host(o1, q.size());
+            std::vector<int> par = {k_hi, 0};
+            int* dpar = dev(par);
+            k::draft_attn_dyn_fp8(dq, dk, dv, dpar, k_hi - k_lo, dkb, dvb, nq, H, KV, scale, 1.0f / ks, 1.0f / vs, scr, o2,
+                                  0, cap);
+            const bool dyn_same = !std::memcmp(got.data(), host(o2, q.size()).data(), q.size() * 4);
+            std::vector<double> want(q.size());
+            const int nc = k_hi - k_lo, nk = nc + nq;
+            for (int qi = 0; qi < nq; ++qi)
+                for (int h = 0; h < H; ++h) {
+                    const int g = h / (H / KV);
+                    std::vector<double> lg(nk);
+                    double mx = -1e300;
+                    for (int j = 0; j < nk; ++j) {
+                        double a = 0;
+                        for (int e = 0; e < 128; ++e) {
+                            const double kv = j < nc ? e4m3fn_to_f32_host(kc[(size_t) ((k_lo + j) % cap) * KD + g * 128 + e]) / ks
+                                                     : kb[(size_t) (j - nc) * KD + g * 128 + e];
+                            a += (double) q[((size_t) qi * H + h) * 128 + e] * kv;
+                        }
+                        lg[j] = a * scale, mx = std::max(mx, lg[j]);
+                    }
+                    double den = 0;
+                    for (auto& v : lg) den += (v = std::exp(v - mx));
+                    for (int e = 0; e < 128; ++e) {
+                        double acc = 0;
+                        for (int j = 0; j < nk; ++j)
+                            acc += lg[j] * (j < nc ? e4m3fn_to_f32_host(vc[(size_t) ((k_lo + j) % cap) * KD + g * 128 + e]) / vs
+                                                   : vb[(size_t) (j - nc) * KD + g * 128 + e]);
+                        want[((size_t) qi * H + h) * 128 + e] = acc / den;
+                    }
+                }
+            char label[96];
+            std::snprintf(label, sizeof label, "draft_attn_fp8, %d keys of a ring of %d", nc, cap);
+            // (on the tensor cores q and the probabilities are FP16: 2^-11 of a term)
+            if (k::draft_attn_mma()) expect(label, got, want, 1e-2, 2e-3);
+            else expect(label, got, want, 1e-4, 1e-5);
+            if (!dyn_same) expect_true("draft_attn_dyn_fp8 = draft_attn_fp8, to the bit", false);
+            for (float* p : {dq, dkb, dvb, o1, o2, scr}) cudaFree(p);
+            cudaFree(dk), cudaFree(dv), cudaFree(dpar);
+        }
+        expect_true("draft_attn_dyn_fp8 (the position on the device) = draft_attn_fp8", true);
+    }
+    if (k::arch_class() >= 75) {   // q8_tile against a double reference (a value times its scale rounded to FP16)
+        const int N = 1029, K = 2304, T = 5;
+        std::vector<int8_t> q((size_t) N * K);
+        for (auto& v : q) v = (int8_t) (rng() & 0xFF);
+        std::vector<uint16_t> d((size_t) N * (K / 32));
+        for (auto& v : d) v = f2h_host(std::uniform_real_distribution<float>(0.001f, 0.02f)(rng));
+        const auto xf = fvec((size_t) T * K, 2.0f);
+        std::vector<uint16_t> x16(xf.size());
+        for (size_t i = 0; i < xf.size(); ++i) x16[i] = f2h_host(xf[i]);
+        int8_t* dq = dev(q);
+        uint16_t *dd = dev(d), *dx = dev(x16);
+        float* y = dev_n<float>((size_t) T * N);
+        k::q8_tile(dq, dd, N, K, dx, T, y, N, 0);
+        std::vector<double> want((size_t) T * N);
+        for (int t = 0; t < T; ++t)
+            for (int r = 0; r < N; ++r) {
+                double a = 0;
+                for (int c = 0; c < K; ++c)
+                    a += (double) h2f_host(f2h_host(h2f_host(d[(size_t) r * (K / 32) + c / 32]) * (float) q[(size_t) r * K + c])) *
+                         h2f_host(x16[(size_t) t * K + c]);
+                want[(size_t) t * N + r] = a;
+            }
+        expect("q8_tile (5 tokens, 1029 rows)", host(y, want.size()), want, 2e-4, 2e-3);
+        cudaFree(dq), cudaFree(dd), cudaFree(dx), cudaFree(y);
+    }
+    {   // argmax_gemv_i8: the best token of base + bias + W . xs, and with a sampled draft's noise
+        const int R = 256, ld = 4104, n = 4099;
+        std::vector<int8_t> w((size_t) R * ld);
+        for (auto& v : w) v = (int8_t) (rng() & 0xFF);
+        const auto xs = fvec(R, 0.01f), base = fvec(ld, 8.0f);
+        std::vector<uint16_t> bias(ld);
+        for (auto& v : bias) v = f2h_host(frand(2.0f));
+        int8_t* dw = dev(w);
+        float *dxs = dev(xs), *dbase = dev(base);
+        uint16_t* dbias = dev(bias);
+        int* dout = dev_n<int>(1);
+        const uint64_t salt = 0x1234567890abcdefull;
+        const float inv_t = 1.25f, cap = 30.0f;
+        std::vector<int> par = {100, 0, (int) (uint32_t) salt, (int) (uint32_t) (salt >> 32), 0, 0, 0, 0};
+        std::memcpy(&par[4], &inv_t, 4);
+        int* dpar = dev(par);
+        for (int noisy = 0; noisy < 2; ++noisy) {
+            k::argmax_gemv_i8(dw, ld, dxs, dbase, dbias, R, n, dout, 0, noisy ? dpar : nullptr, 3, cap);
+            const int got = host(dout, 1)[0];
+            double best = -1e300, second = -1e300;
+            int at = -1;
+            for (int v = 0; v < n; ++v) {
+                double a = 0;
+                for (int r = 0; r < R; ++r) a += (double) w[(size_t) r * ld + v] * xs[r];
+                a += (double) base[v] + h2f_host(bias[v]);
+                if (noisy) a = (double) cap * std::tanh(a / cap) * inv_t + k::gumbel_noise(salt, 103, v);
+                if (a > best) second = best, best = a, at = v;
+                else if (a > second) second = a;
+            }
+            // (the host's sums are doubles: the same token unless the two best are within the kernels' rounding)
+            expect_true(noisy ? "argmax_gemv_i8 with a sampled draft's noise" : "argmax_gemv_i8",
+                        got == at || best - second < 1e-3);
+        }
+        cudaFree(dw), cudaFree(dxs), cudaFree(dbase), cudaFree(dbias), cudaFree(dout), cudaFree(dpar);
+    }
+}
+
 int main() {
     int dev_count = 0;
     CU(cudaGetDeviceCount(&dev_count));
@@ -2856,7 +3201,7 @@ int main() {
     CU(cudaGetDeviceProperties(&p, 0));
     std::printf("ik2_kernels_test on %s (sm_%d%d)\n", p.name, p.major, p.minor);
     if (getenv("IK2_TEST_WINDOW_ONLY")) {   // (the exact window's checks alone: a GPU without the tensor-core kernels)
-        test_window_exact(p.major >= 8);
+        test_window_exact(p.major >= 7);   // (Volta and Turing: their own tensor-core kernels)
         std::printf(g_fail ? "FAILED: %d check(s)\n" : "all passed\n", g_fail);
         return g_fail ? 1 : 0;
     }
@@ -2886,10 +3231,11 @@ int main() {
     test_cand_topk();
     test_token_path();
     test_experts_mma();
-#ifdef STRATA_USE_HIP
+#ifdef MAYA_USE_HIP
     test_experts_rdna();
 #endif
-    test_window_exact(p.major >= 8);
+    test_window_exact(p.major >= 7);   // (Volta and Turing: their own tensor-core kernels)
+    test_window_launches();
     std::printf(g_fail ? "FAILED: %d check(s)\n" : "all passed\n", g_fail);
     return g_fail ? 1 : 0;
 }

@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <string_view>
 
-namespace strata::ds4::prefill_loan {
+namespace maya::ds4::prefill_loan {
 
 inline constexpr int normal_rows = 8192;
 inline constexpr int wide_rows = 12288;
@@ -37,4 +37,4 @@ inline std::size_t steps(std::size_t bytes, std::size_t private_bytes, std::size
     return extra / step_bytes + (extra % step_bytes != 0);
 }
 
-}  // namespace strata::ds4::prefill_loan
+}  // namespace maya::ds4::prefill_loan
