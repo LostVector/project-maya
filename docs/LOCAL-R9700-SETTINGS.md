@@ -240,7 +240,7 @@ prototype.
 
 ### Short resumed Q4 XL suffixes
 
-For the three-R9700 Q4 XL profile, `MAYA_DS4_RESUMED_BATCH_MIN=32` opts
-into batching 32–128 fresh tokens on an idle text turn that reuses a
+For the three-R9700 Q4 XL profile, `MAYA_DS4_RESUMED_BATCH_MIN=64` opts
+into batching 64–128 fresh tokens on an idle text turn that reuses a
 prefix. The setting applies when the remaining suffix fits into one
 scheduler piece. Set it in the engine's `env` before startup.
