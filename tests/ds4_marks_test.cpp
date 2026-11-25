@@ -12,12 +12,12 @@
 #include <cstdio>
 #include <vector>
 
-using strata::ds4::latest_point;
-using strata::ds4::mark_plan;
-using strata::ds4::mark_victim;
-using strata::ds4::MarkAt;
-using strata::ds4::MarkUse;
-using strata::ds4::TailCost;
+using maya::ds4::latest_point;
+using maya::ds4::mark_plan;
+using maya::ds4::mark_victim;
+using maya::ds4::MarkAt;
+using maya::ds4::MarkUse;
+using maya::ds4::TailCost;
 
 namespace {
 
@@ -170,7 +170,7 @@ int main() {
 
 
     // A bounded piece may batch past the tail point and keep its original endpoint.
-    using strata::ds4::batch_tail_in_piece;
+    using maya::ds4::batch_tail_in_piece;
     assert(batch_tail_in_piece(15882, 16384, 16394, 262144, 8192));
     assert(batch_tail_in_piece(8192, 8194, 9000, 8194, 8192));
     assert(batch_tail_in_piece(8192, 8704, 9000, 9000, 8192));

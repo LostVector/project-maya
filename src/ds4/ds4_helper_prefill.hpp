@@ -2,7 +2,7 @@
 
 #include "ds4_gguf.cuh"
 #include "ds4_kernels.cuh"
-#include "strata/kernels/exl3.hpp"
+#include "maya/kernels/exl3.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
@@ -13,9 +13,9 @@
 #include <type_traits>
 #include <vector>
 
-namespace strata::ds4::helper_prefill {
-namespace ex = strata::kernels::exl3;
-namespace gg = strata::ds4::gguf;
+namespace maya::ds4::helper_prefill {
+namespace ex = maya::kernels::exl3;
+namespace gg = maya::ds4::gguf;
 
 static __global__ void add_result(float* acc, const float* contribution, size_t n) {
     const size_t i = (size_t) blockIdx.x * blockDim.x + threadIdx.x;
@@ -268,4 +268,4 @@ struct Drain {
     Workspace* p;
     ~Drain() { if (p) p->wait(); }
 };
-}  // namespace strata::ds4::helper_prefill
+}  // namespace maya::ds4::helper_prefill

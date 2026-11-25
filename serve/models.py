@@ -90,9 +90,9 @@ HY4_NOT_YET = {"parallel": "Answers at once: Hy4-Flash answers one request at a 
 # Inkling-2-Mini (maya-ik2, an experimental preview): its settings, and what its engine does not have yet - said in
 # plain words when a client asks for it (each one's "off": IK2_OFF)
 import ik2_fit as IK2F  # noqa: E402  (tools/) what fits on its card: the setup's own figures
-IK2_KEYS = ("context", "images", "gpus", "env", "kv", "draft")
-IK2_OFF = {"parallel": 1}
-IK2_NOT_YET = {"parallel": "Answers at once: Inkling 2 Mini answers one request at a time for now"}
+IK2_KEYS = ("context", "images", "gpus", "env", "kv", "draft", "parallel")
+IK2_OFF: dict = {}
+IK2_NOT_YET: dict = {}   # (v1.1.74: --parallel, Answers at once, is in - the engine's resident path on one GPU)
 
 
 def ik2_draft_of(args: list) -> str:
@@ -179,13 +179,27 @@ def ik2_vram_gb(cfg: dict) -> float:
     hip = cfg.get("backend") == "hip"
     card = next((g for g in machine_gpus("hip" if hip else "cuda") if g.get("index") == ids[0]), None)
     vram = float((card or {}).get("vram_gb") or 0)
-    if hip and card and card.get("arch") == "gfx1151" and hasattr(os, "sysconf"):
+    got = (cfg.get("installer") or {}).get("ik2_vram_gb")
+    if not hip and sys.platform == "win32" and isinstance(got, (int, float)) and got > 0:
+        return min(vram, float(got)) if vram else float(got)   # (Windows: as CUDA gets the card, the setup measured)
+    if ik2_apu(cfg, card) and hasattr(os, "sysconf"):
         try:
             ram = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 1e9
         except (ValueError, OSError):
             return vram
         vram = max(vram, ram) - max(8.0, 0.1 * ram)
     return vram
+
+
+def ik2_apu(cfg: dict, card: dict | None = None) -> bool:
+    """Whether an Inkling 2 config runs on an AMD APU whose memory is the RAM (a Ryzen AI Max, gfx1151): every expert
+    stays in its memory there (no offload path); a discrete AMD card plans as an NVIDIA one."""
+    if cfg.get("backend") != "hip":
+        return False
+    if card is None:
+        ids = gpus_of(cfg) or [0]
+        card = next((g for g in machine_gpus("hip") if g.get("index") == ids[0]), None)
+    return bool(card and card.get("arch") == "gfx1151")
 
 
 # ------------------------------------------------------------------ the context a model was trained for
@@ -430,7 +444,8 @@ def _choices(cfg: dict) -> dict:
         card = next((g for g in machine_gpus("cuda") if g.get("index") == (gpus_of(cfg) or [0])[0]), None)             if cfg.get("backend") != "hip" else None
         off = IK2F.drafting_off_reason((card or {}).get("arch"), ik2_vram_gb(cfg), ctx or IK2F.CONTEXTS[0],
                                        (cfg.get("env") or {}).get("IK2_KV") or IK2F.DEFAULT_KV,
-                                       cfg.get("backend") == "hip")
+                                       cfg.get("backend") == "hip", ik2_apu(cfg),
+                                       len(gpus_of(cfg) or []) == 2)   # (two cards: the split drafts, measured)
         return {"draft": ["none"] if off else
                 ["auto"] + (["dspark"] if flag(cfg.get("args") or [], "--draft") else []) + ["none"],
                 "images": bool(cfg.get("vision") or cfg.get("vision_off")), "kv": list(IK2F.KV_BYTES)}
@@ -475,7 +490,7 @@ def settings_of(cfg: dict) -> dict:
         return out
     if family(cfg) == "ik2":                           # (maya-ik2's own defaults where the config names none)
         kv = str(env.pop("IK2_KV", "f16")).lower()     # (its cache: Settings' KV cache, not a variable of the page's)
-        out.update(images=bool(cfg.get("vision")), draft=ik2_draft_of(args),
+        out.update(images=bool(cfg.get("vision")), draft=ik2_draft_of(args), parallel=_int(flag(args, "--parallel"), 1),
                    kv="f16" if kv in ("f16", "fp16") else "fp8" if kv in ("fp8", "e4m3") else kv)
         return out
     if family(cfg) == "qwen":
@@ -724,9 +739,11 @@ def apply(cfg: dict, settings: dict) -> dict:
         if hy4_context_check(cfg, {**out, "args": args}) and flag(args, "--kv-streaming") is None:
             args = set_flag(args, "--kv-streaming", "auto")   # (streams only where nothing else fits, as the setup's)
     elif fam == "ik2":
-        # (maya-ik2: --max-context above; one GPU; the cache's format, IK2_KV)
-        if len(set(gpus)) != 1:
-            raise ValueError("GPUs: Inkling 2 Mini runs on one GPU for now - pick one")
+        # (maya-ik2: --max-context above; one GPU or two - --gpus 2, the split; the cache's format, IK2_KV)
+        if len(set(gpus)) not in (1, 2):
+            raise ValueError("GPUs: Inkling 2 Mini runs on one or two GPUs for now - pick one or two")
+        if gpus != gpus_of(cfg):
+            args = set_flag(args, "--gpus", "2") if len(set(gpus)) == 2 else drop_flag(args, "--gpus")
         # (the KV cache setting; IK2_KV typed into the variables by hand where the setting itself was not sent)
         kv = str(settings.get("kv") or clean.get("IK2_KV") or s.get("kv") or IK2F.DEFAULT_KV).lower()
         kv = {"fp16": "f16", "e4m3": "fp8"}.get(kv, kv)
@@ -748,6 +765,11 @@ def apply(cfg: dict, settings: dict) -> dict:
                              else "Drafting: auto, the drafter (DSpark) or none")
         if s["draft"] != ik2_draft_of(args):   # (written where it changes: a config from before keeps its flags)
             args = set_flag(args, "--drafting", {"auto": "auto", "dspark": "on"}.get(s["draft"], "off"))
+        # (--parallel: n conversations at once where every expert stays in VRAM on one GPU - the engine's resident
+        #  path, a cache each; drafting is off while it is above 1, elsewhere the engine says so and answers one at a
+        #  time; written where it changes)
+        par = _num(s, "parallel", 1, 8, "Answers at once", none_ok=False)
+        args = set_flag(args, "--parallel", par) if par > 1 or "--parallel" in args else args
     elif fam == "minimax":
         # (maya-mm3 --parallel: n conversations at once - each its own KV cache in VRAM, so no KV streaming and no DSpark
         #  while it is above 1; those two settings stay as chosen for the day it is 1 again; written where it changes)
@@ -1002,7 +1024,7 @@ def describe(path: Path, running: str | None) -> dict:
         #  page says where the engine would run its slower path)
         vram = ik2_vram_gb(cfg)
         ctxs = sorted({*IK2F.CONTEXTS, int(cur.get("context") or 0)} - {0})
-        own.update(ik2_fit={kv: {str(c): {k: v for k, v in IK2F.plan(vram, c, kv).items() if k != "need_gib"}
+        own.update(ik2_fit={kv: {str(c): {k: v for k, v in IK2F.plan(vram, c, kv, ik2_apu(cfg)).items() if k != "need_gib"}
                                  for c in ctxs} for kv in IK2F.KV_BYTES} if vram else None,
                    ik2_kv_bytes=IK2F.KV_BYTES)
     return {**own, "file": path.name, "path": str(path), "model": cfg.get("model_name") or "", "family": family(cfg),

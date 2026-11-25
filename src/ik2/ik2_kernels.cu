@@ -3,10 +3,10 @@
 #include "ik2_iq_tables.h"
 
 #include <cuda_fp16.h>
-#ifndef STRATA_USE_HIP
+#ifndef MAYA_USE_HIP
 #include <cuda_fp8.h>   // (AMD: the FP8 conversions are the portable ones below)
 #else
-#include "strata/kernels/rdna_wmma.hpp"   // (AMD: the matrix cores - ik2_rdna.inc)
+#include "maya/kernels/rdna_wmma.hpp"   // (AMD: the matrix cores - ik2_rdna.inc)
 
 #include <string>
 #include <type_traits>
@@ -172,7 +172,7 @@ __device__ float bmax(float v, float* sh) {
 constexpr int kBlk = 256;
 
 // two FP16 a register: a * b / a - b, each half rounded to nearest (as PTX's mul.rn / sub.rn.f16x2)
-#ifdef STRATA_USE_HIP
+#ifdef MAYA_USE_HIP
 typedef _Float16 ik2_h2v __attribute__((ext_vector_type(2)));
 __device__ __forceinline__ uint32_t h2_mul(uint32_t a, uint32_t b) {
     return __builtin_bit_cast(uint32_t, __builtin_bit_cast(ik2_h2v, a) * __builtin_bit_cast(ik2_h2v, b));
@@ -198,8 +198,8 @@ __device__ __forceinline__ uint32_t f2_to_u32(float a, float b) {
 }
 
 template <bool WRITE_F16, bool WRITE_F32>
-__global__ void rms_impl_kernel(const float* x, const float* w, int D, float eps, uint16_t* y16, float* y32) {
-    __shared__ float sh[kBlk];
+__device__ __forceinline__ void rms_impl_row(const float* x, const float* w, int D, float eps, uint16_t* y16, float* y32,
+                                             float* sh) {
     const float* xr = x + (size_t) blockIdx.x * D;
     uint16_t* y16r = WRITE_F16 ? y16 + (size_t) blockIdx.x * D : nullptr;
     float* y32r = WRITE_F32 ? y32 + (size_t) blockIdx.x * D : nullptr;
@@ -234,6 +234,24 @@ __global__ void rms_impl_kernel(const float* x, const float* w, int D, float eps
             if (WRITE_F16) y16r[d] = f2h(r);
         }
     }
+}
+template <bool WRITE_F16, bool WRITE_F32>
+__global__ void rms_impl_kernel(const float* x, const float* w, int D, float eps, uint16_t* y16, float* y32) {
+    __shared__ float sh[kBlk];
+    rms_impl_row<WRITE_F16, WRITE_F32>(x, w, D, eps, y16, y32, sh);
+}
+// rms_impl_kernel for up to three inputs of the same rows, each with its weights and outputs, in one launch (a grid
+// row an input; a block rms_impl_kernel's)
+struct RmsF16Jobs {
+    const float* x[3];
+    const float* w[3];
+    uint16_t* y16[3];
+    float* y32[3];
+};
+__global__ void rms_impl_jobs_kernel(RmsF16Jobs j, int D, float eps) {
+    __shared__ float sh[kBlk];
+    const int i = blockIdx.y;
+    rms_impl_row<true, true>(j.x[i], j.w[i], D, eps, j.y16[i], j.y32[i], sh);
 }
 // rms of up to three vectors, each with its own weights, in one launch (a block a vector; rms_impl_kernel's sums)
 __global__ void rms_multi_kernel(RmsJobs jobs, int D, float eps) {
@@ -921,7 +939,7 @@ __global__ void attn_probs_bias_f16_kernel(const float* lg, uint16_t* out16, int
 constexpr int kFaBN = 64, kFaD = 128, kFaLd = kFaD + 8;   // (row pad: conflict-free fragments/ldmatrix)
 constexpr float kLog2e = 1.4426950408889634f;
 
-#ifdef STRATA_USE_HIP
+#ifdef MAYA_USE_HIP
 // AMD: no mma.sync / ldmatrix / cp.async.  These keep their CUDA fragment layouts exactly (a lane's registers hold the
 // same elements), so every kernel written for them runs as it is: the m16n8k16 product from the A rows and B columns
 // gathered by shuffles (each product of two FP16 is exact in FP32; the sums in a fixed order, the same every run), an
@@ -1065,7 +1083,7 @@ __device__ __forceinline__ void cp_async_commit() {}
 template <int N>
 __device__ __forceinline__ void cp_async_wait() {}
 #endif
-#endif   // STRATA_USE_HIP
+#endif   // MAYA_USE_HIP
 // Volta's tensor cores (sm_70, and as an instruction every newer NVIDIA GPU has): mma.m8n8k4 - each quad pair of a
 // warp (lanes 4 q .. 4 q + 3 and 4 q + 16 .. 4 q + 19) its own D [8][8] += A [8][4] B [4][8], FP16 in, F32 sums.
 // Lane (j = lane & 3, hi = lane >> 4): c[i] is D [(j & 1) + 2 ((i >> 1) & 1) + 4 hi][(i & 1) + 2 (j >> 1) + 4 (i >> 2)];
@@ -1223,7 +1241,7 @@ __device__ __forceinline__ void wg_wait0() {
 #endif
 }
 // (keeps the compiler from moving an accumulator's use across the asynchronous MMA's issue or wait)
-#ifdef STRATA_USE_HIP
+#ifdef MAYA_USE_HIP
 __device__ __forceinline__ void wg_fence_operand(float&) {}   // (AMD: the warpgroup kernel is never built)
 #else
 __device__ __forceinline__ void wg_fence_operand(float& r) { asm volatile("" : "+f"(r)::"memory"); }
@@ -1235,7 +1253,7 @@ __device__ __forceinline__ void fence_proxy_async() {
 }
 // shared-memory matrix descriptor with the 128-byte swizzle: start, leading / stride byte offsets
 __device__ __forceinline__ uint64_t wg_desc(const void* p, uint32_t lbo, uint32_t sbo) {
-#ifdef STRATA_USE_HIP
+#ifdef MAYA_USE_HIP
     const uint32_t a = (uint32_t) (uintptr_t) p;   // (AMD: never used - the warpgroup kernel is Hopper's)
 #else
     const uint32_t a = (uint32_t) __cvta_generic_to_shared(p);
@@ -1552,17 +1570,40 @@ __device__ __forceinline__ int wa_active(int qpos, int window, int nw, int& k_lo
     return min(nw, (n_steps + kWaMin - 1) / kWaMin);
 }
 
+// A layer without a sliding window: a token at qpos takes its keys 16 a step from key 0, a warp `per` steps of them.
+// Tokens a few positions apart whose per is the same have the same steps in the same warps - a token that ends
+// before a step is all that differs - so a window's tokens can take a step's rows together
+// (attn_decode_mma_win_kernel).  per differs across a window once in 16 n_split kWaNW positions.
+__device__ __forceinline__ int wa_per0(int qpos, int nw) {
+    const int n_steps = (qpos + 16) >> 4, n_act = min(nw, (n_steps + kWaMin - 1) / kWaMin);
+    return (n_steps + n_act - 1) / n_act;
+}
+__device__ __forceinline__ bool wa_shared(int pos0, int T, int nw) {
+    return wa_per0(pos0, nw) == wa_per0(pos0 + T - 1, nw);
+}
+
 template <class KVT>
 __global__ void __launch_bounds__(kWaNW * 32, 4)
-attn_decode_mma_kernel(const uint16_t* __restrict__ q16, const KVT* __restrict__ kc, const KVT* __restrict__ vc,
+attn_decode_mma_kernel(const uint16_t* __restrict__ q16_0, const KVT* __restrict__ kc, const KVT* __restrict__ vc,
                        int kv_cap, int H, int Hkv, const int* pos_d, int qpos, float qk_scale,
-                       const float* __restrict__ r, const float* __restrict__ proj, int d_rel, bool rel4, int extent,
-                       int window, int n_split, float* __restrict__ o_part, float2* __restrict__ ml_part) {
+                       const float* __restrict__ r_0, const float* __restrict__ proj, int d_rel, bool rel4, int extent,
+                       int window, int n_split, float* __restrict__ o_part_0, float2* __restrict__ ml_part_0,
+                       int blk0, int tok_q = 0, int tok_r = 0, size_t tok_part = 0, int share_T = 0) {
     constexpr bool F8 = sizeof(KVT) == 1;
-    if (pos_d) qpos = *pos_d;   // (a token of a replayed graph: its position read here)
+    // (share_T: the window's tokens, where attn_decode_mma_win_kernel is launched beside this one - it takes the
+    //  windows whose tokens' warps have the same steps, this one the others)
+    if (share_T && wa_shared(pos_d[0], share_T, n_split * kWaNW)) return;
+    // (a window's tokens, a grid z each - the token's own q, r, position and partials tok_q, tok_r and tok_part
+    //  apart: every token's launch as one, each block the one-token launch's)
+    const int tz = blockIdx.z;
+    const uint16_t* __restrict__ q16 = q16_0 + (size_t) tz * tok_q;
+    const float* __restrict__ r = r_0 + (size_t) tz * tok_r;
+    float* __restrict__ o_part = o_part_0 + (size_t) tz * tok_part;
+    float2* __restrict__ ml_part = (float2*) ((float*) ml_part_0 + (size_t) tz * tok_part);
+    if (pos_d) qpos = pos_d[tz];   // (a token of a replayed graph: its position read here)
     const int lane = threadIdx.x & 31, gr = lane >> 2, tq = lane & 3;
     const int g = blockIdx.x, R = H / Hkv, KD = Hkv * kFaD;
-    const int w = blockIdx.y * kWaNW + (threadIdx.x >> 5);   // this warp of the K / V head's
+    const int w = (blockIdx.y + blk0) * kWaNW + (threadIdx.x >> 5);   // this warp of the K / V head's (blk0: a part's)
     int k_lo, n_steps;
     const int n_act = wa_active(qpos, window, n_split * kWaNW, k_lo, n_steps);
     if (w >= n_act) return;
@@ -1743,14 +1784,22 @@ attn_decode_mma_kernel(const uint16_t* __restrict__ q16, const KVT* __restrict__
 // the warps merged with the sink: out [H][D] (times v_inv: an FP8 cache's V scale; times the sigmoid of gate [H][D]
 // if given; out16: an FP16 copy); a block a head, D threads.  A warp's weight (the exp2 of its max less the overall
 // one) is found once and kept in shared memory.
-__global__ void attn_decode_mma_combine_kernel(const float* __restrict__ o_part, const float2* __restrict__ ml_part,
-                                               int n_split, int H, const float* __restrict__ sink, float v_inv,
-                                               const int* pos_d, int qpos, int window, const float* __restrict__ gate,
-                                               float* out, uint16_t* out16) {
+__global__ void attn_decode_mma_combine_kernel(const float* __restrict__ o_part_0, const float2* __restrict__ ml_part_0,
+                                               int n_split, int H, const float* __restrict__ sink_0, float v_inv,
+                                               const int* pos_d, int qpos, int window, const float* __restrict__ gate_0,
+                                               float* out_0, uint16_t* out16_0, size_t tok_part = 0, int tok_gate = 0) {
     extern __shared__ float cm_sm[];
     float* red = cm_sm;         // [kFaD] the block's reductions
     float* cw = cm_sm + kFaD;   // [n_split * kWaNW] the warps' weights
-    if (pos_d) qpos = *pos_d;
+    // (a window's tokens, a grid z each: sink [T][H], out and out16 [T][H][D], gate rows tok_gate apart)
+    const int tz = blockIdx.z;
+    const float* __restrict__ o_part = o_part_0 + (size_t) tz * tok_part;
+    const float2* __restrict__ ml_part = (const float2*) ((const float*) ml_part_0 + (size_t) tz * tok_part);
+    const float* __restrict__ sink = sink_0 + (size_t) tz * H;
+    const float* __restrict__ gate = gate_0 ? gate_0 + (size_t) tz * tok_gate : nullptr;
+    float* out = out_0 + (size_t) tz * H * kFaD;
+    uint16_t* out16 = out16_0 ? out16_0 + (size_t) tz * H * kFaD : nullptr;
+    if (pos_d) qpos = pos_d[tz];
     int k_lo, n_steps;
     const int n_act = wa_active(qpos, window, n_split * kWaNW, k_lo, n_steps);
     const int h = blockIdx.x, d = threadIdx.x;
@@ -1823,7 +1872,8 @@ __global__ void __launch_bounds__(kWaNW * 32, 2)   // (a step's loads at once in
 attn_decode_v70_kernel(const uint16_t* __restrict__ q16, const KVT* __restrict__ kc, const KVT* __restrict__ vc,
                        int kv_cap, int H, int Hkv, const int* pos_d, int qpos, float qk_scale,
                        const float* __restrict__ r, const float* __restrict__ proj, int d_rel, bool rel4, int extent,
-                       int window, int n_split, float* __restrict__ o_part, float2* __restrict__ ml_part) {
+                       int window, int n_split, float* __restrict__ o_part, float2* __restrict__ ml_part,
+                       int blk0) {
     constexpr bool F8 = sizeof(KVT) == 1;
     constexpr int kQl = kFaD + 8, kPl = 40;   // (row pads: the quad pairs' reads without bank conflicts)
     __shared__ __align__(16) uint16_t qs[8 * kQl];             // the heads' q, zero rows past R
@@ -1844,7 +1894,7 @@ attn_decode_v70_kernel(const uint16_t* __restrict__ q16, const KVT* __restrict__
         rs[i] = rel_sm && n < R && e < d_rel ? r[(size_t) (g * R + n) * d_rel + e] : 0.0f;
     }
     __syncthreads();
-    const int w = blockIdx.y * kWaNW + (threadIdx.x >> 5);
+    const int w = (blockIdx.y + blk0) * kWaNW + (threadIdx.x >> 5);
     int k_lo, n_steps, per;
     if (w >= wa_used_v70(qpos, window, n_split * kWaNW, k_lo, n_steps, per)) return;
     const int st0 = min(n_steps, w * per), st1 = min(n_steps, st0 + per);
@@ -2087,6 +2137,233 @@ __global__ void attn_decode_v70_combine_kernel(const float* __restrict__ o_part,
     if (gate) res = res * (1.0f / (1.0f + expf(-gate[(size_t) h * kFaD + d])));
     out[(size_t) h * kFaD + d] = res;
     if (out16) out16[(size_t) h * kFaD + d] = f2h(res);
+}
+
+// ---- Volta (sm_70): a prompt chunk's attention on a full layer (no window) on mma.m8n8k4.  A block: kPaNW
+// consecutive queries of one K / V head (a warp a query, its R heads the B columns - attn_decode_v70_kernel's warp
+// arithmetic as it is), one split of the keys; the keys go through shared memory 32 a step (the block's rows loaded
+// once for its warps, the next step's in the registers while this one is computed), and the blocks of the same keys
+// run side by side (the query block is blockIdx.x), so the cache is read from L2 by most of them.  The distance
+// table's rows of a step shared by the block's queries.  Partials as attn_flash's: attn_flash_combine merges them.
+constexpr int kPaNW = 8;
+template <class KVT>
+__global__ void __launch_bounds__(kPaNW * 32, 2)
+attn_prompt_v70_kernel(const uint16_t* __restrict__ q16, int q_ld, const KVT* __restrict__ kc,
+                       const KVT* __restrict__ vc, int H, int Hkv, int Tq, int qpos0, float qk_scale,
+                       const float* __restrict__ r, int r_ld, const float* __restrict__ proj, int d_rel, int extent,
+                       int per, float* __restrict__ o_part, float2* __restrict__ ml_part) {
+    constexpr bool F8 = sizeof(KVT) == 1;
+    constexpr int kQl = kFaD + 8, kPl = 40;
+    constexpr int kRow = kFaD * (int) sizeof(KVT) + 16;   // (a K / V row in shared memory, bytes, padded)
+    constexpr int kU = kFaD * (int) sizeof(KVT) / 16;     // (its uint4s)
+    constexpr int kLd = 32 * kU / (kPaNW * 32);           // (a thread's uint4s of a step's K, and of its V)
+    constexpr int kPj = 32 + kPaNW;                       // (the distance-table rows of a step)
+    __shared__ __align__(16) uint16_t qs[kPaNW * 8 * kQl];
+    __shared__ __align__(16) uint16_t ps_all[kPaNW * 8 * kPl];
+    __shared__ __align__(16) float rs[kPaNW * 8 * kRelSm];
+    __shared__ __align__(16) float pjb[kPj * kRelSm];
+    __shared__ __align__(16) uint8_t ks[32 * kRow];
+    __shared__ __align__(16) uint8_t vs[32 * kRow];
+    const int lane = threadIdx.x & 31, wq = threadIdx.x >> 5, j = lane & 3, hi = lane >> 4, qp = (lane >> 2) & 3,
+              nl = j + 4 * hi;
+    const int g = blockIdx.y % Hkv, sp = blockIdx.y / Hkv, R = H / Hkv, KD = Hkv * kFaD;
+    const int q_first = blockIdx.x * kPaNW, n_q = min(kPaNW, Tq - q_first);
+    const int qi = q_first + wq;                    // the warp's query
+    const bool wok = wq < n_q;
+    const int qpos = qpos0 + min(qi, Tq - 1), qmax = qpos0 + q_first + n_q - 1, qmin = qpos0 + q_first;
+    for (int i = threadIdx.x; i < kPaNW * 8 * (kFaD / 8); i += blockDim.x) {
+        const int w = i / (8 * (kFaD / 8)), n = (i / (kFaD / 8)) % 8, d = (i % (kFaD / 8)) * 8;
+        *(uint4*) (qs + (w * 8 + n) * kQl + d) =
+            n < R && w < n_q ? *(const uint4*) (q16 + (size_t) (q_first + w) * q_ld + (size_t) (g * R + n) * kFaD + d)
+                             : make_uint4(0u, 0u, 0u, 0u);
+    }
+    for (int i = threadIdx.x; i < kPaNW * 8 * kRelSm; i += blockDim.x) {
+        const int w = i / (8 * kRelSm), n = (i / kRelSm) % 8, e = i % kRelSm;
+        rs[i] = n < R && w < n_q && e < d_rel ? r[(size_t) (q_first + w) * r_ld + (size_t) (g * R + n) * d_rel + e] : 0.0f;
+    }
+    const int n_steps = (qmax + 32) >> 5;           // (the block's keys 0 .. qmax)
+    const int st0 = min(n_steps, sp * per), st1 = min(n_steps, st0 + per);
+    uint16_t* ps = ps_all + wq * 8 * kPl;
+    const uint16_t* qrow = qs + (wq * 8 + nl) * kQl;
+    const float* rsw = rs + wq * 8 * kRelSm;
+    int hs[4];
+    bool hok[4];
+#pragma unroll
+    for (int sl = 0; sl < 4; ++sl) hs[sl] = (sl & 1) + 2 * (j >> 1) + 4 * (sl >> 1), hok[sl] = hs[sl] < R;
+    float o[4][8];
+#pragma unroll
+    for (int b = 0; b < 4; ++b)
+#pragma unroll
+        for (int i = 0; i < 8; ++i) o[b][i] = 0.0f;
+    float mx[4] = {-INFINITY, -INFINITY, -INFINITY, -INFINITY}, ls[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    const float sc = qk_scale * kLog2e * (F8 ? 256.0f : 1.0f);
+    const uint8_t* kg = (const uint8_t*) (kc + (size_t) g * kFaD);
+    const uint8_t* vg = (const uint8_t*) (vc + (size_t) g * kFaD);
+    // a thread's part of a step's rows: uint4 u of row rr (rows past qmax read as qmax's: masked or times P = 0)
+    uint4 kn[kLd], vn[kLd];
+    auto fetch = [&](int st) {
+        const int kt = st * 32;
+#pragma unroll
+        for (int t = 0; t < kLd; ++t) {
+            const int id = threadIdx.x + t * kPaNW * 32, rr = id / kU, u = id % kU;
+            const size_t row = (size_t) min(kt + rr, qmax) * KD * sizeof(KVT);
+            kn[t] = __ldg((const uint4*) (kg + row) + u);
+            vn[t] = __ldg((const uint4*) (vg + row) + u);
+        }
+    };
+    if (st0 < st1) fetch(st0);
+    for (int st = st0; st < st1; ++st) {
+        const int kt = st * 32;
+        __syncthreads();   // (the step before read the tiles; the q / r staging done for the first)
+#pragma unroll
+        for (int t = 0; t < kLd; ++t) {
+            const int id = threadIdx.x + t * kPaNW * 32, rr = id / kU, u = id % kU;
+            *(uint4*) (ks + rr * kRow + 16 * u) = kn[t];
+            *(uint4*) (vs + rr * kRow + 16 * u) = vn[t];
+        }
+        // the distance-table rows d = qmin - kt - 31 .. qmax - kt of the step (zeros outside [0, extent))
+        const int dlo = qmin - kt - 31;
+        const bool near_b = dlo < extent;
+        if (near_b)
+            for (int i = threadIdx.x; i < kPj * kRelSm; i += blockDim.x) {
+                const int d = dlo + i / kRelSm, e = i % kRelSm;
+                pjb[i] = d >= 0 && d < extent && e < d_rel ? __ldg(proj + (size_t) d * d_rel + e) : 0.0f;
+            }
+        __syncthreads();
+        if (st + 1 < st1) fetch(st + 1);   // (in flight while this step is computed)
+        if (!wok || kt > qpos) continue;
+        float sa[8] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}, sb[8] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+        {
+            const uint4* kr = (const uint4*) (ks + (8 * qp + nl) * kRow);
+            if constexpr (F8) {
+#pragma unroll
+                for (int u = 0; u < 8; ++u) {
+                    const uint4 k4 = kr[u];
+                    const uint4 qa = *(const uint4*) (qrow + 16 * u), qb = *(const uint4*) (qrow + 16 * u + 8);
+                    uint32_t a0, a1;
+                    e4m3x4_h4_s8(k4.x, a0, a1);
+                    mma884(sa, a0, a1, qa.x, qa.y);
+                    e4m3x4_h4_s8(k4.y, a0, a1);
+                    mma884(sa, a0, a1, qa.z, qa.w);
+                    e4m3x4_h4_s8(k4.z, a0, a1);
+                    mma884(sb, a0, a1, qb.x, qb.y);
+                    e4m3x4_h4_s8(k4.w, a0, a1);
+                    mma884(sb, a0, a1, qb.z, qb.w);
+                }
+            } else {
+#pragma unroll
+                for (int u = 0; u < 16; ++u) {
+                    const uint4 k4 = kr[u], qv = *(const uint4*) (qrow + 8 * u);
+                    mma884((u & 1) ? sb : sa, k4.x, k4.y, qv.x, qv.y);
+                    mma884((u & 1) ? sb : sa, k4.z, k4.w, qv.z, qv.w);
+                }
+            }
+        }
+        const int kb = kt + 8 * qp + (j & 1) + 4 * hi;
+        float v[8];
+#pragma unroll
+        for (int i = 0; i < 8; ++i) v[i] = (sa[i] + sb[i]) * sc;
+        if (near_b && qpos - (kt + 31) < extent) {
+#pragma unroll
+            for (int e2 = 0; e2 < 2; ++e2) {
+                const int d = qpos - (kb + 2 * e2);
+                if (d < 0 || d >= extent) continue;
+                const float4* pjs = (const float4*) (pjb + (d - dlo) * kRelSm);
+#pragma unroll
+                for (int sl = 0; sl < 4; ++sl) {
+                    if (!hok[sl]) continue;
+                    float bb = 0.0f;
+                    const float4* rh = (const float4*) (rsw + hs[sl] * kRelSm);
+#pragma unroll
+                    for (int q4 = 0; q4 < kRelSm / 4; ++q4) {
+                        const float4 x = pjs[q4], y = rh[q4];
+                        bb += x.x * y.x + x.y * y.y + x.z * y.z + x.w * y.w;
+                    }
+                    v[(sl & 1) + 4 * (sl >> 1) + 2 * e2] += bb * kLog2e;
+                }
+            }
+        }
+        float mt[4];
+#pragma unroll
+        for (int sl = 0; sl < 4; ++sl) {
+            const int i0 = (sl & 1) + 4 * (sl >> 1);
+            if (kb > qpos || !hok[sl]) v[i0] = -INFINITY;
+            if (kb + 2 > qpos || !hok[sl]) v[i0 + 2] = -INFINITY;
+            mt[sl] = fmaxf(v[i0], v[i0 + 2]);
+        }
+#pragma unroll
+        for (int sh = 1; sh < 32; sh <<= 1) {
+            if (sh == 2) continue;
+#pragma unroll
+            for (int sl = 0; sl < 4; ++sl) mt[sl] = fmaxf(mt[sl], __shfl_xor_sync(0xffffffffu, mt[sl], sh));
+        }
+        if (__ballot_sync(0xffffffffu, mt[0] > mx[0] || mt[1] > mx[1] || mt[2] > mx[2] || mt[3] > mx[3])) {
+#pragma unroll
+            for (int sl = 0; sl < 4; ++sl) {
+                const int i0 = (sl & 1) + 4 * (sl >> 1);
+                const float mn = fmaxf(mx[sl], mt[sl]);
+                const float cf = mn == -INFINITY ? 1.0f : exp2f(mx[sl] - mn);
+                mx[sl] = mn, ls[sl] *= cf;
+#pragma unroll
+                for (int b = 0; b < 4; ++b) o[b][i0] *= cf, o[b][i0 + 2] *= cf;
+            }
+        }
+#pragma unroll
+        for (int sl = 0; sl < 4; ++sl) {
+            const int i0 = (sl & 1) + 4 * (sl >> 1);
+            const float u = mx[sl] == -INFINITY ? 0.0f : mx[sl];
+            const float p0 = exp2f(v[i0] - u), p1 = exp2f(v[i0 + 2] - u);
+            ls[sl] += p0 + p1;
+            ps[hs[sl] * kPl + (kb - kt)] = f2h(p0);
+            ps[hs[sl] * kPl + (kb - kt) + 2] = f2h(p1);
+        }
+        __syncwarp();
+        uint4 pv[4];
+#pragma unroll
+        for (int c4 = 0; c4 < 4; ++c4) pv[c4] = *(const uint4*) (ps + nl * kPl + 8 * c4);
+#pragma unroll
+        for (int c = 0; c < 8; ++c) {
+            const uint32_t b0 = (c & 1) ? pv[c >> 1].z : pv[c >> 1].x, b1 = (c & 1) ? pv[c >> 1].w : pv[c >> 1].y;
+            const uint8_t* vrow = vs + (4 * c + j) * kRow + (32 * qp + 16 * hi) * (int) sizeof(KVT);
+            if constexpr (F8) {
+                const uint4 x = *(const uint4*) vrow;
+                uint32_t a0, a1;
+                e4m3x4_h4_s8(x.x, a0, a1);
+                mma884_cc(o[0], a0, a1, b0, b1);
+                e4m3x4_h4_s8(x.y, a0, a1);
+                mma884_cc(o[1], a0, a1, b0, b1);
+                e4m3x4_h4_s8(x.z, a0, a1);
+                mma884_cc(o[2], a0, a1, b0, b1);
+                e4m3x4_h4_s8(x.w, a0, a1);
+                mma884_cc(o[3], a0, a1, b0, b1);
+            } else {
+                const uint4 x0 = *(const uint4*) vrow, x1 = *(const uint4*) (vrow + 16);
+                mma884_cc(o[0], x0.x, x0.y, b0, b1);
+                mma884_cc(o[1], x0.z, x0.w, b0, b1);
+                mma884_cc(o[2], x1.x, x1.y, b0, b1);
+                mma884_cc(o[3], x1.z, x1.w, b0, b1);
+            }
+        }
+        __syncwarp();
+    }
+    if (!wok) return;
+#pragma unroll
+    for (int sh = 1; sh < 32; sh <<= 1) {
+        if (sh == 2) continue;
+#pragma unroll
+        for (int sl = 0; sl < 4; ++sl) ls[sl] += __shfl_xor_sync(0xffffffffu, ls[sl], sh);
+    }
+    // the partials (attn_flash's): o_part [split][Tq][H][D], ml_part [split][Tq][H]
+#pragma unroll
+    for (int sl = 0; sl < 4; ++sl) {
+        if (!hok[sl]) continue;
+        const int i0 = (sl & 1) + 4 * (sl >> 1), h = g * R + hs[sl];
+        const size_t row = ((size_t) sp * Tq + qi) * H + h;
+        float* op = o_part + row * kFaD + 32 * qp + 16 * hi + (j & 1);
+#pragma unroll
+        for (int b = 0; b < 4; ++b) op[4 * b] = o[b][i0], op[4 * b + 2] = o[b][i0 + 2];
+        if (qp == 0 && hi == 0 && (j & 1) == 0) ml_part[row] = make_float2(mx[sl], ls[sl]);
+    }
 }
 
 template <bool WRITE_F16, bool WRITE_F32>
@@ -2341,6 +2618,54 @@ __global__ void loop_gate_dots_kernel(LoopGateArgs a, int T, int C, int R, float
         }
     }
 }
+#ifndef MAYA_USE_HIP
+// (1) for a few tokens (a token, a window: T <= 8) and C = 128 NIT: a block a (rank, gate) for every token - its D
+// row's two halves asked for once, at the start, each token's x and m a token ahead of its sums; the sums are
+// loop_gate_dots_kernel's (a thread's FMAs in c's order, the warp sums, the four warps added in order), so the
+// same bits.  A block a (rank, gate, token) read the D row again for every token, each load where it was used:
+// 16.6 us a launch of three gates with 5 tokens.
+template <int NIT>
+__global__ void __launch_bounds__(128) loop_gate_dots_toks_kernel(LoopGateArgs a, int T, int C, int R, float* sc) {
+    __shared__ float sh[8][4][4];
+    const int r = blockIdx.x, j = blockIdx.y, tid = threadIdx.x, warp = tid >> 5;
+    const float* dr = a.D[j] + (size_t) r * 2 * C;
+    float dx[NIT], dm[NIT];
+#pragma unroll
+    for (int i = 0; i < NIT; ++i) dx[i] = __ldg(dr + tid + i * 128), dm[i] = __ldg(dr + C + tid + i * 128);
+    float xa[NIT], ma[NIT];
+#pragma unroll
+    for (int i = 0; i < NIT; ++i) xa[i] = a.x[j][tid + i * 128], ma[i] = a.m[j][tid + i * 128];
+    for (int t = 0; t < T; ++t) {
+        float xn[NIT], mn[NIT];
+        const int tn = min(t + 1, T - 1);
+#pragma unroll
+        for (int i = 0; i < NIT; ++i)
+            xn[i] = a.x[j][(size_t) tn * C + tid + i * 128], mn[i] = a.m[j][(size_t) tn * C + tid + i * 128];
+        float ax = 0.0f, am = 0.0f, sx = 0.0f, sm = 0.0f;
+#pragma unroll
+        for (int i = 0; i < NIT; ++i) {
+            ax = __fmaf_rn(dx[i], xa[i], ax), am = __fmaf_rn(dm[i], ma[i], am);
+            if (r == 0) sx = __fmaf_rn(xa[i], xa[i], sx), sm = __fmaf_rn(ma[i], ma[i], sm);
+        }
+        ax = wsum(ax), am = wsum(am);
+        if (r == 0) sx = wsum(sx), sm = wsum(sm);
+        if ((tid & 31) == 0) sh[t][warp][0] = ax, sh[t][warp][1] = am, sh[t][warp][2] = sx, sh[t][warp][3] = sm;
+#pragma unroll
+        for (int i = 0; i < NIT; ++i) xa[i] = xn[i], ma[i] = mn[i];
+    }
+    __syncthreads();
+    if (tid < T) {
+        const int t = tid;
+        float* o = sc + ((size_t) j * T + t) * (2 * R + 2);
+        o[2 * r] = sh[t][0][0] + sh[t][1][0] + sh[t][2][0] + sh[t][3][0];
+        o[2 * r + 1] = sh[t][0][1] + sh[t][1][1] + sh[t][2][1] + sh[t][3][1];
+        if (r == 0) {
+            o[2 * R] = sh[t][0][2] + sh[t][1][2] + sh[t][2][2] + sh[t][3][2];
+            o[2 * R + 1] = sh[t][0][3] + sh[t][1][3] + sh[t][2][3] + sh[t][3][3];
+        }
+    }
+}
+#endif
 // (2) y = (1 - tanh(F g)) x + tanh(G g) m, F and G by rank ([R][C]).  A block is 32 channels of up to 8 tokens: its
 // 8 warps copy the channels' R rows of F and G into shared memory (the rows spread over the warps, a warp's loads all
 // issued at once - one thread a channel walking the rows itself left the loads in a chain on 27 blocks: 35 us a visit
@@ -3073,6 +3398,7 @@ experts_mma_kernel(const uint8_t* const* __restrict__ blob, size_t off, int C, i
                    int x_ld, uint16_t* hidden, float* y, const float* sg, const float* su, float gcap, float ucap) {
     __shared__ float2 part[SPLIT][8];
     const int lane = threadIdx.x & 31, split = threadIdx.x >> 5, g = lane >> 2, t = lane & 3, slot = blockIdx.y;
+    if ((uintptr_t) blob[slot] <= 1u) return;   // (two GPUs: a pick the other GPU runs - k::kHeldElsewhere)
     const int K = Gate ? C : F;
     const int r = blockIdx.x * (Gate ? 8 : 16) + g;
     const size_t rb = (size_t) (K / 64) * 36;
@@ -3154,6 +3480,7 @@ experts_v70_kernel(const uint8_t* const* __restrict__ blob, size_t off, int C, i
     __shared__ float2 part[SPLIT][8];
     const int lane = threadIdx.x & 31, split = threadIdx.x >> 5, j = lane & 3, hi = lane >> 4, qp = (lane >> 2) & 3;
     const int rr = j + 4 * hi, slot = blockIdx.y;
+    if ((uintptr_t) blob[slot] <= 1u) return;   // (two GPUs: a pick the other GPU runs)
     const int K = Gate ? C : F;
     const int r0 = blockIdx.x * (Gate ? 8 : 16);
     const size_t rb = (size_t) (K / 64) * 36;
@@ -3255,6 +3582,7 @@ __global__ void experts_gate_up_swiglu_kernel(const uint8_t* const* blob, const 
                                               const int* orow, int h_ld) {
     extern __shared__ float xs[];
     const int s = blockIdx.y;
+    if ((uintptr_t) blob[s] <= 1u) return;   // (two GPUs: a pick the other GPU runs)
     load_xs_f32(x + (size_t) tok[s] * C, C, xs);
     __syncthreads();
     const int warp = threadIdx.x >> 5;
@@ -3284,6 +3612,7 @@ __global__ void experts_down_kernel(const uint8_t* const* blob, int ty_down, siz
                                     int C, int F, size_t rb_down, float* y) {
     extern __shared__ float xs[];
     const int s = blockIdx.y;
+    if ((uintptr_t) blob[s] <= 1u) return;   // (two GPUs: a pick the other GPU runs)
     load_xs_f16(h + (size_t) s * F, F, xs);
     __syncthreads();
     const int warp = threadIdx.x >> 5;
@@ -4121,7 +4450,7 @@ __global__ void mv_q8p_kernel(const int8_t* __restrict__ q, const uint16_t* __re
                                         : (unsigned) (row - a1.r0) < (unsigned) a1.n ? a1.x
                                                                                      : x);
     float acc = 0.0f;
-#ifdef STRATA_USE_HIP
+#ifdef MAYA_USE_HIP
     if ((K & 255) == 0) {   // (AMD: 8 values a lane a step - a wave reads 256 bytes an instruction, three steps ahead)
         const uint2* q2 = (const uint2*) qr;
 #pragma unroll 3
@@ -4282,76 +4611,106 @@ __global__ void rope_neox_kernel(float* x, int heads, const int* pos, float thet
 // a block a (head, query): the logits a key a warp, softmax, the values
 // the drafter's attention, flash-decoding style: a block a (head, key chunk) for all the block's queries (nq <= 8) -
 // a key's K and V rows read once for them - its unnormalised output and (max, sum) a query, then merged.  Keys: the
-// context [k_lo, k_hi) (rows of a ring of cap: (k_lo + j) % cap) and the block's own nq (kb, vb).
-constexpr int kDraftQ = 8;
+// context [k_lo, k_hi) (rows of a ring of cap: (k_lo + j) % cap) and the block's own nq (kb, vb).  A chunk's keys go
+// by tiles of kDraftTile, their logits in shared memory, the softmax online (the running max and sum a query, the
+// output rescaled as the max moves): no scratch in device memory that grows with the context (it was 768 bytes a
+// key: 0.19 GiB at 262,144).  The drafts only - the target checks every token, so the answers do not change.
+constexpr int kDraftQ = 8, kDraftTile = 256;
 __device__ __forceinline__ float ld_f(const float* p) { return *p; }
 __device__ __forceinline__ float ld_f(const uint16_t* p) { return h2f(*p); }
+__device__ __forceinline__ float ld_f(const uint8_t* p) { return e4m3fn_to_f32(*p); }
+// (k_mul, v_mul: the context rows' values times these - an FP8 context's inverse scales; the block's own rows as they are)
 template <class KVT>
 __global__ void draft_attn_part_kernel(const float* q, const KVT* kc, const KVT* vc, int k_lo, int k_hi,
                                        const float* kb, const float* vb, int nq, int H, int Hkv, float scale, int per,
-                                       float* lgs, float* part_o, float2* part_ml, int cap) {
+                                       float* part_o, float2* part_ml, int cap, float k_mul, float v_mul,
+                                       const int* par = nullptr, int span = 0) {
     __shared__ float sh[128];
     __shared__ float qs[kDraftQ][128];
-    __shared__ float mrow[kDraftQ];
-    const int h = blockIdx.x, sp = blockIdx.y, S = gridDim.y, g = h / (H / Hkv), tid = threadIdx.x, lane = tid & 31,
-              warp = tid >> 5;
+    __shared__ float lg[kDraftQ][kDraftTile];
+    __shared__ float m_run[kDraftQ], l_run[kDraftQ], corr[kDraftQ];
+    if (par) {   // (a replayed graph: the block's position read here - its keys [P - span, P), the chunks they need)
+        k_hi = par[0], k_lo = max(0, k_hi - span);
+        const int nk0 = k_hi - k_lo + nq, s0 = max(1, min(64, (nk0 + 31) / 32));
+        per = (nk0 + s0 - 1) / s0;
+        if ((int) blockIdx.y >= s0) return;
+    }
+    const int h = blockIdx.x, sp = blockIdx.y, g = h / (H / Hkv), tid = threadIdx.x, lane = tid & 31, warp = tid >> 5;
     const int KD = Hkv * 128, nc = k_hi - k_lo, nk = nc + nq;
     const int j0 = min(nk, sp * per), j1 = min(nk, j0 + per), n = j1 - j0;
     for (int qi = 0; qi < nq; ++qi) qs[qi][tid] = q[((size_t) qi * H + h) * 128 + tid];
-    __syncthreads();
-    float* lg = lgs + ((size_t) h * S + sp) * kDraftQ * per;   // [nq][per]
-    float mx[kDraftQ];
-#pragma unroll
-    for (int qi = 0; qi < kDraftQ; ++qi) mx[qi] = -INFINITY;
-    for (int jj = warp; jj < n; jj += 4) {
-        const int j = j0 + jj;
-        float k0, k1, k2, k3;
-        if (j < nc) {
-            const KVT* kr = kc + (size_t) ((k_lo + j) % cap) * KD + (size_t) g * 128;
-            k0 = ld_f(kr + lane), k1 = ld_f(kr + lane + 32), k2 = ld_f(kr + lane + 64), k3 = ld_f(kr + lane + 96);
-        } else {
-            const float* kr = kb + (size_t) (j - nc) * KD + (size_t) g * 128;
-            k0 = kr[lane], k1 = kr[lane + 32], k2 = kr[lane + 64], k3 = kr[lane + 96];
-        }
-#pragma unroll
-        for (int qi = 0; qi < kDraftQ; ++qi) {
-            if (qi >= nq) break;
-            float a = qs[qi][lane] * k0 + qs[qi][lane + 32] * k1 + qs[qi][lane + 64] * k2 + qs[qi][lane + 96] * k3;
-#pragma unroll
-            for (int o = 16; o > 0; o >>= 1) a += __shfl_xor_sync(0xffffffffu, a, o);
-            a *= scale;
-            if (lane == 0) lg[(size_t) qi * per + jj] = a;
-            mx[qi] = fmaxf(mx[qi], a);
-        }
-    }
-    __syncthreads();
-    for (int qi = 0; qi < nq; ++qi) {
-        const float m = bmax(mx[qi], sh);
-        float a = 0.0f;
-        for (int jj = tid; jj < n; jj += 128) {
-            const float e = m == -INFINITY ? 0.0f : expf(lg[(size_t) qi * per + jj] - m);
-            lg[(size_t) qi * per + jj] = e;
-            a += e;
-        }
-        const float l = bsum(a, sh);
-        if (tid == 0) mrow[qi] = m, part_ml[((size_t) sp * H + h) * kDraftQ + qi] = make_float2(m, l);
-    }
+    if (tid < kDraftQ) m_run[tid] = -INFINITY, l_run[tid] = 0.0f;
     __syncthreads();
     float o[kDraftQ];
 #pragma unroll
     for (int qi = 0; qi < kDraftQ; ++qi) o[qi] = 0.0f;
-    for (int jj = 0; jj < n; ++jj) {
-        const int j = j0 + jj;
-        const float v = j < nc ? ld_f(vc + (size_t) ((k_lo + j) % cap) * KD + (size_t) g * 128 + tid)
-                               : vb[(size_t) (j - nc) * KD + (size_t) g * 128 + tid];
+    for (int t0 = 0; t0 < n; t0 += kDraftTile) {
+        const int tn = min(kDraftTile, n - t0);
+        float mx[kDraftQ];
+#pragma unroll
+        for (int qi = 0; qi < kDraftQ; ++qi) mx[qi] = -INFINITY;
+        for (int jj = warp; jj < tn; jj += 4) {
+            const int j = j0 + t0 + jj;
+            float k0, k1, k2, k3, ks = scale;
+            if (j < nc) {
+                const KVT* kr = kc + (size_t) ((k_lo + j) % cap) * KD + (size_t) g * 128;
+                k0 = ld_f(kr + lane), k1 = ld_f(kr + lane + 32), k2 = ld_f(kr + lane + 64), k3 = ld_f(kr + lane + 96);
+                ks = scale * k_mul;
+            } else {
+                const float* kr = kb + (size_t) (j - nc) * KD + (size_t) g * 128;
+                k0 = kr[lane], k1 = kr[lane + 32], k2 = kr[lane + 64], k3 = kr[lane + 96];
+            }
+#pragma unroll
+            for (int qi = 0; qi < kDraftQ; ++qi) {
+                if (qi >= nq) break;
+                float a = qs[qi][lane] * k0 + qs[qi][lane + 32] * k1 + qs[qi][lane + 64] * k2 + qs[qi][lane + 96] * k3;
+#pragma unroll
+                for (int o = 16; o > 0; o >>= 1) a += __shfl_xor_sync(0xffffffffu, a, o);
+                a *= ks;
+                if (lane == 0) lg[qi][jj] = a;
+                mx[qi] = fmaxf(mx[qi], a);
+            }
+        }
+        __syncthreads();
+        for (int qi = 0; qi < nq; ++qi) {
+            const float m_old = m_run[qi];
+            const float m = fmaxf(m_old, bmax(mx[qi], sh));
+            float a = 0.0f;
+            for (int jj = tid; jj < tn; jj += 128) {
+                const float e = m == -INFINITY ? 0.0f : expf(lg[qi][jj] - m);
+                lg[qi][jj] = e;
+                a += e;
+            }
+            const float l = bsum(a, sh);   // (bsum's barriers: every thread has read m_run[qi] above)
+            if (tid == 0) {
+                const float c = m_old == -INFINITY ? 0.0f : expf(m_old - m);
+                corr[qi] = c, l_run[qi] = l_run[qi] * c + l, m_run[qi] = m;
+            }
+        }
+        __syncthreads();
 #pragma unroll
         for (int qi = 0; qi < kDraftQ; ++qi)
-            if (qi < nq) o[qi] += lg[(size_t) qi * per + jj] * v;
+            if (qi < nq) o[qi] *= corr[qi];
+        for (int jj = 0; jj < tn; ++jj) {
+            const int j = j0 + t0 + jj;
+            const float v = j < nc ? ld_f(vc + (size_t) ((k_lo + j) % cap) * KD + (size_t) g * 128 + tid) * v_mul
+                                   : vb[(size_t) (j - nc) * KD + (size_t) g * 128 + tid];
+#pragma unroll
+            for (int qi = 0; qi < kDraftQ; ++qi)
+                if (qi < nq) o[qi] += lg[qi][jj] * v;
+        }
+        __syncthreads();   // (the next tile's logits overwrite lg)
     }
     for (int qi = 0; qi < nq; ++qi) part_o[(((size_t) sp * H + h) * kDraftQ + qi) * 128 + tid] = o[qi];
+    if (tid < nq) part_ml[((size_t) sp * H + h) * kDraftQ + tid] = make_float2(m_run[tid], l_run[tid]);
 }
-__global__ void draft_attn_merge_kernel(const float* part_o, const float2* part_ml, int S, int H, float* out) {
+__global__ void draft_attn_merge_kernel(const float* part_o, const float2* part_ml, int S, int H, float* out,
+                                        const int* par = nullptr, int span = 0, int nq = 0) {
     const int h = blockIdx.x, qi = blockIdx.y, tid = threadIdx.x;
+    if (par) {
+        const int k_hi = par[0], nk0 = k_hi - max(0, k_hi - span) + nq;
+        S = max(1, min(64, (nk0 + 31) / 32));
+    }
     float m = -INFINITY;
     for (int sp = 0; sp < S; ++sp) m = fmaxf(m, part_ml[((size_t) sp * H + h) * kDraftQ + qi].x);
     float den = 0.0f, acc = 0.0f;
@@ -4364,12 +4723,245 @@ __global__ void draft_attn_merge_kernel(const float* part_o, const float2* part_
     out[((size_t) qi * H + h) * 128 + tid] = acc / den;
 }
 
+// ---- the drafter's attention on the tensor cores (a context of FP8 or FP16 rows)
+// attn_block_mma_kernel's way for the block's nq <= 8 queries: a block's warps share a K / V head, a warp takes a run
+// of the context's keys, 16 a step, for the (query, head) columns of that K / V head - kDaNT tiles of 8 - so a key's
+// K and V rows are read once for them all, straight from the cache into the registers (an FP8 context's bytes made
+// FP16 there).  q becomes FP16 in the lanes' fragments, P is FP16 as there: the drafts only (the target checks every
+// token).  The context's keys alone - the block's own nq (F32 rows) are the merge's, a few sums a (head, query).
+// The kernel above, a key a warp for a head's queries, took 4.4 ms for 65K positions (and 0.11 ms for a window of
+// 1,023): the full-context layer was 70% of a draft.
+constexpr int kDaNT = 3;
+template <class KVT>
+__global__ void __launch_bounds__(kWaNW * 32, 2)
+draft_attn_mma_kernel(const float* __restrict__ q, const KVT* __restrict__ kc, const KVT* __restrict__ vc, int k_lo,
+                      int k_hi, int nq, int H, int Hkv, float sc, int n_split, float* __restrict__ o_part,
+                      float2* __restrict__ ml_part, int cap, const int* __restrict__ par, int span) {
+    constexpr bool F8 = sizeof(KVT) == 1;
+    constexpr int NT = kDaNT;
+    if (par) k_hi = par[0], k_lo = max(0, k_hi - span);   // (a replayed graph: the block's position read here)
+    const int nc = k_hi - k_lo;
+    const int lane = threadIdx.x & 31, gr = lane >> 2, tq = lane & 3;
+    const int g = blockIdx.x, R = H / Hkv, KD = Hkv * kFaD, NC = nq * R, QH = nq * H;
+    const int w = blockIdx.y * kWaNW + (threadIdx.x >> 5);
+    const int n_steps = (nc + 15) >> 4, n_act = min(n_split * kWaNW, n_steps);
+    if (w >= n_act) return;
+    const int per = (n_steps + n_act - 1) / n_act;
+    const int st0 = min(n_steps, w * per), st1 = min(n_steps, st0 + per);
+    uint32_t qf[NT][kFaD / 16][2];
+    bool q_ok[NT];
+#pragma unroll
+    for (int j = 0; j < NT; ++j) {
+        const int cq = j * 8 + gr;
+        q_ok[j] = cq < NC;
+        const int qi = q_ok[j] ? cq / R : 0, hq = q_ok[j] ? cq % R : 0;
+        const float4* qr = (const float4*) (q + ((size_t) qi * H + g * R + hq) * kFaD);
+#pragma unroll
+        for (int kk = 0; kk < kFaD / 16; ++kk) {
+            const float4 v = qr[kk * 4 + tq];   // (the dims 16 kk + 4 tq .. + 3)
+            qf[j][kk][0] = q_ok[j] ? f2_to_u32(v.x, v.y) : 0u, qf[j][kk][1] = q_ok[j] ? f2_to_u32(v.z, v.w) : 0u;
+        }
+    }
+    float o[NT][kFaD / 16][4];
+    float ma[NT], mb[NT], la[NT], lb[NT];
+#pragma unroll
+    for (int j = 0; j < NT; ++j) {
+        ma[j] = mb[j] = -INFINITY, la[j] = lb[j] = 0.0f;
+#pragma unroll
+        for (int jj = 0; jj < kFaD / 16; ++jj) o[j][jj][0] = o[j][jj][1] = o[j][jj][2] = o[j][jj][3] = 0.0f;
+    }
+    const KVT* kg = kc + (size_t) g * kFaD + tq * 4;
+    const KVT* vg = vc + (size_t) g * kFaD + gr * 16;
+    const int src = tq * 8 + (gr >> 1);
+    const uint32_t psel = (gr & 1) ? 0x7632u : 0x5410u;
+
+    for (int st = st0; st < st1; ++st) {
+        const int kt = st * 16, kmax = nc - 1 - kt;
+        const int row0 = (k_lo + kt) % cap;
+        auto row = [&](int key) {   // (a key past the context's last: that one's row, masked below)
+            int rw = row0 + min(key, kmax);
+            if (rw >= cap) rw -= cap;
+            return (size_t) rw * KD;
+        };
+        uint32_t ka[kFaD / 16][4];
+        {
+            const KVT* p0 = kg + row(gr);
+            const KVT* p1 = kg + row(gr + 8);
+            if constexpr (F8) {
+                uint32_t w0[kFaD / 16], w1[kFaD / 16];
+#pragma unroll
+                for (int kk = 0; kk < kFaD / 16; ++kk) {
+                    w0[kk] = __ldg((const uint32_t*) (p0 + kk * 16));
+                    w1[kk] = __ldg((const uint32_t*) (p1 + kk * 16));
+                }
+#pragma unroll
+                for (int kk = 0; kk < kFaD / 16; ++kk) {
+                    e4m3x4_h4(w0[kk], ka[kk][0], ka[kk][2]);
+                    e4m3x4_h4(w1[kk], ka[kk][1], ka[kk][3]);
+                }
+            } else {
+#pragma unroll
+                for (int kk = 0; kk < kFaD / 16; ++kk) {
+                    const uint2 v0 = __ldg((const uint2*) (p0 + kk * 16)), v1 = __ldg((const uint2*) (p1 + kk * 16));
+                    ka[kk][0] = v0.x, ka[kk][2] = v0.y, ka[kk][1] = v1.x, ka[kk][3] = v1.y;
+                }
+            }
+        }
+        const bool v0k = gr <= kmax, v1k = gr + 8 <= kmax;   // (the lane's keys gr and gr + 8 are the context's)
+        uint32_t pb0[NT], pb1[NT];
+#pragma unroll
+        for (int j = 0; j < NT; ++j) {
+            float sa[4] = {0.0f, 0.0f, 0.0f, 0.0f}, sb[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+#pragma unroll
+            for (int kk = 0; kk < kFaD / 16; ++kk) mma16816((kk & 1) ? sb : sa, ka[kk], qf[j][kk][0], qf[j][kk][1]);
+            const bool a_ok = j * 8 + 2 * tq < NC, b_ok = j * 8 + 2 * tq + 1 < NC;
+            const float c0 = (a_ok && v0k) ? (sa[0] + sb[0]) * sc : -INFINITY;
+            const float c1 = (b_ok && v0k) ? (sa[1] + sb[1]) * sc : -INFINITY;
+            const float c2 = (a_ok && v1k) ? (sa[2] + sb[2]) * sc : -INFINITY;
+            const float c3 = (b_ok && v1k) ? (sa[3] + sb[3]) * sc : -INFINITY;
+            float mxa = fmaxf(c0, c2), mxb = fmaxf(c1, c3);
+#pragma unroll
+            for (int sh = 4; sh < 32; sh <<= 1) {
+                mxa = fmaxf(mxa, __shfl_xor_sync(0xffffffffu, mxa, sh));
+                mxb = fmaxf(mxb, __shfl_xor_sync(0xffffffffu, mxb, sh));
+            }
+            if (__ballot_sync(0xffffffffu, mxa > ma[j] || mxb > mb[j])) {
+                const float mna = fmaxf(ma[j], mxa), mnb = fmaxf(mb[j], mxb);
+                const float ca = mna == -INFINITY ? 1.0f : exp2f(ma[j] - mna);
+                const float cb = mnb == -INFINITY ? 1.0f : exp2f(mb[j] - mnb);
+                ma[j] = mna, mb[j] = mnb;
+                la[j] *= ca, lb[j] *= cb;
+#pragma unroll
+                for (int jj = 0; jj < kFaD / 16; ++jj) o[j][jj][0] *= ca, o[j][jj][1] *= cb, o[j][jj][2] *= ca, o[j][jj][3] *= cb;
+            }
+            const float ua = ma[j] == -INFINITY ? 0.0f : ma[j], ub = mb[j] == -INFINITY ? 0.0f : mb[j];
+            const float p0 = exp2f(c0 - ua), p1 = exp2f(c1 - ub), p2 = exp2f(c2 - ua), p3 = exp2f(c3 - ub);
+            la[j] += p0 + p2, lb[j] += p1 + p3;
+            const uint32_t plo = f2_to_u32(p0, p1), phi = f2_to_u32(p2, p3);
+            const uint32_t alo = __shfl_sync(0xffffffffu, plo, src), blo = __shfl_sync(0xffffffffu, plo, src + 4);
+            const uint32_t ahi = __shfl_sync(0xffffffffu, phi, src), bhi = __shfl_sync(0xffffffffu, phi, src + 4);
+            pb0[j] = q_ok[j] ? __byte_perm(alo, blo, psel) : 0u, pb1[j] = q_ok[j] ? __byte_perm(ahi, bhi, psel) : 0u;
+        }
+        {
+            const KVT* v0 = vg + row(2 * tq);
+            const KVT* v1 = vg + row(2 * tq + 1);
+            const KVT* v8 = vg + row(2 * tq + 8);
+            const KVT* v9 = vg + row(2 * tq + 9);
+            if constexpr (F8) {
+                const uint4 r0 = __ldg((const uint4*) v0), r1 = __ldg((const uint4*) v1);
+                const uint4 r8 = __ldg((const uint4*) v8), r9 = __ldg((const uint4*) v9);
+                const uint32_t x0[4] = {r0.x, r0.y, r0.z, r0.w}, x1[4] = {r1.x, r1.y, r1.z, r1.w};
+                const uint32_t x8[4] = {r8.x, r8.y, r8.z, r8.w}, x9[4] = {r9.x, r9.y, r9.z, r9.w};
+#pragma unroll
+                for (int i = 0; i < 4; ++i) {
+                    uint32_t a[4];
+                    e4m3x4_h4(__byte_perm(x0[i], x1[i], 0x5140u), a[0], a[1]);
+                    e4m3x4_h4(__byte_perm(x8[i], x9[i], 0x5140u), a[2], a[3]);
+#pragma unroll
+                    for (int j = 0; j < NT; ++j) mma16816(o[j][2 * i], a, pb0[j], pb1[j]);
+                    e4m3x4_h4(__byte_perm(x0[i], x1[i], 0x7362u), a[0], a[1]);
+                    e4m3x4_h4(__byte_perm(x8[i], x9[i], 0x7362u), a[2], a[3]);
+#pragma unroll
+                    for (int j = 0; j < NT; ++j) mma16816(o[j][2 * i + 1], a, pb0[j], pb1[j]);
+                }
+            } else {
+#pragma unroll
+                for (int i = 0; i < 2; ++i) {
+                    const uint4 r0 = __ldg((const uint4*) v0 + i), r1 = __ldg((const uint4*) v1 + i);
+                    const uint4 r8 = __ldg((const uint4*) v8 + i), r9 = __ldg((const uint4*) v9 + i);
+                    const uint32_t x0[4] = {r0.x, r0.y, r0.z, r0.w}, x1[4] = {r1.x, r1.y, r1.z, r1.w};
+                    const uint32_t x8[4] = {r8.x, r8.y, r8.z, r8.w}, x9[4] = {r9.x, r9.y, r9.z, r9.w};
+#pragma unroll
+                    for (int jj = 0; jj < 4; ++jj) {
+                        const uint32_t a[4] = {__byte_perm(x0[jj], x1[jj], 0x5410u), __byte_perm(x0[jj], x1[jj], 0x7632u),
+                                               __byte_perm(x8[jj], x9[jj], 0x5410u), __byte_perm(x8[jj], x9[jj], 0x7632u)};
+#pragma unroll
+                        for (int j = 0; j < NT; ++j) mma16816(o[j][4 * i + jj], a, pb0[j], pb1[j]);
+                    }
+                }
+            }
+        }
+    }
+#pragma unroll
+    for (int j = 0; j < NT; ++j) {
+#pragma unroll
+        for (int sh = 4; sh < 32; sh <<= 1) {
+            la[j] += __shfl_xor_sync(0xffffffffu, la[j], sh);
+            lb[j] += __shfl_xor_sync(0xffffffffu, lb[j], sh);
+        }
+        const int ca = j * 8 + 2 * tq, cb = ca + 1;
+        // the warp's partials: o_part [warp][nq][H][D], ml_part [warp][nq][H] = (max in log2 units, sum)
+        if (ca < NC) {
+            const size_t ix = (size_t) w * QH + (size_t) (ca / R) * H + g * R + ca % R;
+            float* op = o_part + ix * kFaD + gr * 16;
+#pragma unroll
+            for (int jj = 0; jj < kFaD / 16; ++jj) *(float2*) (op + 2 * jj) = make_float2(o[j][jj][0], o[j][jj][2]);
+            if (gr == 0) ml_part[ix] = make_float2(ma[j], la[j]);
+        }
+        if (cb < NC) {
+            const size_t ix = (size_t) w * QH + (size_t) (cb / R) * H + g * R + cb % R;
+            float* op = o_part + ix * kFaD + gr * 16;
+#pragma unroll
+            for (int jj = 0; jj < kFaD / 16; ++jj) *(float2*) (op + 2 * jj) = make_float2(o[j][jj][1], o[j][jj][3]);
+            if (gr == 0) ml_part[ix] = make_float2(mb[j], lb[j]);
+        }
+    }
+}
+// the warps merged with the block's own keys (kb, vb [nq][Hkv][D] F32: their logits and values here): out
+// [nq][H][D]; a block a (head, query), D threads.  v_mul: an FP8 context's V scale (the context's part only).
+__global__ void draft_attn_mma_merge_kernel(const float* __restrict__ o_part, const float2* __restrict__ ml_part,
+                                            int n_split, int k_lo, int k_hi, const float* __restrict__ q,
+                                            const float* __restrict__ kb, const float* __restrict__ vb, int nq, int H,
+                                            int Hkv, float scale, float v_mul, float* out,
+                                            const int* __restrict__ par, int span) {
+    __shared__ float red[kFaD];
+    __shared__ float cw[kWaNW * 32];   // (n_split kWaNW <= 128 warps)
+    if (par) k_hi = par[0], k_lo = max(0, k_hi - span);
+    const int nc = k_hi - k_lo, n_steps = (nc + 15) >> 4, n_act = min(n_split * kWaNW, n_steps);
+    const int h = blockIdx.x, qi = blockIdx.y, d = threadIdx.x, g = h / (H / Hkv), QH = nq * H, ix = qi * H + h;
+    const int KD = Hkv * kFaD;
+    const float qd = q[(size_t) ix * kFaD + d];
+    float lb[kDraftQ];
+    float m = -INFINITY;
+    for (int j = 0; j < nq; ++j) {   // the block's own keys' logits (log2 units)
+        lb[j] = bsum(qd * kb[(size_t) j * KD + (size_t) g * kFaD + d], red) * scale * kLog2e;
+        m = fmaxf(m, lb[j]);
+    }
+    float mp = -INFINITY;
+    for (int s = d; s < n_act; s += kFaD) mp = fmaxf(mp, ml_part[(size_t) s * QH + ix].x);
+    m = fmaxf(m, bmax(mp, red));
+    float den = 0.0f;
+    for (int s = d; s < n_act; s += kFaD) {
+        const float2 ml = ml_part[(size_t) s * QH + ix];
+        const float c = ml.x == -INFINITY ? 0.0f : exp2f(ml.x - m);
+        cw[s] = c;
+        den += ml.y * c;
+    }
+    den = bsum(den, red);   // (and its barriers: the weights are all there)
+    float acc = 0.0f;
+    for (int s = 0; s < n_act; ++s) acc += o_part[((size_t) s * QH + ix) * kFaD + d] * cw[s];
+    acc *= v_mul;
+    for (int j = 0; j < nq; ++j) {
+        const float pj = exp2f(lb[j] - m);
+        den += pj;
+        acc += pj * vb[(size_t) j * KD + (size_t) g * kFaD + d];
+    }
+    out[(size_t) ix * kFaD + d] = acc / den;
+}
+
 __global__ void silu_mul_bf16_kernel(const float* gu, int T, int F, uint16_t* out) {
     const size_t i = (size_t) blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= (size_t) T * F) return;
     const size_t t = i / F, f = i % F;
     const float g = gu[t * 2 * F + f], u = gu[t * 2 * F + F + f];
     out[i] = f2bf_rn(g / (1.0f + expf(-g)) * u);
+}
+__global__ void silu_mul_f16_kernel(const float* gu, int T, int F, uint16_t* out) {
+    const size_t i = (size_t) blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= (size_t) T * F) return;
+    const size_t t = i / F, f = i % F;
+    const float g = gu[t * 2 * F + f], u = gu[t * 2 * F + F + f];
+    out[i] = f2h(g / (1.0f + expf(-g)) * u);
 }
 
 __global__ void rnn_inputs_kernel(const float* state, const uint16_t* emb, const int* prev, const float* hidden,
@@ -4559,6 +5151,62 @@ __global__ void argmax_gemv_f16_part_kernel(const uint16_t* W, int ld, const flo
         if (SINGLE_BLOCK) *out = idx;
         else g_argmax_v[blockIdx.x] = best, g_argmax_i[blockIdx.x] = idx;
     }
+}
+
+// argmax_gemv_f16 over a table kept as int8 [R][ld] (each row's scale already in xs: xs[r] = x[r] * scale[r]) - half
+// the bytes a draft of the drafter's Markov head reads (51 MB where the FP16 table is 103).  A thread 8 columns.
+__global__ void argmax_gemv_i8_part_kernel(const int8_t* __restrict__ W, int ld, const float* __restrict__ xs,
+                                           const float* __restrict__ base, const uint16_t* __restrict__ bias_f16, int R,
+                                           int n, const int* par, int pos_off, float cap) {
+    extern __shared__ float sx[];
+    for (int r = threadIdx.x; r < R; r += blockDim.x) sx[r] = xs[r];
+    __syncthreads();
+    // (a sampled request's drafts: the logit softcapped, over the temperature, plus the token's noise)
+    const float inv_t = par ? __int_as_float(par[4]) : 0.0f;
+    const bool noisy = inv_t != 0.0f;
+    const int npos = par ? par[0] + pos_off : 0;
+    const uint64_t salt = par ? ((uint64_t) (uint32_t) par[2] | ((uint64_t) (uint32_t) par[3] << 32)) : 0ull;
+    auto score = [&](float l, int v) {
+        return noisy ? cap * tanhf(l / cap) * inv_t + gumbel_noise(salt, npos, v) : l;
+    };
+    const int gtid = blockIdx.x * blockDim.x + threadIdx.x;
+    const int gstride = gridDim.x * blockDim.x;
+    float best = -INFINITY;
+    int idx = 0x7fffffff;
+    const int n8 = n >> 3;
+    for (int v8 = gtid; v8 < n8; v8 += gstride) {
+        const int v = v8 << 3;
+        float d[8] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+        const int8_t* wr = W + v;
+        for (int r = 0; r < R; ++r, wr += ld) {
+            const float xr = sx[r];
+            const uint2 w = __ldg((const uint2*) wr);
+#pragma unroll
+            for (int j = 0; j < 4; ++j) {
+                d[j] = fmaf((float) (int8_t) ((w.x >> (8 * j)) & 0xFFu), xr, d[j]);
+                d[4 + j] = fmaf((float) (int8_t) ((w.y >> (8 * j)) & 0xFFu), xr, d[4 + j]);
+            }
+        }
+        const float4 b0 = __ldg((const float4*) (base + v)), b1 = __ldg((const float4*) (base + v + 4));
+        const uint4 bb = __ldg((const uint4*) (bias_f16 + v));
+        const float2 f0 = u32_to_f2(bb.x), f1 = u32_to_f2(bb.y), f2 = u32_to_f2(bb.z), f3 = u32_to_f2(bb.w);
+        argmax_better(score(d[0] + b0.x + f0.x, v + 0), v + 0, best, idx);
+        argmax_better(score(d[1] + b0.y + f0.y, v + 1), v + 1, best, idx);
+        argmax_better(score(d[2] + b0.z + f1.x, v + 2), v + 2, best, idx);
+        argmax_better(score(d[3] + b0.w + f1.y, v + 3), v + 3, best, idx);
+        argmax_better(score(d[4] + b1.x + f2.x, v + 4), v + 4, best, idx);
+        argmax_better(score(d[5] + b1.y + f2.y, v + 5), v + 5, best, idx);
+        argmax_better(score(d[6] + b1.z + f3.x, v + 6), v + 6, best, idx);
+        argmax_better(score(d[7] + b1.w + f3.y, v + 7), v + 7, best, idx);
+    }
+    for (int v = (n8 << 3) + gtid; v < n; v += gstride) {
+        float d = 0.0f;
+        const int8_t* wr = W + v;
+        for (int r = 0; r < R; ++r, wr += ld) d = fmaf((float) __ldg(wr), sx[r], d);
+        argmax_better(score(d + __ldg(base + v) + h2f(__ldg(bias_f16 + v)), v), v, best, idx);
+    }
+    argmax_block_reduce(best, idx);
+    if (threadIdx.x == 0) g_argmax_v[blockIdx.x] = best, g_argmax_i[blockIdx.x] = idx;
 }
 
 __global__ void argmax_final_kernel(int n_partials, int stride_partials, int* out) {
@@ -4767,6 +5415,9 @@ __device__ __forceinline__ uint32_t q8_pair(uint32_t w) {
 }
 __device__ __forceinline__ uint32_t q8_h2(uint32_t w, uint32_t scale) { return h2_mul(q8_pair(w), scale); }
 
+#ifndef IK2_Q8_TILE_AHEAD
+#define IK2_Q8_TILE_AHEAD 2
+#endif
 // Quantized planar Q8 GEMM for the small verify/prefill tiles. One scale covers
 // both 16-wide MMA instructions. Packing the signed bytes via 1024+u is exact
 // for all 256 inputs; the product rounds to half as in decode_q8p_f16_kernel.
@@ -4778,14 +5429,36 @@ __global__ void q8_mma_tile(const int8_t* q, const uint16_t* scales, int N, int 
     const int row0 = min(row, N - 1), row1 = min(row + 8, N - 1);
     const int blocks = K / 32;
     float acc[4] = {};
-    for (int i = split; i < blocks; i += Splits) {
+    // (a step's values, scales and inputs asked for kQ8Ahead steps before its sums - a warp waited at every one of
+    //  its 18 steps for bytes it had only just asked for; the same sums)
+    struct QStep {
+        uint2 a0, a1;
+        uint32_t s0, s1;
+        uint4 v;
+    };
+    constexpr int kQ8Ahead = IK2_Q8_TILE_AHEAD;
+    auto ld = [&](int i) {
         const int col = i * 32 + t * 8;
-        const uint2 a0 = *(const uint2*)(q + (size_t)row0 * K + col);
-        const uint2 a1 = *(const uint2*)(q + (size_t)row1 * K + col);
-        uint32_t s0 = scales[(size_t)row0 * blocks + i], s1 = scales[(size_t)row1 * blocks + i];
+        QStep r;
+        r.a0 = __ldg((const uint2*) (q + (size_t) row0 * K + col));
+        r.a1 = __ldg((const uint2*) (q + (size_t) row1 * K + col));
+        r.s0 = __ldg(scales + (size_t) row0 * blocks + i), r.s1 = __ldg(scales + (size_t) row1 * blocks + i);
+        r.v = *(const uint4*) (x + (size_t) min(token, T - 1) * K + col);
+        return r;
+    };
+    QStep pipe[kQ8Ahead + 1];
+#pragma unroll
+    for (int j = 0; j <= kQ8Ahead; ++j) pipe[j] = ld(min(split + j * Splits, blocks - 1));
+    for (int i = split; i < blocks; i += Splits) {
+        const QStep cur = pipe[0];
+#pragma unroll
+        for (int j = 0; j < kQ8Ahead; ++j) pipe[j] = pipe[j + 1];
+        if (i + (kQ8Ahead + 1) * Splits < blocks) pipe[kQ8Ahead] = ld(i + (kQ8Ahead + 1) * Splits);
+        const uint2 a0 = cur.a0, a1 = cur.a1;
+        uint32_t s0 = cur.s0, s1 = cur.s1;
         s0 |= s0 << 16;
         s1 |= s1 << 16;
-        const uint4 v = *(const uint4*)(x + (size_t)min(token, T - 1) * K + col);
+        const uint4 v = cur.v;
         uint32_t a[4] = {q8_h2(a0.x, s0), q8_h2(a1.x, s1), q8_h2(a0.y, s0), q8_h2(a1.y, s1)};
         mma16816(acc, a, v.x, v.z);
         a[0] = q8_h2(a0.x >> 16, s0);
@@ -5084,12 +5757,263 @@ __global__ void attn_block_combine_kernel(const float* __restrict__ o_part, cons
     if (out16) out16[(size_t) ix * kFaD + d] = f2h(res);
 }
 
+// attn_decode_mma_kernel for the T tokens (positions *pos_d .. + T - 1) of a window on a layer without a sliding
+// window, a key's K and V rows read once for them all: the warp's columns are (token, head) pairs, as
+// attn_block_mma_kernel's, but the steps and the warps are each token's own (wa_shared - the kernel does nothing
+// where they are not, attn_decode_mma_kernel's share_T blocks take that window), so a column's sums are the
+// one-token kernel's to the bit: the same keys a step, the same warp, the same order, a key past the column's token
+// masked as a key past the one token is.  A column whose token ended before the step (the window's last step, when
+// the window crosses a multiple of 16) is left as it was: its logits are all masked - no new maximum, P = 0, and
+// its output plus zeros is its output, a -0 aside, which is put back.  The partials as the tokens' own launches
+// leave them (o_part and ml_part a token tok_part apart): attn_decode_mma_combine_kernel follows.
+// At 65K positions the 8 such visits of a window of 5 were 0.84 ms each as 5 tokens' blocks.
+template <class KVT, int NT>
+__global__ void __launch_bounds__(kWaNW * 32, NT == 1 ? 4 : 2)
+attn_decode_mma_win_kernel(const uint16_t* __restrict__ q16, int q_ld, const KVT* __restrict__ kc,
+                           const KVT* __restrict__ vc, int kv_cap, int H, int Hkv, const int* __restrict__ pos_d,
+                           int T, float qk_scale, const float* __restrict__ r, int r_ld,
+                           const float* __restrict__ proj, int d_rel, bool rel4, int extent, int n_split,
+                           float* __restrict__ o_part, float2* __restrict__ ml_part, size_t tok_part) {
+    constexpr bool F8 = sizeof(KVT) == 1;
+    const int pos0 = *pos_d, nw = n_split * kWaNW;
+    if (!wa_shared(pos0, T, nw)) return;
+    const int lane = threadIdx.x & 31, gr = lane >> 2, tq = lane & 3;
+    const int g = blockIdx.x, R = H / Hkv, KD = Hkv * kFaD, NC = T * R;
+    const int w = blockIdx.y * kWaNW + (threadIdx.x >> 5);
+    const int qlast = pos0 + T - 1;
+    // the last token's steps: every token's, cut at its own last one
+    const int n_steps = (qlast + 16) >> 4, n_act = min(nw, (n_steps + kWaMin - 1) / kWaMin);
+    if (w >= n_act) return;
+    const int per = (n_steps + n_act - 1) / n_act;
+    const int st0 = min(n_steps, w * per), st1 = min(n_steps, st0 + per);
+    uint32_t qf[NT][kFaD / 16][2];
+    int qpa[NT], qpb[NT];   // the positions of the lane's columns a = 2 tq, b = 2 tq + 1 (-1: none)
+    const float* ra[NT];
+    const float* rb[NT];
+    bool q_ok[NT];
+#pragma unroll
+    for (int j = 0; j < NT; ++j) {
+        const int cq = j * 8 + gr, ca = j * 8 + 2 * tq, cb = ca + 1;
+        q_ok[j] = cq < NC;
+        const int tqq = q_ok[j] ? cq / R : 0, hq = q_ok[j] ? cq % R : 0;
+        const uint2* qr = (const uint2*) (q16 + (size_t) tqq * q_ld + (size_t) (g * R + hq) * kFaD);
+#pragma unroll
+        for (int kk = 0; kk < kFaD / 16; ++kk) {
+            const uint2 v = qr[kk * 4 + tq];
+            qf[j][kk][0] = q_ok[j] ? v.x : 0u, qf[j][kk][1] = q_ok[j] ? v.y : 0u;
+        }
+        const bool a_ok = ca < NC, b_ok = cb < NC;
+        qpa[j] = a_ok ? pos0 + ca / R : -1;
+        qpb[j] = b_ok ? pos0 + cb / R : -1;
+        ra[j] = r + (size_t) (a_ok ? ca / R : 0) * r_ld + (size_t) (g * R + (a_ok ? ca % R : 0)) * d_rel;
+        rb[j] = r + (size_t) (b_ok ? cb / R : 0) * r_ld + (size_t) (g * R + (b_ok ? cb % R : 0)) * d_rel;
+    }
+    float o[NT][kFaD / 16][4];
+    float ma[NT], mb[NT], la[NT], lb[NT];
+#pragma unroll
+    for (int j = 0; j < NT; ++j) {
+        ma[j] = mb[j] = -INFINITY, la[j] = lb[j] = 0.0f;
+#pragma unroll
+        for (int jj = 0; jj < kFaD / 16; ++jj) o[j][jj][0] = o[j][jj][1] = o[j][jj][2] = o[j][jj][3] = 0.0f;
+    }
+    const float sc = qk_scale * kLog2e;
+    const KVT* kg = kc + (size_t) g * kFaD + tq * 4;
+    const KVT* vg = vc + (size_t) g * kFaD + gr * 16;
+    const int src = tq * 8 + (gr >> 1);
+    const uint32_t psel = (gr & 1) ? 0x7632u : 0x5410u;
+
+    for (int st = st0; st < st1; ++st) {
+        const int kt = st * 16, kmax = qlast - kt;
+        const int row0 = kv_cap > 0 ? kt % kv_cap : kt;
+        auto row = [&](int key) {
+            int rw = row0 + min(key, kmax);
+            if (kv_cap > 0 && rw >= kv_cap) rw -= kv_cap;
+            return (size_t) rw * KD;
+        };
+        uint32_t ka[kFaD / 16][4];
+        {
+            const KVT* p0 = kg + row(gr);
+            const KVT* p1 = kg + row(gr + 8);
+            if constexpr (F8) {
+                uint32_t w0[kFaD / 16], w1[kFaD / 16];
+#pragma unroll
+                for (int kk = 0; kk < kFaD / 16; ++kk) {
+                    w0[kk] = __ldg((const uint32_t*) (p0 + kk * 16));
+                    w1[kk] = __ldg((const uint32_t*) (p1 + kk * 16));
+                }
+#pragma unroll
+                for (int kk = 0; kk < kFaD / 16; ++kk) {
+                    e4m3x4_h4(w0[kk], ka[kk][0], ka[kk][2]);
+                    e4m3x4_h4(w1[kk], ka[kk][1], ka[kk][3]);
+                }
+            } else {
+#pragma unroll
+                for (int kk = 0; kk < kFaD / 16; ++kk) {
+                    const uint2 v0 = __ldg((const uint2*) (p0 + kk * 16)), v1 = __ldg((const uint2*) (p1 + kk * 16));
+                    ka[kk][0] = v0.x, ka[kk][2] = v0.y, ka[kk][1] = v1.x, ka[kk][3] = v1.y;
+                }
+            }
+        }
+        const int k0 = kt + gr, k1 = k0 + 8;
+        const bool near = pos0 - (kt + 15) < extent;   // (the first token's: the nearest to the step)
+        const bool tail = kt > pos0;   // (a step some token ended before)
+        uint32_t pb0[NT], pb1[NT];
+        uint32_t neg0[NT];             // (a tail step: the lane's outputs that are -0 now)
+#pragma unroll
+        for (int j = 0; j < NT; ++j) {
+            float sa[4] = {0.0f, 0.0f, 0.0f, 0.0f}, sb[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+#pragma unroll
+            for (int kk = 0; kk < kFaD / 16; ++kk) mma16816((kk & 1) ? sb : sa, ka[kk], qf[j][kk][0], qf[j][kk][1]);
+            float c0 = (sa[0] + sb[0]) * sc, c1 = (sa[1] + sb[1]) * sc, c2 = (sa[2] + sb[2]) * sc,
+                  c3 = (sa[3] + sb[3]) * sc;
+            const int pa = qpa[j], pb = qpb[j];
+            if (near) {   // (the bias by the column's own distance: the one-token kernel's sums)
+                const int da0 = pa - k0, da1 = pa - k1, db0 = pb - k0, db1 = pb - k1;
+                const bool ea0 = pa >= 0 && da0 >= 0 && da0 < extent, ea1 = pa >= 0 && da1 >= 0 && da1 < extent;
+                const bool eb0 = pb >= 0 && db0 >= 0 && db0 < extent, eb1 = pb >= 0 && db1 >= 0 && db1 < extent;
+                const float* pa0 = proj + (size_t) (ea0 ? da0 : 0) * d_rel;
+                const float* pa1 = proj + (size_t) (ea1 ? da1 : 0) * d_rel;
+                const float* pb0p = proj + (size_t) (eb0 ? db0 : 0) * d_rel;
+                const float* pb1p = proj + (size_t) (eb1 ? db1 : 0) * d_rel;
+                float b0a = 0.0f, b1a = 0.0f, b0b = 0.0f, b1b = 0.0f;
+                if (rel4) {
+                    for (int e = 0; e < d_rel; e += 4) {
+                        const float4 ya = __ldg((const float4*) (ra[j] + e)), yb = __ldg((const float4*) (rb[j] + e));
+                        const float4 x0 = __ldg((const float4*) (pa0 + e)), x1 = __ldg((const float4*) (pa1 + e));
+                        const float4 z0 = __ldg((const float4*) (pb0p + e)), z1 = __ldg((const float4*) (pb1p + e));
+                        b0a += x0.x * ya.x + x0.y * ya.y + x0.z * ya.z + x0.w * ya.w;
+                        b1a += x1.x * ya.x + x1.y * ya.y + x1.z * ya.z + x1.w * ya.w;
+                        b0b += z0.x * yb.x + z0.y * yb.y + z0.z * yb.z + z0.w * yb.w;
+                        b1b += z1.x * yb.x + z1.y * yb.y + z1.z * yb.z + z1.w * yb.w;
+                    }
+                } else {
+                    for (int e = 0; e < d_rel; ++e) {
+                        b0a += pa0[e] * ra[j][e], b1a += pa1[e] * ra[j][e];
+                        b0b += pb0p[e] * rb[j][e], b1b += pb1p[e] * rb[j][e];
+                    }
+                }
+                if (ea0) c0 += b0a * kLog2e;
+                if (eb0) c1 += b0b * kLog2e;
+                if (ea1) c2 += b1a * kLog2e;
+                if (eb1) c3 += b1b * kLog2e;
+            }
+            // (causal by the column's own token)
+            c0 = (pa >= 0 && k0 <= pa) ? c0 : -INFINITY, c1 = (pb >= 0 && k0 <= pb) ? c1 : -INFINITY;
+            c2 = (pa >= 0 && k1 <= pa) ? c2 : -INFINITY, c3 = (pb >= 0 && k1 <= pb) ? c3 : -INFINITY;
+            float mxa = fmaxf(c0, c2), mxb = fmaxf(c1, c3);
+#pragma unroll
+            for (int sh = 4; sh < 32; sh <<= 1) {
+                mxa = fmaxf(mxa, __shfl_xor_sync(0xffffffffu, mxa, sh));
+                mxb = fmaxf(mxb, __shfl_xor_sync(0xffffffffu, mxb, sh));
+            }
+            if (__ballot_sync(0xffffffffu, mxa > ma[j] || mxb > mb[j])) {   // (a column without one: times 1)
+                const float mna = fmaxf(ma[j], mxa), mnb = fmaxf(mb[j], mxb);
+                const float ca = mna == -INFINITY ? 1.0f : exp2f(ma[j] - mna);
+                const float cb = mnb == -INFINITY ? 1.0f : exp2f(mb[j] - mnb);
+                ma[j] = mna, mb[j] = mnb;
+                la[j] *= ca, lb[j] *= cb;
+#pragma unroll
+                for (int jj = 0; jj < kFaD / 16; ++jj) o[j][jj][0] *= ca, o[j][jj][1] *= cb, o[j][jj][2] *= ca, o[j][jj][3] *= cb;
+            }
+            const float ua = ma[j] == -INFINITY ? 0.0f : ma[j], ub = mb[j] == -INFINITY ? 0.0f : mb[j];
+            const float p0 = exp2f(c0 - ua), p1 = exp2f(c1 - ub), p2 = exp2f(c2 - ua), p3 = exp2f(c3 - ub);
+            la[j] += p0 + p2, lb[j] += p1 + p3;
+            const uint32_t plo = f2_to_u32(p0, p1), phi = f2_to_u32(p2, p3);
+            const uint32_t alo = __shfl_sync(0xffffffffu, plo, src), blo = __shfl_sync(0xffffffffu, plo, src + 4);
+            const uint32_t ahi = __shfl_sync(0xffffffffu, phi, src), bhi = __shfl_sync(0xffffffffu, phi, src + 4);
+            pb0[j] = q_ok[j] ? __byte_perm(alo, blo, psel) : 0u, pb1[j] = q_ok[j] ? __byte_perm(ahi, bhi, psel) : 0u;
+            neg0[j] = 0u;
+            if (tail) {
+#pragma unroll
+                for (int jj = 0; jj < kFaD / 16; ++jj)
+#pragma unroll
+                    for (int e = 0; e < 4; ++e)
+                        if (__float_as_uint(o[j][jj][e]) == 0x80000000u) neg0[j] |= 1u << (jj * 4 + e);
+            }
+        }
+        {
+            const KVT* v0 = vg + row(2 * tq);
+            const KVT* v1 = vg + row(2 * tq + 1);
+            const KVT* v8 = vg + row(2 * tq + 8);
+            const KVT* v9 = vg + row(2 * tq + 9);
+            if constexpr (F8) {
+                const uint4 r0 = __ldg((const uint4*) v0), r1 = __ldg((const uint4*) v1);
+                const uint4 r8 = __ldg((const uint4*) v8), r9 = __ldg((const uint4*) v9);
+                const uint32_t x0[4] = {r0.x, r0.y, r0.z, r0.w}, x1[4] = {r1.x, r1.y, r1.z, r1.w};
+                const uint32_t x8[4] = {r8.x, r8.y, r8.z, r8.w}, x9[4] = {r9.x, r9.y, r9.z, r9.w};
+#pragma unroll
+                for (int i = 0; i < 4; ++i) {
+                    uint32_t a[4];
+                    e4m3x4_h4(__byte_perm(x0[i], x1[i], 0x5140u), a[0], a[1]);
+                    e4m3x4_h4(__byte_perm(x8[i], x9[i], 0x5140u), a[2], a[3]);
+#pragma unroll
+                    for (int j = 0; j < NT; ++j) mma16816(o[j][2 * i], a, pb0[j], pb1[j]);
+                    e4m3x4_h4(__byte_perm(x0[i], x1[i], 0x7362u), a[0], a[1]);
+                    e4m3x4_h4(__byte_perm(x8[i], x9[i], 0x7362u), a[2], a[3]);
+#pragma unroll
+                    for (int j = 0; j < NT; ++j) mma16816(o[j][2 * i + 1], a, pb0[j], pb1[j]);
+                }
+            } else {
+#pragma unroll
+                for (int i = 0; i < 2; ++i) {
+                    const uint4 r0 = __ldg((const uint4*) v0 + i), r1 = __ldg((const uint4*) v1 + i);
+                    const uint4 r8 = __ldg((const uint4*) v8 + i), r9 = __ldg((const uint4*) v9 + i);
+                    const uint32_t x0[4] = {r0.x, r0.y, r0.z, r0.w}, x1[4] = {r1.x, r1.y, r1.z, r1.w};
+                    const uint32_t x8[4] = {r8.x, r8.y, r8.z, r8.w}, x9[4] = {r9.x, r9.y, r9.z, r9.w};
+#pragma unroll
+                    for (int jj = 0; jj < 4; ++jj) {
+                        const uint32_t a[4] = {__byte_perm(x0[jj], x1[jj], 0x5410u), __byte_perm(x0[jj], x1[jj], 0x7632u),
+                                               __byte_perm(x8[jj], x9[jj], 0x5410u), __byte_perm(x8[jj], x9[jj], 0x7632u)};
+#pragma unroll
+                        for (int j = 0; j < NT; ++j) mma16816(o[j][4 * i + jj], a, pb0[j], pb1[j]);
+                    }
+                }
+            }
+        }
+        if (tail) {   // (a column whose token ended before this step: its -0 back - plus the zeros it became +0)
+#pragma unroll
+            for (int j = 0; j < NT; ++j) {
+                const bool a_off = qpa[j] < kt, b_off = qpb[j] < kt;
+#pragma unroll
+                for (int jj = 0; jj < kFaD / 16; ++jj)
+#pragma unroll
+                    for (int e = 0; e < 4; ++e)
+                        if (((e & 1) ? b_off : a_off) && ((neg0[j] >> (jj * 4 + e)) & 1u)) o[j][jj][e] = -0.0f;
+            }
+        }
+    }
+#pragma unroll
+    for (int j = 0; j < NT; ++j) {
+#pragma unroll
+        for (int sh = 4; sh < 32; sh <<= 1) {
+            la[j] += __shfl_xor_sync(0xffffffffu, la[j], sh);
+            lb[j] += __shfl_xor_sync(0xffffffffu, lb[j], sh);
+        }
+        const int ca = j * 8 + 2 * tq, cb = ca + 1;
+        // the warp's partials, each token's as its own launch's: [token] tok_part apart, o [warp][H][D], ml [warp][H]
+        if (ca < NC) {
+            const size_t tk = (size_t) (ca / R) * tok_part, ix = (size_t) w * H + g * R + ca % R;
+            float* op = o_part + tk + ix * kFaD + gr * 16;
+#pragma unroll
+            for (int jj = 0; jj < kFaD / 16; ++jj) *(float2*) (op + 2 * jj) = make_float2(o[j][jj][0], o[j][jj][2]);
+            if (gr == 0) ((float2*) ((float*) ml_part + tk))[ix] = make_float2(ma[j], la[j]);
+        }
+        if (cb < NC) {
+            const size_t tk = (size_t) (cb / R) * tok_part, ix = (size_t) w * H + g * R + cb % R;
+            float* op = o_part + tk + ix * kFaD + gr * 16;
+#pragma unroll
+            for (int jj = 0; jj < kFaD / 16; ++jj) *(float2*) (op + 2 * jj) = make_float2(o[j][jj][1], o[j][jj][3]);
+            if (gr == 0) ((float2*) ((float*) ml_part + tk))[ix] = make_float2(mb[j], lb[j]);
+        }
+    }
+}
+
 // a few tokens' short conv (conv4_fused_kernel's arithmetic) with row strides; the history before and the inputs
 // kept for a rollback (rec_old [3][C], rec_x [T][C]: conv_hist_after's) when given
-__global__ void conv_block_kernel(const float* __restrict__ x, int x_ld, float* hist, const float* __restrict__ w,
-                                  const float* __restrict__ dyn, int d_ld, int heads, int T, int C,
-                                  const float* __restrict__ res, int res_ld, float* y, int y_ld, float* rec_old,
-                                  float* rec_x) {
+__device__ __forceinline__ void conv_block_ch(const float* __restrict__ x, int x_ld, float* hist,
+                                              const float* __restrict__ w, const float* __restrict__ dyn, int d_ld,
+                                              int heads, int T, int C, const float* __restrict__ res, int res_ld,
+                                              float* y, int y_ld, float* rec_old, float* rec_x) {
     const int c = blockIdx.x * blockDim.x + threadIdx.x;
     if (c >= C) return;
     float h0 = hist[c], h1 = hist[(size_t) C + c], h2 = hist[(size_t) 2 * C + c];
@@ -5111,7 +6035,24 @@ __global__ void conv_block_kernel(const float* __restrict__ x, int x_ld, float* 
     }
     hist[c] = h0, hist[(size_t) C + c] = h1, hist[(size_t) 2 * C + c] = h2;
 }
-
+__global__ void conv_block_kernel(const float* __restrict__ x, int x_ld, float* hist, const float* __restrict__ w,
+                                  const float* __restrict__ dyn, int d_ld, int heads, int T, int C,
+                                  const float* __restrict__ res, int res_ld, float* y, int y_ld, float* rec_old,
+                                  float* rec_x) {
+    conv_block_ch(x, x_ld, hist, w, dyn, d_ld, heads, T, C, res, res_ld, y, y_ld, rec_old, rec_x);
+}
+// two convs of the same width in one launch (a layer's k and v: a grid row each, conv_block_kernel's blocks)
+struct ConvJob {
+    const float* x;
+    float* hist;
+    const float* w;
+    const float* dyn;
+    float *y, *rec_old, *rec_x;
+};
+__global__ void conv_block2_kernel(ConvJob j0, ConvJob j1, int x_ld, int d_ld, int heads, int T, int C, int y_ld) {
+    const ConvJob j = blockIdx.y ? j1 : j0;
+    conv_block_ch(j.x, x_ld, j.hist, j.w, j.dyn, d_ld, heads, T, C, nullptr, 0, j.y, y_ld, j.rec_old, j.rec_x);
+}
 // every short conv's history as after the first n of a window's tokens, all the layers' convs in one launch
 __global__ void rollback_block_kernel(const ConvRec* __restrict__ recs, int n) {
     const ConvRec rc = recs[blockIdx.y];
@@ -5204,7 +6145,7 @@ experts_block_gu_kernel(const uint8_t* const* __restrict__ blob, const int* __re
     //  order - so that a member's h is the one-token kernel's to the bit with the same SPLIT)
     __shared__ float2 part[SPLIT][NT][32];
     const int grp = blockIdx.y, n = n_g[grp];
-    if (n <= 0) return;
+    if (n <= 0 || (uintptr_t) blob[grp] <= 1u) return;   // (two GPUs: a group the other GPU runs)
     const int lane = threadIdx.x & 31, split = threadIdx.x >> 5, gr = lane >> 2, t = lane & 3;
     const int r = blockIdx.x * 8 + gr;
     const size_t rb = (size_t) (C / 64) * 36;
@@ -5238,6 +6179,9 @@ experts_block_gu_kernel(const uint8_t* const* __restrict__ blob, const int* __re
         }
 #pragma unroll
         for (int j = 0; j < NT; ++j) {
+            // (a tile none of the group's members is in - members <= 4 j: its sums are not read; most groups of a
+            //  window of 5 .. 8 tokens have four members or fewer)
+            if (j && n <= 4 * j) continue;
             uint4 x0 = make_uint4(0, 0, 0, 0), x1 = x0;
             if (x_ok[j]) x0 = __ldg(xp[j] + k * 8), x1 = __ldg(xp[j] + k * 8 + 1);
             const uint32_t xx[8] = {x0.x, x0.y, x0.z, x0.w, x1.x, x1.y, x1.z, x1.w};
@@ -5271,7 +6215,7 @@ experts_block_down_kernel(const uint8_t* const* __restrict__ blob, const int* __
                           float* y) {
     __shared__ float4 part[SPLIT][32];
     const int grp = blockIdx.y, n = n_g[grp];
-    if (n <= 0) return;
+    if (n <= 0 || (uintptr_t) blob[grp] <= 1u) return;   // (two GPUs: a group the other GPU runs)
     const int lane = threadIdx.x & 31, split = threadIdx.x >> 5, gr = lane >> 2, t = lane & 3;
     const int r = blockIdx.x * 16 + gr;
     const size_t rb = (size_t) (F / 64) * 36;
@@ -5320,6 +6264,219 @@ experts_block_down_kernel(const uint8_t* const* __restrict__ blob, const int* __
 }
 
 
+// The two on Volta (sm_70): experts_v70_kernel for the tokens of a group - its rows, its steps and its sums on
+// mma.m8n8k4, the expert's rows read once.  A quad pair takes the sub-block q of every 64-value block, a lane (j, hi)
+// the A row j + 4 hi; the B columns are the group's members: gate | up - column c of tile i the member 4 i + c / 2's
+// limb c % 2 (experts_v70_kernel's columns 0 and 1, a member each pair); down - column c the member c's h row.  A
+// column's sums do not depend on the other columns, the quad pairs' sums meet in the same two shuffles and the
+// splits' in the same order: a member's h and y are the one-token kernel's to the bit with the same SPLIT.
+template <int SPLIT, int NT>
+__global__ void __launch_bounds__(SPLIT * 32)
+experts_block_gu_v70_kernel(const uint8_t* const* __restrict__ blob, const int* __restrict__ n_g,
+                            const int* __restrict__ tok_g, const int* __restrict__ row_g, size_t off_up, int C, int F,
+                            const uint16_t* __restrict__ limbs, const float* __restrict__ sg,
+                            const float* __restrict__ su, float gcap, float ucap, uint16_t* h) {
+    __shared__ float part[SPLIT][NT][8][8];   // [split][tile][j + 4 hi][gate: the four (row, member) sums | up]
+    const int grp = blockIdx.y, n = n_g[grp];
+    if (n <= 0 || (uintptr_t) blob[grp] <= 1u) return;   // (two GPUs: a group the other GPU runs)
+    const int lane = threadIdx.x & 31, split = threadIdx.x >> 5, j = lane & 3, hi = lane >> 4, qp = (lane >> 2) & 3;
+    const int rr = j + 4 * hi, r0 = blockIdx.x * 8;
+    const size_t rb = (size_t) (C / 64) * 36;
+    const uint8_t* a = blob[grp] + (size_t) (r0 + rr) * rb;
+    const uint8_t* b = a + off_up;
+    const uint16_t* xr[NT];
+    bool x_ok[NT];
+#pragma unroll
+    for (int i = 0; i < NT; ++i) {
+        const int mem = 4 * i + (rr >> 1);
+        x_ok[i] = mem < n;
+        const int tk = x_ok[i] ? tok_g[grp * kGroupMax + mem] : 0;
+        xr[i] = limbs + ((size_t) tk * 2 + (rr & 1)) * C + 16 * qp;
+    }
+    float ca[NT][8], cb[NT][8];
+#pragma unroll
+    for (int i = 0; i < NT; ++i) {
+#pragma unroll
+        for (int m = 0; m < 8; ++m) ca[i][m] = cb[i][m] = 0.0f;
+    }
+    const int nk = C / 64;
+    struct Step {
+        uint32_t sa, sb, wa0, wa1, wb0, wb1;
+    };
+    auto load = [&](int k) {
+        const uint32_t* ap = (const uint32_t*) (a + (size_t) k * 36);
+        const uint32_t* bp = (const uint32_t*) (b + (size_t) k * 36);
+        Step t;
+        t.sa = __ldg(ap), t.sb = __ldg(bp);
+        t.wa0 = __ldg(ap + 1 + 2 * qp), t.wa1 = __ldg(ap + 2 + 2 * qp);
+        t.wb0 = __ldg(bp + 1 + 2 * qp), t.wb1 = __ldg(bp + 2 + 2 * qp);
+        return t;
+    };
+    Step nx = load(min(split, nk - 1));
+    for (int k = split; k < nk; k += SPLIT) {
+        const Step cur = nx;
+        if (k + SPLIT < nk) nx = load(k + SPLIT);
+        const uint32_t sa = ue4m3_h2((cur.sa >> (8 * qp)) & 0xFFu), sb = ue4m3_h2((cur.sb >> (8 * qp)) & 0xFFu);
+        uint32_t w[4][4];
+        nv_word_h2(cur.wa0, sa, w[0][0], w[0][1], w[2][0], w[2][1]);
+        nv_word_h2(cur.wa1, sa, w[1][0], w[1][1], w[3][0], w[3][1]);
+        nv_word_h2(cur.wb0, sb, w[0][2], w[0][3], w[2][2], w[2][3]);
+        nv_word_h2(cur.wb1, sb, w[1][2], w[1][3], w[3][2], w[3][3]);
+#pragma unroll
+        for (int i = 0; i < NT; ++i) {
+            if (i && n <= 4 * i) continue;   // (a tile none of the group's members is in)
+            uint4 xa = make_uint4(0u, 0u, 0u, 0u), xb = xa;
+            if (x_ok[i]) {
+                xa = __ldg((const uint4*) (xr[i] + 64 * (size_t) k));
+                xb = __ldg((const uint4*) (xr[i] + 64 * (size_t) k + 8));
+            }
+            mma884(ca[i], w[0][0], w[0][1], xa.x, xa.y);
+            mma884(cb[i], w[0][2], w[0][3], xa.x, xa.y);
+            mma884(ca[i], w[1][0], w[1][1], xa.z, xa.w);
+            mma884(cb[i], w[1][2], w[1][3], xa.z, xa.w);
+            mma884(ca[i], w[2][0], w[2][1], xb.x, xb.y);
+            mma884(cb[i], w[2][2], w[2][3], xb.x, xb.y);
+            mma884(ca[i], w[3][0], w[3][1], xb.z, xb.w);
+            mma884(cb[i], w[3][2], w[3][3], xb.z, xb.w);
+        }
+    }
+    // c[2 p], c[2 p + 1]: the row (j & 1) + 2 (p & 1) + 4 hi against the member 4 i + (j >> 1) + 2 (p >> 1)'s limbs
+#pragma unroll
+    for (int i = 0; i < NT; ++i) {
+        float v[8];
+#pragma unroll
+        for (int p = 0; p < 4; ++p) v[p] = ca[i][2 * p] + ca[i][2 * p + 1], v[4 + p] = cb[i][2 * p] + cb[i][2 * p + 1];
+#pragma unroll
+        for (int sh = 4; sh <= 8; sh <<= 1) {
+#pragma unroll
+            for (int p = 0; p < 8; ++p) v[p] += __shfl_xor_sync(0xffffffffu, v[p], sh);
+        }
+        if (qp == 0) {
+#pragma unroll
+            for (int p = 0; p < 8; ++p) part[split][i][rr][p] = v[p];
+        }
+    }
+    __syncthreads();
+    if (split || qp) return;
+#pragma unroll
+    for (int i = 0; i < NT; ++i) {
+        float tot[8];
+#pragma unroll
+        for (int p = 0; p < 8; ++p) tot[p] = part[0][i][rr][p];
+#pragma unroll
+        for (int s = 1; s < SPLIT; ++s) {
+#pragma unroll
+            for (int p = 0; p < 8; ++p) tot[p] += part[s][i][rr][p];
+        }
+#pragma unroll
+        for (int p = 0; p < 4; ++p) {
+            const int mem = 4 * i + (j >> 1) + 2 * (p >> 1);
+            if (mem >= n) continue;
+            const int r = r0 + (j & 1) + 2 * (p & 1) + 4 * hi;
+            const int slot = row_g[grp * kGroupMax + mem];
+            const float gg = tot[p] * (sg ? sg[slot] : 1.0f), u = tot[4 + p] * (su ? su[slot] : 1.0f);
+            h[(size_t) slot * F + r] = f2h(gcap * tanhf(gg / gcap) * (1.0f / (1.0f + expf(-gg))) * ucap * tanhf(u / ucap));
+        }
+    }
+}
+template <int SPLIT>
+__global__ void __launch_bounds__(SPLIT * 32)
+experts_block_down_v70_kernel(const uint8_t* const* __restrict__ blob, const int* __restrict__ n_g,
+                              const int* __restrict__ row_g, size_t off_down, int C, int F,
+                              const uint16_t* __restrict__ h, float* y) {
+    __shared__ float part[SPLIT][8][16];   // [split][j + 4 hi][rows r0 ..: the lane's 8 sums | rows r0 + 8 ..]
+    const int grp = blockIdx.y, n = n_g[grp];
+    if (n <= 0 || (uintptr_t) blob[grp] <= 1u) return;   // (two GPUs: a group the other GPU runs)
+    const int lane = threadIdx.x & 31, split = threadIdx.x >> 5, j = lane & 3, hi = lane >> 4, qp = (lane >> 2) & 3;
+    const int rr = j + 4 * hi, r0 = blockIdx.x * 16;
+    const size_t rb = (size_t) (F / 64) * 36;
+    const uint8_t* a = blob[grp] + off_down + (size_t) (r0 + rr) * rb;
+    const uint8_t* b = a + 8 * rb;
+    const bool x_ok = rr < n;   // (column rr: the member rr's h)
+    const uint16_t* xr = h + (size_t) (x_ok ? row_g[grp * kGroupMax + rr] : 0) * F + 16 * qp;
+    float v[16];
+#pragma unroll
+    for (int m = 0; m < 16; ++m) v[m] = 0.0f;
+    const int nk = F / 64;
+    struct Step {
+        uint32_t sa, sb, wa0, wa1, wb0, wb1;
+        uint4 xa, xb;
+    };
+    auto load = [&](int k) {
+        const uint32_t* ap = (const uint32_t*) (a + (size_t) k * 36);
+        const uint32_t* bp = (const uint32_t*) (b + (size_t) k * 36);
+        Step t;
+        t.sa = __ldg(ap), t.sb = __ldg(bp);
+        t.wa0 = __ldg(ap + 1 + 2 * qp), t.wa1 = __ldg(ap + 2 + 2 * qp);
+        t.wb0 = __ldg(bp + 1 + 2 * qp), t.wb1 = __ldg(bp + 2 + 2 * qp);
+        t.xa = t.xb = make_uint4(0u, 0u, 0u, 0u);
+        if (x_ok) {
+            t.xa = __ldg((const uint4*) (xr + 64 * (size_t) k));
+            t.xb = __ldg((const uint4*) (xr + 64 * (size_t) k + 8));
+        }
+        return t;
+    };
+    Step nx = load(min(split, nk - 1));
+    for (int k = split; k < nk; k += SPLIT) {
+        const Step cur = nx;
+        if (k + SPLIT < nk) nx = load(k + SPLIT);
+        const uint32_t sa = ue4m3_h2((cur.sa >> (8 * qp)) & 0xFFu), sb = ue4m3_h2((cur.sb >> (8 * qp)) & 0xFFu);
+        const uint4 xa = cur.xa, xb = cur.xb;
+        uint32_t w[4][4];
+        nv_word_h2(cur.wa0, sa, w[0][0], w[0][1], w[2][0], w[2][1]);
+        nv_word_h2(cur.wa1, sa, w[1][0], w[1][1], w[3][0], w[3][1]);
+        nv_word_h2(cur.wb0, sb, w[0][2], w[0][3], w[2][2], w[2][3]);
+        nv_word_h2(cur.wb1, sb, w[1][2], w[1][3], w[3][2], w[3][3]);
+        mma884(v, w[0][0], w[0][1], xa.x, xa.y);
+        mma884(v + 8, w[0][2], w[0][3], xa.x, xa.y);
+        mma884(v, w[1][0], w[1][1], xa.z, xa.w);
+        mma884(v + 8, w[1][2], w[1][3], xa.z, xa.w);
+        mma884(v, w[2][0], w[2][1], xb.x, xb.y);
+        mma884(v + 8, w[2][2], w[2][3], xb.x, xb.y);
+        mma884(v, w[3][0], w[3][1], xb.z, xb.w);
+        mma884(v + 8, w[3][2], w[3][3], xb.z, xb.w);
+    }
+#pragma unroll
+    for (int sh = 4; sh <= 8; sh <<= 1) {
+#pragma unroll
+        for (int m = 0; m < 16; ++m) v[m] += __shfl_xor_sync(0xffffffffu, v[m], sh);
+    }
+    if (qp == 0) {
+#pragma unroll
+        for (int m = 0; m < 16; ++m) part[split][rr][m] = v[m];
+    }
+    __syncthreads();
+    if (split || qp) return;
+    float tot[16];
+#pragma unroll
+    for (int m = 0; m < 16; ++m) tot[m] = part[0][rr][m];
+#pragma unroll
+    for (int s = 1; s < SPLIT; ++s) {
+#pragma unroll
+        for (int m = 0; m < 16; ++m) tot[m] += part[s][rr][m];
+    }
+    // c[i]: the row (j & 1) + 2 ((i >> 1) & 1) + 4 hi against the member (i & 1) + 2 (j >> 1) + 4 (i >> 2)
+#pragma unroll
+    for (int i = 0; i < 8; ++i) {
+        const int mem = (i & 1) + 2 * (j >> 1) + 4 * (i >> 2);
+        if (mem >= n) continue;
+        const int r = r0 + (j & 1) + 2 * ((i >> 1) & 1) + 4 * hi;
+        const int slot = row_g[grp * kGroupMax + mem];
+        y[(size_t) slot * C + r] = tot[i], y[(size_t) slot * C + r + 8] = tot[8 + i];
+    }
+}
+// two_take_rows for a window's groups: the rows of the groups GPU 0's table marks kHeldElsewhere from GPU 1's
+__global__ void two_take_rows_g_kernel(const uint8_t* const* blob, const int* n_g, const int* row_g, const float* other,
+                                       int C, float* y) {
+    const int grp = blockIdx.y, n = n_g[grp];
+    if (n <= 0 || (uintptr_t) blob[grp] != kHeldElsewhere) return;
+    for (int m = 0; m < n; ++m) {
+        const size_t s = (size_t) row_g[grp * kGroupMax + m];
+        for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < C; i += gridDim.x * blockDim.x)
+            y[s * C + i] = other[s * C + i];
+    }
+}
+
 // ---- the exact window: a verify window's products with the one-token path's arithmetic for every token (drafting
 // on = drafting off, to the bit), the weights read once for the window
 
@@ -5344,7 +6501,7 @@ mv_q8p_cols_kernel(const int8_t* __restrict__ q, const uint16_t* __restrict__ d,
     for (int i = 0; i < R; ++i)
 #pragma unroll
         for (int t = 0; t < TT; ++t) acc[i][t] = 0.0f;
-#ifdef STRATA_USE_HIP
+#ifdef MAYA_USE_HIP
     if ((K & 255) == 0) {   // (AMD: mv_q8p_kernel's 8 values a lane a step, the same expression a token)
         for (int it = 0, n_it = K >> 8; it < n_it; ++it) {
             uint2 w[R];
@@ -5397,6 +6554,108 @@ mv_q8p_cols_kernel(const int8_t* __restrict__ q, const uint16_t* __restrict__ d,
         }
 }
 
+#ifndef MAYA_USE_HIP
+// mv_q8p_cols_kernel for a token count known at compile time (T) and K = 128 NIT: the same sums to the bit, faster.
+// What a window's products cost is not their arithmetic nor their weights' bytes - it is the order a warp issues
+// in: with the activations loaded where they are used, every step waits for its loads (5 tokens: 7.6 ms of products
+// a window, 3.9 with the same flops and the activations held in registers).  So: straight-line code (no branch a
+// token), a step's activations asked for one step before their sums, its weights and scales four steps before, and
+// the R x T sums of a step level by level - the one-token kernel's expression as its instructions: b y rounded,
+// then FMAs with a x, c z, d w, then the FMA into the running sum (what nvcc contracts `acc += dv * (a x + b y +
+// c z + d w)` to; checked against mv_q8p_kernel on every shape).  The warp sums level by level too.
+template <int WARPS, int R, int T, int NIT>
+__global__ void __launch_bounds__(WARPS * 32)
+mv_q8p_colsx_kernel(const int8_t* __restrict__ q, const uint16_t* __restrict__ d, int N, int K,
+                    const float* __restrict__ x0, int x_ld, float* __restrict__ y, int y_ld, MvAlt a0, MvAlt a1) {
+    constexpr int DX = 1, DW = 4;
+    const int row0 = (blockIdx.x * WARPS + (threadIdx.x >> 5)) * R, lane = threadIdx.x & 31;
+    if (row0 >= N) return;
+    // (a0's and a1's rows have an input of their own - [T][K], rows x_ld apart, as x - so that a layer's fused q | k
+    //  | v | r | gate matrix is one launch where q, k and v each have theirs; their ranges whole warps: r0 and n
+    //  multiples of WARPS R)
+    const float* __restrict__ x = (unsigned) (row0 - a0.r0) < (unsigned) a0.n   ? a0.x
+                                  : (unsigned) (row0 - a1.r0) < (unsigned) a1.n ? a1.x
+                                                                                : x0;
+    const uint32_t* qr[R];
+    const uint16_t* dr[R];
+#pragma unroll
+    for (int i = 0; i < R; ++i) {
+        const int row = min(row0 + i, N - 1);   // (past the last row: the last again, not written)
+        qr[i] = (const uint32_t*) (q + (size_t) row * K), dr[i] = d + (size_t) row * (K >> 5);
+    }
+    uint32_t w[R][NIT];
+    uint16_t dh[R][NIT];
+    float4 xv[T][NIT];
+    float acc[R][T];
+#pragma unroll
+    for (int i = 0; i < R; ++i)
+#pragma unroll
+        for (int t = 0; t < T; ++t) acc[i][t] = 0.0f;
+#pragma unroll
+    for (int it = 0; it < NIT; ++it) {
+        // the loads of the steps ahead (at the first step: every step's up to the distance)
+#pragma unroll
+        for (int a = (it == 0 ? 0 : it + DW); a <= it + DW && a < NIT; ++a)
+#pragma unroll
+            for (int i = 0; i < R; ++i)
+                w[i][a] = __ldg(qr[i] + a * 32 + lane), dh[i][a] = __ldg(dr[i] + a * 4 + (lane >> 3));
+#pragma unroll
+        for (int a = (it == 0 ? 0 : it + DX); a <= it + DX && a < NIT; ++a)
+#pragma unroll
+            for (int t = 0; t < T; ++t) xv[t][a] = __ldg((const float4*) (x + (size_t) t * x_ld) + a * 32 + lane);
+        float f[R][4], dv[R];
+#pragma unroll
+        for (int i = 0; i < R; ++i) {
+            const uint32_t ww = w[i][it];
+            dv[i] = h2f(dh[i][it]);
+            f[i][0] = (float) (int8_t) (ww & 0xFFu), f[i][1] = (float) (int8_t) ((ww >> 8) & 0xFFu),
+            f[i][2] = (float) (int8_t) ((ww >> 16) & 0xFFu), f[i][3] = (float) (int8_t) (ww >> 24);
+        }
+        float p[R][T];
+#pragma unroll
+        for (int t = 0; t < T; ++t)
+#pragma unroll
+            for (int i = 0; i < R; ++i) p[i][t] = __fmul_rn(f[i][1], xv[t][it].y);
+#pragma unroll
+        for (int t = 0; t < T; ++t)
+#pragma unroll
+            for (int i = 0; i < R; ++i) p[i][t] = __fmaf_rn(f[i][0], xv[t][it].x, p[i][t]);
+#pragma unroll
+        for (int t = 0; t < T; ++t)
+#pragma unroll
+            for (int i = 0; i < R; ++i) p[i][t] = __fmaf_rn(f[i][2], xv[t][it].z, p[i][t]);
+#pragma unroll
+        for (int t = 0; t < T; ++t)
+#pragma unroll
+            for (int i = 0; i < R; ++i) p[i][t] = __fmaf_rn(f[i][3], xv[t][it].w, p[i][t]);
+#pragma unroll
+        for (int t = 0; t < T; ++t)
+#pragma unroll
+            for (int i = 0; i < R; ++i) acc[i][t] = __fmaf_rn(dv[i], p[i][t], acc[i][t]);
+    }
+#pragma unroll
+    for (int o = 16; o > 0; o >>= 1) {   // (wsum's order)
+        float sh[R][T];
+#pragma unroll
+        for (int i = 0; i < R; ++i)
+#pragma unroll
+            for (int t = 0; t < T; ++t) sh[i][t] = __shfl_xor_sync(0xffffffffu, acc[i][t], o);
+#pragma unroll
+        for (int i = 0; i < R; ++i)
+#pragma unroll
+            for (int t = 0; t < T; ++t) acc[i][t] = __fadd_rn(acc[i][t], sh[i][t]);
+    }
+    if (lane == 0) {
+#pragma unroll
+        for (int i = 0; i < R; ++i)
+            if (row0 + i < N) {
+#pragma unroll
+                for (int t = 0; t < T; ++t) y[(size_t) t * y_ld + row0 + i] = acc[i][t];
+            }
+    }
+}
+#endif
+
 // experts_gate_up_swiglu_kernel for group_route's groups: a block's rows for each member in turn (its x in shared
 // memory, the rows' weights read again from the cache), with the one-token kernel's row dots - the same h to the bit
 template <int WARPS, int ROWS>
@@ -5406,7 +6665,7 @@ __global__ void experts_gate_up_swiglu_mem_kernel(const uint8_t* const* blob, co
                                                   const float* su, float gcap, float ucap, uint16_t* h) {
     extern __shared__ float xs[];
     const int grp = blockIdx.y, n = n_g[grp];
-    if (n <= 0) return;
+    if (n <= 0 || (uintptr_t) blob[grp] <= 1u) return;   // (two GPUs: a group the other GPU runs)
     const int warp = threadIdx.x >> 5;
     const uint8_t* bl = blob[grp];
     for (int m = 0; m < n; ++m) {
@@ -5439,7 +6698,7 @@ __global__ void experts_down_mem_kernel(const uint8_t* const* blob, const int* n
                                         size_t off_down, const uint16_t* h, int C, int F, size_t rb_down, float* y) {
     extern __shared__ float xs[];
     const int grp = blockIdx.y, n = n_g[grp];
-    if (n <= 0) return;
+    if (n <= 0 || (uintptr_t) blob[grp] <= 1u) return;   // (two GPUs: a group the other GPU runs)
     const int warp = threadIdx.x >> 5;
     const uint8_t* w = blob[grp] + off_down;
     for (int m = 0; m < n; ++m) {
@@ -5639,7 +6898,7 @@ experts_block_down_q8_kernel(const uint8_t* const* __restrict__ blob, const int*
 }  // namespace
 
 int arch_class() {
-#ifdef STRATA_USE_HIP
+#ifdef MAYA_USE_HIP
     return 80;
 #else
     static int cls[64] = {};
@@ -5668,7 +6927,7 @@ static void need_class(int cls, const char* what) {
     std::fprintf(stderr, "ik2::k::%s: not on this GPU (sm_%d class; the kernel needs sm_%d)\n", what, arch_class(), cls);
     std::abort();
 }
-#ifdef STRATA_USE_HIP
+#ifdef MAYA_USE_HIP
 #include "ik2_rdna.inc"   // (AMD: the matrix-core kernels)
 #endif
 
@@ -5794,7 +7053,7 @@ bool fa_wgmma() {
     }();
     return on != 0;
 }
-#ifdef STRATA_USE_HIP
+#ifdef MAYA_USE_HIP
 // (AMD: the matrix-core kernel of ik2_rdna.inc on RDNA 3 / 3.5 / 4 - the CUDA kernel's 86 KB of shared memory is past
 //  RDNA's 64 KB; IK2_RDNA_FLASH=0: off)
 bool attn_flash_available() {
@@ -5808,7 +7067,7 @@ template <int NW, bool WG, class KVT>
 void attn_flash_launch(const uint16_t* q16, int q_ld, const KVT* kc, const KVT* vc, int kv_cap, int H, int KV,
                        int Tq, int qpos0, float qk_scale, const float* bias, int extent, int window, int n_split,
                        float* o_part, float2* ml_part, cudaStream_t s) {
-#ifdef STRATA_USE_HIP
+#ifdef MAYA_USE_HIP
     attn_flash_rdna<KVT>(q16, q_ld, kc, vc, kv_cap, H, KV, Tq, qpos0, qk_scale, bias, extent, window, n_split, o_part,
                          ml_part, s);
     return;
@@ -5875,6 +7134,47 @@ int attn_flash_splits(int Tq, int H, int nk, int n_sm) {
     const int want = (6 * n_sm + blocks - 1) / blocks;   // (about three waves of two blocks an SM)
     const int most = std::max(1, (nk + 16 * kFaBN - 1) / (16 * kFaBN));   // (>= 1024 keys a split)
     return std::max(1, std::min({want, most, 16}));
+}
+template <class KV>
+static bool attn_prompt_v70_impl(const uint16_t* q16, int q_ld, const KV* kc, const KV* vc, int H, int Hkv, int Tq,
+                                 int qpos0, float qk_scale, float v_inv, const float* r, int r_ld, const float* proj,
+                                 int d_rel, int extent, const float* sink, float* out, int o_ld, float* scratch,
+                                 size_t scratch_floats, int n_sm, cudaStream_t s) {
+    if (Tq <= 0) return true;
+    if (H % Hkv || H / Hkv > 8 || d_rel > kRelSm || d_rel % 4 || ((uintptr_t) proj & 15) || ((uintptr_t) q16 & 15) ||
+        q_ld % 8)
+        return false;
+    // the splits: about four blocks an SM in all, >= 8 steps (256 keys) a split, as many as the scratch holds
+    const int n_steps = (qpos0 + Tq - 1 + 32) >> 5;
+    const int blocks = (Tq + kPaNW - 1) / kPaNW * Hkv;
+    int ns = std::max(1, std::min((4 * n_sm + blocks - 1) / blocks, n_steps / 8));
+    ns = (int) std::min<size_t>((size_t) std::min(ns, 64), scratch_floats / ((size_t) Tq * H * (kFaD + 2)));
+    if (ns < 1) return false;
+    const int per = (n_steps + ns - 1) / ns;
+    ns = (n_steps + per - 1) / per;
+    float* o_part = scratch;
+    float2* ml_part = (float2*) (scratch + (size_t) ns * Tq * H * kFaD);
+    attn_prompt_v70_kernel<KV><<<dim3((unsigned) ((Tq + kPaNW - 1) / kPaNW), (unsigned) (Hkv * ns)), kPaNW * 32, 0, s>>>(
+        q16, q_ld, kc, vc, H, Hkv, Tq, qpos0, qk_scale, r, r_ld, proj, d_rel, extent, per, o_part, ml_part);
+    check("attn_prompt_v70");
+    attn_flash_combine_kernel<<<dim3((unsigned) Tq, (unsigned) H), kFaD, 0, s>>>(
+        o_part, ml_part, ns, Tq, H, sink, out, o_ld, v_inv * (sizeof(KV) == 1 ? 256.0f : 1.0f));
+    check("attn_prompt_v70 (combine)");
+    return true;
+}
+bool attn_prompt_v70_f16(const uint16_t* q16, int q_ld, const uint16_t* kc, const uint16_t* vc, int H, int Hkv, int Tq,
+                         int qpos0, float qk_scale, const float* r, int r_ld, const float* proj, int d_rel, int extent,
+                         const float* sink, float* out, int o_ld, float* scratch, size_t scratch_floats, int n_sm,
+                         cudaStream_t s) {
+    return attn_prompt_v70_impl(q16, q_ld, kc, vc, H, Hkv, Tq, qpos0, qk_scale, 1.0f, r, r_ld, proj, d_rel, extent,
+                                sink, out, o_ld, scratch, scratch_floats, n_sm, s);
+}
+bool attn_prompt_v70_fp8(const uint16_t* q16, int q_ld, const uint8_t* kc, const uint8_t* vc, int H, int Hkv, int Tq,
+                         int qpos0, float qk_scale, float v_inv_scale, const float* r, int r_ld, const float* proj,
+                         int d_rel, int extent, const float* sink, float* out, int o_ld, float* scratch,
+                         size_t scratch_floats, int n_sm, cudaStream_t s) {
+    return attn_prompt_v70_impl(q16, q_ld, kc, vc, H, Hkv, Tq, qpos0, qk_scale, v_inv_scale, r, r_ld, proj, d_rel,
+                                extent, sink, out, o_ld, scratch, scratch_floats, n_sm, s);
 }
 void attn_probs_f16(const float* lg, uint16_t* out16, int H, int Tq, int nk, int qpos0, int kpos0, float qk_scale,
                     const float* r, int d_rel, const float* proj, int extent, int window, const float* sink,
@@ -5956,6 +7256,24 @@ void moe_combine_conv(const float* y, const int* inv, const float* wt, int K, in
     moe_combine_conv_kernel<<<(unsigned) ((C + 127) / 128), 128, 0, s>>>(y, inv, wt, K, C, hist, w, res, out);
     check("moe_combine_conv");
 }
+
+__global__ void two_take_rows_kernel(const uint8_t* const* blob, const float* other, int C, float* y) {
+    const int s = blockIdx.y;
+    if ((uintptr_t) blob[s] != kHeldElsewhere) return;
+    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < C; i += gridDim.x * blockDim.x)
+        y[(size_t) s * C + i] = other[(size_t) s * C + i];
+}
+void two_take_rows(const uint8_t* const* blob, const float* other, int S, int C, float* y, cudaStream_t s) {
+    if (S <= 0) return;
+    two_take_rows_kernel<<<dim3((unsigned) ((C + 255) / 256), (unsigned) S), 256, 0, s>>>(blob, other, C, y);
+    check("two_take_rows");
+}
+void two_take_rows_g(const uint8_t* const* blob, const int* n, const int* row, const float* other, int G, int C,
+                     float* y, cudaStream_t s) {
+    if (G <= 0) return;
+    two_take_rows_g_kernel<<<dim3((unsigned) ((C + 255) / 256), (unsigned) G), 256, 0, s>>>(blob, n, row, other, C, y);
+    check("two_take_rows_g");
+}
 void add(const float* a, const float* b, size_t n, float* y, cudaStream_t s) {
     if (!n) return;
     add_kernel<<<grid(n), kBlk, 0, s>>>(a, b, n, y);
@@ -5987,6 +7305,12 @@ void loop_gates(const LoopGate* gt, int n, int T, int C, int R, float eps, float
     LoopGateArgs a{};
     for (int j = 0; j < n; ++j)
         a.x[j] = gt[j].x, a.m[j] = gt[j].m, a.D[j] = gt[j].D, a.F[j] = gt[j].F, a.G[j] = gt[j].G, a.y[j] = gt[j].y;
+#ifndef MAYA_USE_HIP
+    static const bool toks = !(getenv("IK2_GATE_TOKS") && !atoi(getenv("IK2_GATE_TOKS")));
+    if (toks && T <= 8 && C == 18 * 128)
+        loop_gate_dots_toks_kernel<18><<<dim3((unsigned) R, (unsigned) n), 128, 0, s>>>(a, T, C, R, sc);
+    else
+#endif
     loop_gate_dots_kernel<<<dim3((unsigned) R, (unsigned) n, (unsigned) T), 128, 0, s>>>(a, T, C, R, sc);
     check("loop_gates (dots)");
     loop_gate_apply_kernel<<<dim3((unsigned) ((C + kGateCh - 1) / kGateCh), (unsigned) n,
@@ -6050,25 +7374,113 @@ void rope_neox(float* x, int rows, int heads, const int* pos, float theta, cudaS
     rope_neox_kernel<<<dim3(rows, heads), 64, 0, s>>>(x, heads, pos, theta);
     check("rope_neox");
 }
+// the tensor cores' blocks a K / V head: what the device runs at once (at most 32: the merge's 128 warps)
+constexpr int kDaSplitMax = 32;
+static int draft_attn_mma_blocks(int Hkv) {
+    static int blocks[64] = {};
+    int dev = 0;
+    cudaGetDevice(&dev);
+    if (dev < 0 || dev >= 64) dev = 0;
+    if (!blocks[dev]) {
+        int n_sm = 0, occ16 = 0, occ8 = 0;
+        cudaDeviceGetAttribute(&n_sm, cudaDevAttrMultiProcessorCount, dev);
+        cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ16, draft_attn_mma_kernel<uint16_t>, kWaNW * 32, 0);
+        cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ8, draft_attn_mma_kernel<uint8_t>, kWaNW * 32, 0);
+        check("draft_attn_mma (occupancy)");
+        blocks[dev] = std::max(1, n_sm * std::min(occ16, occ8));
+    }
+    return std::clamp(blocks[dev] / std::max(1, Hkv), 1, kDaSplitMax);
+}
+// the drafter's attention on the tensor cores (FP8 / FP16 context rows; IK2_DRAFT_ATTN=scalar: the kernels before);
+// par: a recorded graph's (the position on the device, the keys the span before it).  false: not here.
+template <class KVT>
+static bool draft_attn_mma_launch(const float* q, const KVT* kc, const KVT* vc, int k_lo, int k_hi, const int* par,
+                                  int span, const float* kb, const float* vb, int nq, int H, int Hkv, float scale,
+                                  float* scratch, float* out, cudaStream_t s, int cap, float k_mul, float v_mul) {
+    if constexpr (sizeof(KVT) == 4) {
+        return false;
+    } else {
+#ifdef MAYA_USE_HIP
+        return false;   // (AMD: mma16816 is shuffles there - the scalar kernels)
+#else
+        static const bool on = !(getenv("IK2_DRAFT_ATTN") && !std::strcmp(getenv("IK2_DRAFT_ATTN"), "scalar"));
+        if (!on || arch_class() < 75 || H % Hkv || nq * (H / Hkv) > 8 * kDaNT || (cap > 0 && cap < 16) ||
+            (((uintptr_t) q | (uintptr_t) kc | (uintptr_t) vc) & 15))
+            return false;
+        const int ns = draft_attn_mma_blocks(Hkv);
+        float* o_part = scratch;
+        float2* ml_part = (float2*) (o_part + (size_t) ns * kWaNW * nq * H * kFaD);
+        draft_attn_mma_kernel<KVT><<<dim3((unsigned) Hkv, (unsigned) ns), kWaNW * 32, 0, s>>>(
+            q, kc, vc, k_lo, k_hi, nq, H, Hkv, scale * k_mul * kLog2e, ns, o_part, ml_part, cap > 0 ? cap : (1 << 30), par,
+            span);
+        check("draft_attn (tensor cores)");
+        draft_attn_mma_merge_kernel<<<dim3((unsigned) H, (unsigned) nq), kFaD, 0, s>>>(
+            o_part, ml_part, ns, k_lo, k_hi, q, kb, vb, nq, H, Hkv, scale, v_mul, out, par, span);
+        check("draft_attn (tensor cores, merge)");
+        return true;
+#endif
+    }
+}
 template <class KVT>
 static void draft_attn_impl(const float* q, const KVT* kc, const KVT* vc, int k_lo, int k_hi, const float* kb,
                             const float* vb, int nq, int H, int Hkv, float scale, float* scratch, float* out,
-                            cudaStream_t s, int cap) {
-    // scratch: the logits [H][S][8][per], the chunks' outputs [S][H][8][128] and (max, sum)
+                            cudaStream_t s, int cap, float k_mul = 1.0f, float v_mul = 1.0f) {
+    // scratch: the chunks' outputs [S][H][8][128] and (max, sum) [S][H][8] - draft_attn_scratch() floats
     if (nq > kDraftQ) {
         std::fprintf(stderr, "ik2::k::draft_attn: %d queries (at most %d)\n", nq, kDraftQ);
         std::abort();
     }
+    if (draft_attn_mma_launch(q, kc, vc, k_lo, k_hi, nullptr, 0, kb, vb, nq, H, Hkv, scale, scratch, out, s, cap, k_mul,
+                              v_mul))
+        return;
     const int nk = k_hi - k_lo + nq;
-    const int S = std::max(1, std::min(64, (nk + 255) / 256)), per = (nk + S - 1) / S;
-    float* lgs = scratch;
-    float* part_o = lgs + (size_t) H * S * kDraftQ * per;
+    // (chunks of 32 keys while there are 64 or fewer of them: a block's threads go through their keys one after the
+    //  other, so a window's ~1,000 keys in chunks of 256 took 190 us a layer - the blocks were there, idle)
+    const int S = std::max(1, std::min(64, (nk + 31) / 32)), per = (nk + S - 1) / S;
+    float* part_o = scratch;
     float2* part_ml = (float2*) (part_o + (size_t) S * H * kDraftQ * 128);
     draft_attn_part_kernel<KVT><<<dim3((unsigned) H, (unsigned) S), 128, 0, s>>>(
-        q, kc, vc, k_lo, k_hi, kb, vb, nq, H, Hkv, scale, per, lgs, part_o, part_ml, cap > 0 ? cap : (1 << 30));
+        q, kc, vc, k_lo, k_hi, kb, vb, nq, H, Hkv, scale, per, part_o, part_ml, cap > 0 ? cap : (1 << 30), k_mul, v_mul);
     check("draft_attn (chunks)");
     draft_attn_merge_kernel<<<dim3((unsigned) H, (unsigned) nq), 128, 0, s>>>(part_o, part_ml, S, H, out);
     check("draft_attn (merge)");
+}
+// ... the block's position on the device (par[0]) and its keys the span before it: the launches of a recorded graph
+// (the chunks' grid the most the span needs; the blocks past what the position needs return at once)
+template <class KVT>
+static void draft_attn_dyn_impl(const float* q, const KVT* kc, const KVT* vc, const int* par, int span, const float* kb,
+                                const float* vb, int nq, int H, int Hkv, float scale, float* scratch, float* out,
+                                cudaStream_t s, int cap, float k_mul = 1.0f, float v_mul = 1.0f) {
+    if (nq > kDraftQ || span < 0) {
+        std::fprintf(stderr, "ik2::k::draft_attn_dyn: %d queries, a span of %d\n", nq, span);
+        std::abort();
+    }
+    if (draft_attn_mma_launch(q, kc, vc, 0, 0, par, span, kb, vb, nq, H, Hkv, scale, scratch, out, s, cap, k_mul, v_mul))
+        return;
+    const int s_max = std::max(1, std::min(64, (span + nq + 31) / 32));
+    float* part_o = scratch;
+    float2* part_ml = (float2*) (part_o + (size_t) s_max * H * kDraftQ * 128);
+    draft_attn_part_kernel<KVT><<<dim3((unsigned) H, (unsigned) s_max), 128, 0, s>>>(
+        q, kc, vc, 0, 0, kb, vb, nq, H, Hkv, scale, 0, part_o, part_ml, cap > 0 ? cap : (1 << 30), k_mul, v_mul, par,
+        span);
+    check("draft_attn_dyn (chunks)");
+    draft_attn_merge_kernel<<<dim3((unsigned) H, (unsigned) nq), 128, 0, s>>>(part_o, part_ml, 0, H, out, par, span, nq);
+    check("draft_attn_dyn (merge)");
+}
+void draft_attn_dyn(const float* q, const float* kc, const float* vc, const int* par, int span, const float* kb,
+                    const float* vb, int nq, int H, int Hkv, float scale, float* scratch, float* out, cudaStream_t s,
+                    int cap) {
+    draft_attn_dyn_impl<float>(q, kc, vc, par, span, kb, vb, nq, H, Hkv, scale, scratch, out, s, cap);
+}
+void draft_attn_dyn_f16(const float* q, const uint16_t* kc, const uint16_t* vc, const int* par, int span,
+                        const float* kb, const float* vb, int nq, int H, int Hkv, float scale, float* scratch, float* out,
+                        cudaStream_t s, int cap) {
+    draft_attn_dyn_impl<uint16_t>(q, kc, vc, par, span, kb, vb, nq, H, Hkv, scale, scratch, out, s, cap);
+}
+void draft_attn_dyn_fp8(const float* q, const uint8_t* kc, const uint8_t* vc, const int* par, int span, const float* kb,
+                        const float* vb, int nq, int H, int Hkv, float scale, float k_inv, float v_inv, float* scratch,
+                        float* out, cudaStream_t s, int cap) {
+    draft_attn_dyn_impl<uint8_t>(q, kc, vc, par, span, kb, vb, nq, H, Hkv, scale, scratch, out, s, cap, k_inv, v_inv);
 }
 void draft_attn(const float* q, const float* kc, const float* vc, int k_lo, int k_hi, const float* kb, const float* vb,
                 int nq, int H, int Hkv, float scale, float* scratch, float* out, cudaStream_t s, int cap) {
@@ -6079,9 +7491,36 @@ void draft_attn_f16(const float* q, const uint16_t* kc, const uint16_t* vc, int 
                     int cap) {
     draft_attn_impl<uint16_t>(q, kc, vc, k_lo, k_hi, kb, vb, nq, H, Hkv, scale, scratch, out, s, cap);
 }
+void draft_attn_fp8(const float* q, const uint8_t* kc, const uint8_t* vc, int k_lo, int k_hi, const float* kb,
+                    const float* vb, int nq, int H, int Hkv, float scale, float k_inv, float v_inv, float* scratch,
+                    float* out, cudaStream_t s, int cap) {
+    draft_attn_impl<uint8_t>(q, kc, vc, k_lo, k_hi, kb, vb, nq, H, Hkv, scale, scratch, out, s, cap, k_inv, v_inv);
+}
+__global__ void to_e4m3_kernel(const float* x, size_t n, float scale, uint8_t* y) {
+    const size_t i = (size_t) blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) y[i] = f32_to_e4m3fn(x[i] * scale);
+}
+void to_e4m3(const float* x, size_t n, float scale, uint8_t* y, cudaStream_t s) {
+    if (!n) return;
+    to_e4m3_kernel<<<grid(n), kBlk, 0, s>>>(x, n, scale, y);
+    check("to_e4m3");
+}
+// (the scalar kernels' 64 chunks, or the tensor cores' kDaSplitMax kWaNW warps: a partial a (query, head) each)
+size_t draft_attn_scratch(int H) { return (size_t) std::max(64, kDaSplitMax * kWaNW) * H * kDraftQ * (128 + 2); }
+bool draft_attn_mma() {
+#ifdef MAYA_USE_HIP
+    return false;
+#else
+    return arch_class() >= 75 && !(getenv("IK2_DRAFT_ATTN") && !std::strcmp(getenv("IK2_DRAFT_ATTN"), "scalar"));
+#endif
+}
 void silu_mul_bf16(const float* gu, int T, int F, uint16_t* out, cudaStream_t s) {
     silu_mul_bf16_kernel<<<grid((size_t) T * F), kBlk, 0, s>>>(gu, T, F, out);
     check("silu_mul_bf16");
+}
+void silu_mul_f16(const float* gu, int T, int F, uint16_t* out, cudaStream_t s) {
+    silu_mul_f16_kernel<<<grid((size_t) T * F), kBlk, 0, s>>>(gu, T, F, out);
+    check("silu_mul_f16");
 }
 void rnn_inputs(const float* state, const uint16_t* emb, const int* prev, const float* hidden, const float* f, int R,
                 int C, uint16_t* out, cudaStream_t s) {
@@ -6135,6 +7574,21 @@ void argmax_gemv_f16(const uint16_t* W, int ld, const float* x, const float* bas
     check("argmax_gemv_f16_part");
     argmax_final_kernel<<<1, 256, 0, s>>>(B, 1, out);
     check("argmax_gemv_f16_final");
+}
+
+void argmax_gemv_i8(const int8_t* W, int ld, const float* xs, const float* base, const uint16_t* bias_f16, int R, int n,
+                    int* out, cudaStream_t s, const int* par, int pos_off, float cap) {
+    if (n <= 0) return;
+    if ((ld & 7) || ((uintptr_t) W & 7) || ((uintptr_t) base & 15) || ((uintptr_t) bias_f16 & 15) || R > 4096) {
+        std::fprintf(stderr, "ik2::k::argmax_gemv_i8: a table, base or bias not aligned, or rank %d\n", R);
+        std::abort();
+    }
+    const int B = std::min(512, std::max(2, ((n >> 3) + 127) / 128));
+    argmax_gemv_i8_part_kernel<<<B, 128, (size_t) R * sizeof(float), s>>>(W, ld, xs, base, bias_f16, R, n, par, pos_off,
+                                                                          cap);
+    check("argmax_gemv_i8_part");
+    argmax_final_kernel<<<1, 256, 0, s>>>(B, 1, out);
+    check("argmax_gemv_i8_final");
 }
 
 int block_values(int type) {
@@ -6516,7 +7970,7 @@ template <class KV>
 void attn_decode_mma_impl(const uint16_t* q16, const float* r, const float* sink, const KV* kc, const KV* vc, int kv_cap,
                           int H, int Hkv, const int* pos, int qpos, int n_split, float qk_scale, float v_inv,
                           const float* proj, int d_rel, int extent, int window, float* scratch, float* out,
-                          const float* gate, uint16_t* out16, cudaStream_t s) {
+                          const float* gate, uint16_t* out16, cudaStream_t s, int blk0, int nblk, int phase) {
     if (H % Hkv || H / Hkv > 8 || n_split < 1 || (kv_cap > 0 && kv_cap < 16)) {
         std::fprintf(stderr, "ik2::k::attn_decode_mma: %d heads on %d, %d splits, a cache of %d\n", H, Hkv, n_split,
                      kv_cap);
@@ -6525,15 +7979,19 @@ void attn_decode_mma_impl(const uint16_t* q16, const float* r, const float* sink
     float* o_part = scratch;
     float2* ml_part = (float2*) (o_part + (size_t) n_split * kWaNW * H * kFaD);
     const bool rel4 = d_rel % 4 == 0 && (((uintptr_t) r | (uintptr_t) proj) & 15) == 0;
-    if (arch_class() == 70)   // (Volta: mma.m8n8k4, the same partials)
-        attn_decode_v70_kernel<KV><<<dim3((unsigned) Hkv, (unsigned) n_split), kWaNW * 32, 0, s>>>(
-            q16, kc, vc, kv_cap, H, Hkv, pos, qpos, qk_scale, r, proj, d_rel, rel4, extent, window, n_split, o_part,
-            ml_part);
-    else
-    attn_decode_mma_kernel<KV><<<dim3((unsigned) Hkv, (unsigned) n_split), kWaNW * 32, 0, s>>>(
-        q16, kc, vc, kv_cap, H, Hkv, pos, qpos, qk_scale, r, proj, d_rel, rel4, extent, window, n_split, o_part,
-        ml_part);
-    check("attn_decode_mma");
+    if (nblk < 0) blk0 = 0, nblk = n_split;
+    if (phase != 2 && nblk > 0) {
+        if (arch_class() == 70)   // (Volta: mma.m8n8k4, the same partials)
+            attn_decode_v70_kernel<KV><<<dim3((unsigned) Hkv, (unsigned) nblk), kWaNW * 32, 0, s>>>(
+                q16, kc, vc, kv_cap, H, Hkv, pos, qpos, qk_scale, r, proj, d_rel, rel4, extent, window, n_split, o_part,
+                ml_part, blk0);
+        else
+            attn_decode_mma_kernel<KV><<<dim3((unsigned) Hkv, (unsigned) nblk), kWaNW * 32, 0, s>>>(
+                q16, kc, vc, kv_cap, H, Hkv, pos, qpos, qk_scale, r, proj, d_rel, rel4, extent, window, n_split, o_part,
+                ml_part, blk0);
+        check("attn_decode_mma");
+    }
+    if (phase == 1) return;
     if (arch_class() == 70)
         attn_decode_v70_combine_kernel<<<(unsigned) H, kFaD, (size_t) (kFaD + n_split * kWaNW) * sizeof(float), s>>>(
             o_part, ml_part, n_split, H, sink, v_inv * (sizeof(KV) == 1 ? 256.0f : 1.0f), pos, qpos, window, gate, out,
@@ -6546,16 +8004,89 @@ void attn_decode_mma_impl(const uint16_t* q16, const float* r, const float* sink
 void attn_decode_mma_f16(const uint16_t* q16, const float* r, const float* sink, const uint16_t* kc, const uint16_t* vc,
                          int kv_cap, int H, int Hkv, const int* pos, int qpos, int n_split, float qk_scale,
                          const float* proj, int d_rel, int extent, int window, float* scratch, float* out,
-                         const float* gate, uint16_t* out16, cudaStream_t s) {
+                         const float* gate, uint16_t* out16, cudaStream_t s, int blk0, int nblk, int phase) {
     attn_decode_mma_impl(q16, r, sink, kc, vc, kv_cap, H, Hkv, pos, qpos, n_split, qk_scale, 1.0f, proj, d_rel, extent,
-                         window, scratch, out, gate, out16, s);
+                         window, scratch, out, gate, out16, s, blk0, nblk, phase);
 }
 void attn_decode_mma_fp8(const uint16_t* q16, const float* r, const float* sink, const uint8_t* kc, const uint8_t* vc,
                          int kv_cap, int H, int Hkv, const int* pos, int qpos, int n_split, float qk_scale,
                          float v_inv_scale, const float* proj, int d_rel, int extent, int window, float* scratch,
-                         float* out, const float* gate, uint16_t* out16, cudaStream_t s) {
+                         float* out, const float* gate, uint16_t* out16, cudaStream_t s, int blk0, int nblk,
+                         int phase) {
     attn_decode_mma_impl(q16, r, sink, kc, vc, kv_cap, H, Hkv, pos, qpos, n_split, qk_scale, v_inv_scale, proj, d_rel,
-                         extent, window, scratch, out, gate, out16, s);
+                         extent, window, scratch, out, gate, out16, s, blk0, nblk, phase);
+}
+// attn_decode_mma for the T tokens of a window in two launches: every token's blocks the one-token launch's (its
+// partials in its own part of scratch), so each token's output is attn_decode_mma's to the bit.  false: not here
+// (Volta's kernels: a token at a time).
+template <class KV>
+static bool attn_decode_mma_toks_impl(const uint16_t* q16, int q_ld, const float* r, int r_ld, const float* sink,
+                                      const KV* kc, const KV* vc, int kv_cap, int H, int Hkv, const int* pos, int T,
+                                      int n_split, float qk_scale, float v_inv, const float* proj, int d_rel, int extent,
+                                      int window, float* scratch, float* out, const float* gate, int gate_ld,
+                                      uint16_t* out16, cudaStream_t s) {
+    if (arch_class() == 70 || T < 1) return false;
+    if (H % Hkv || H / Hkv > 8 || n_split < 1 || (kv_cap > 0 && kv_cap < 16)) {
+        std::fprintf(stderr, "ik2::k::attn_decode_mma_toks: %d heads on %d, %d splits, a cache of %d\n", H, Hkv, n_split,
+                     kv_cap);
+        std::abort();
+    }
+    const size_t part = attn_decode_mma_scratch(H, n_split);
+    float* o_part = scratch;
+    float2* ml_part = (float2*) (o_part + (size_t) n_split * kWaNW * H * kFaD);
+    const bool rel4 = d_rel % 4 == 0 && (((uintptr_t) r | (uintptr_t) proj) & 15) == 0 && r_ld % 4 == 0;
+    // A layer without a sliding window: the tokens' queries on a key's rows read once, where their warps have the
+    // same steps (decided on the device from the position: a replayed graph) - and the tokens' own blocks where not,
+    // which do nothing otherwise.  IK2_ATTN_SHARE=0: the tokens' own blocks always.
+    static const bool share_on = !(getenv("IK2_ATTN_SHARE") && !std::atoi(getenv("IK2_ATTN_SHARE")));
+    const int NC = T * (H / Hkv);
+    const bool share = share_on && window >= (1 << 30) && kv_cap == 0 && T >= 2 && T <= 8 && NC <= 24;
+    if (share) {
+        const dim3 grid((unsigned) Hkv, (unsigned) n_split);
+#define IK2_WIN_LAUNCH(NT)                                                                                            \
+    attn_decode_mma_win_kernel<KV, NT><<<grid, kWaNW * 32, 0, s>>>(q16, q_ld, kc, vc, kv_cap, H, Hkv, pos, T, qk_scale, \
+                                                                   r, r_ld, proj, d_rel, rel4, extent, n_split, o_part, \
+                                                                   ml_part, part)
+        if (NC <= 8) IK2_WIN_LAUNCH(1);
+        else if (NC <= 16) IK2_WIN_LAUNCH(2);
+        else IK2_WIN_LAUNCH(3);
+#undef IK2_WIN_LAUNCH
+        check("attn_decode_mma_toks (shared)");
+    }
+    attn_decode_mma_kernel<KV><<<dim3((unsigned) Hkv, (unsigned) n_split, (unsigned) T), kWaNW * 32, 0, s>>>(
+        q16, kc, vc, kv_cap, H, Hkv, pos, 0, qk_scale, r, proj, d_rel, rel4, extent, window, n_split, o_part, ml_part, 0,
+        q_ld, r_ld, part, share ? T : 0);
+    check("attn_decode_mma_toks");
+    attn_decode_mma_combine_kernel<<<dim3((unsigned) H, 1, (unsigned) T), kFaD,
+                                     (size_t) (kFaD + n_split * kWaNW) * sizeof(float), s>>>(
+        o_part, ml_part, n_split, H, sink, v_inv, pos, 0, window, gate, out, out16, part, gate_ld);
+    check("attn_decode_mma_toks (combine)");
+    return true;
+}
+bool attn_decode_mma_toks_f16(const uint16_t* q16, int q_ld, const float* r, int r_ld, const float* sink,
+                              const uint16_t* kc, const uint16_t* vc, int kv_cap, int H, int Hkv, const int* pos, int T,
+                              int n_split, float qk_scale, const float* proj, int d_rel, int extent, int window,
+                              float* scratch, float* out, const float* gate, int gate_ld, uint16_t* out16,
+                              cudaStream_t s) {
+    return attn_decode_mma_toks_impl(q16, q_ld, r, r_ld, sink, kc, vc, kv_cap, H, Hkv, pos, T, n_split, qk_scale, 1.0f,
+                                     proj, d_rel, extent, window, scratch, out, gate, gate_ld, out16, s);
+}
+bool attn_decode_mma_toks_fp8(const uint16_t* q16, int q_ld, const float* r, int r_ld, const float* sink,
+                              const uint8_t* kc, const uint8_t* vc, int kv_cap, int H, int Hkv, const int* pos, int T,
+                              int n_split, float qk_scale, float v_inv_scale, const float* proj, int d_rel, int extent,
+                              int window, float* scratch, float* out, const float* gate, int gate_ld, uint16_t* out16,
+                              cudaStream_t s) {
+    return attn_decode_mma_toks_impl(q16, q_ld, r, r_ld, sink, kc, vc, kv_cap, H, Hkv, pos, T, n_split, qk_scale,
+                                     v_inv_scale, proj, d_rel, extent, window, scratch, out, gate, gate_ld, out16, s);
+}
+void attn_decode_mma_keys(int qpos, int n_split, int b0, int b1, int& lo, int& hi) {
+    // (the kernels' split of a layer without a window: wa_active / wa_used_v70 on the host)
+    const int nw = n_split * kWaNW, S = arch_class() == 70 ? 32 : 16;
+    const int n16 = (qpos + 16) >> 4, n_act = std::min(nw, (n16 + kWaMin - 1) / kWaMin);
+    const int n_steps = (qpos + S) / S, per = (n_steps + n_act - 1) / n_act;
+    lo = std::min(n_steps, b0 * kWaNW * per) * S;
+    hi = std::min(qpos + 1, std::min(n_steps, b1 * kWaNW * per) * S);
+    if (hi < lo) hi = lo;
 }
 
 void unpack_kv_fp8_to_f16(const uint8_t* kc, const uint8_t* vc, int kv_cap, int k0, int nk, int KD,
@@ -6690,6 +8221,28 @@ void conv_block(const float* x, int x_ld, float* hist, const float* w, const flo
                                                                    T, C, res, res_ld, y, y_ld, rec_old, rec_x);
     check("conv_block");
 }
+void conv_block2(const float* xa, float* hist_a, const float* wa, const float* dyn_a, float* ya, float* rec_old_a,
+                 float* rec_x_a, const float* xb, float* hist_b, const float* wb, const float* dyn_b, float* yb,
+                 float* rec_old_b, float* rec_x_b, int x_ld, int d_ld, int heads, int T, int C, int y_ld,
+                 cudaStream_t s) {
+    if (T <= 0) return;
+    const ConvJob j0{xa, hist_a, wa, dyn_a, ya, rec_old_a, rec_x_a}, j1{xb, hist_b, wb, dyn_b, yb, rec_old_b, rec_x_b};
+    conv_block2_kernel<<<dim3((unsigned) ((C + 127) / 128), 2), 128, 0, s>>>(j0, j1, x_ld, d_ld, heads > 0 ? heads : 1,
+                                                                             T, C, y_ld);
+    check("conv_block2");
+}
+void rms_f16_jobs(const float* const* x, const float* const* w, uint16_t* const* y16, float* const* y32, int n,
+                  int rows, int D, float eps, cudaStream_t s) {
+    if (rows <= 0 || n <= 0) return;
+    if (n > 3) {
+        std::fprintf(stderr, "ik2::k::rms_f16_jobs: %d inputs\n", n);
+        std::abort();
+    }
+    RmsF16Jobs j{};
+    for (int i = 0; i < n; ++i) j.x[i] = x[i], j.w[i] = w[i], j.y16[i] = y16[i], j.y32[i] = y32[i];
+    rms_impl_jobs_kernel<<<dim3((unsigned) rows, (unsigned) n), kBlk, 0, s>>>(j, D, eps);
+    check("rms_f16_jobs");
+}
 void rollback_block(const ConvRec* recs, int n_recs, int n, cudaStream_t s) {
     if (n_recs <= 0) return;
     rollback_block_kernel<<<dim3(8, (unsigned) n_recs), 256, 0, s>>>(recs, n);
@@ -6720,6 +8273,13 @@ void experts_block_gu(const uint8_t* const* blob, const int* n, const int* tok, 
                       size_t off_up, int C, int F, const uint16_t* limbs, const float* sg, const float* su, float gcap,
                       float ucap, uint16_t* h, cudaStream_t s) {
     if (G <= 0) return;
+    if (arch_class() == 70) {   // (Volta: mma.m8n8k4, the one-token kernel's rows, splits and sums)
+        const dim3 gv((unsigned) (F / 8), (unsigned) G);
+        if (T <= 4) experts_block_gu_v70_kernel<8, 1><<<gv, 256, 0, s>>>(blob, n, tok, row, off_up, C, F, limbs, sg, su, gcap, ucap, h);
+        else experts_block_gu_v70_kernel<8, 2><<<gv, 256, 0, s>>>(blob, n, tok, row, off_up, C, F, limbs, sg, su, gcap, ucap, h);
+        check("experts_block_gu (Volta)");
+        return;
+    }
     need_class(75, "experts_block_gu");
     const dim3 g((unsigned) (F / 8), (unsigned) G);
     if (T <= 4) experts_block_gu_kernel<8, 1><<<g, 256, 0, s>>>(blob, n, tok, row, off_up, C, F, limbs, sg, su, gcap, ucap, h);
@@ -6729,6 +8289,12 @@ void experts_block_gu(const uint8_t* const* blob, const int* n, const int* tok, 
 void experts_block_down(const uint8_t* const* blob, const int* n, const int* row, int G, size_t off_down, int C,
                         int F, const uint16_t* h, float* y, cudaStream_t s) {
     if (G <= 0) return;
+    if (arch_class() == 70) {
+        experts_block_down_v70_kernel<4><<<dim3((unsigned) (C / 16), (unsigned) G), 128, 0, s>>>(blob, n, row, off_down,
+                                                                                                 C, F, h, y);
+        check("experts_block_down (Volta)");
+        return;
+    }
     need_class(75, "experts_block_down");
     experts_block_down_kernel<4><<<dim3((unsigned) (C / 16), (unsigned) G), 128, 0, s>>>(blob, n, row, off_down, C, F,
                                                                                          h, y);
@@ -6790,13 +8356,46 @@ void experts_block_down_q8(const uint8_t* const* blob, const int* n, const int* 
     check("experts_block_down_q8");
 }
 
+bool mv_q8p_cols_alts(int K, int T, const MvAlt& a0, const MvAlt& a1) {
+#ifndef MAYA_USE_HIP
+    static const bool ahead = !(getenv("IK2_COLS_AHEAD") && !atoi(getenv("IK2_COLS_AHEAD")));
+    auto whole = [](const MvAlt& a) { return a.n == 0 || (a.r0 % 16 == 0 && a.n % 16 == 0); };
+    return ahead && T >= 2 && T <= 8 && (K == 18 * 128 || K == 24 * 128) && whole(a0) && whole(a1);
+#else
+    return false;
+#endif
+}
 void mv_q8p_cols(const int8_t* q, const uint16_t* d, int N, int K, const float* x, int x_ld, int T, float* y, int y_ld,
-                 cudaStream_t s) {
+                 cudaStream_t s, const MvAlt& a0, const MvAlt& a1) {
     if (N <= 0 || T <= 0) return;
+    if ((a0.n || a1.n) && !mv_q8p_cols_alts(K, T, a0, a1)) {
+        std::fprintf(stderr, "ik2::k::mv_q8p_cols: rows with an input of their own are not taken here\n");
+        std::abort();
+    }
     if (K % 128 || ((uintptr_t) q & 3) || ((uintptr_t) x & 15) || (x_ld & 3) || T > 8) {
         std::fprintf(stderr, "ik2::k::mv_q8p_cols: K %d, x_ld %d, %d tokens, or q / x not aligned\n", K, x_ld, T);
         std::abort();
     }
+#ifndef MAYA_USE_HIP
+    // (K of 18 or 24 steps of 128 - Inkling 2's widths - and 2 .. 8 tokens: the straight-line kernel, loads ahead;
+    //  IK2_COLS_AHEAD=0: the kernel below)
+    static const bool ahead = !(getenv("IK2_COLS_AHEAD") && !atoi(getenv("IK2_COLS_AHEAD")));
+    if (ahead && T >= 2 && (K == 18 * 128 || K == 24 * 128)) {
+        constexpr int W4 = 4, R4 = 4;
+        const unsigned g4 = (unsigned) ((N + W4 * R4 - 1) / (W4 * R4));
+#define IK2_COLSX(TT) \
+        case TT: \
+            if (K == 18 * 128) mv_q8p_colsx_kernel<W4, R4, TT, 18><<<g4, W4 * 32, 0, s>>>(q, d, N, K, x, x_ld, y, y_ld, a0, a1); \
+            else mv_q8p_colsx_kernel<W4, R4, TT, 24><<<g4, W4 * 32, 0, s>>>(q, d, N, K, x, x_ld, y, y_ld, a0, a1); \
+            break;
+        switch (T) {
+            IK2_COLSX(2) IK2_COLSX(3) IK2_COLSX(4) IK2_COLSX(5) IK2_COLSX(6) IK2_COLSX(7) IK2_COLSX(8)
+        }
+#undef IK2_COLSX
+        check("mv_q8p_colsx");
+        return;
+    }
+#endif
     // (a warp's rows: more share each x load - the window's x is read once per R rows - fewer warps in flight)
     static const int rr = getenv("IK2_COLS_R") ? atoi(getenv("IK2_COLS_R")) : 0;
     const int R = rr == 2 || rr == 4 || rr == 8 ? rr : (T <= 2 ? 2 : 4);

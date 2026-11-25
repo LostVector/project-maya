@@ -2425,6 +2425,14 @@ class VisionRoomOnDemand(unittest.TestCase):
             v._start()
         return v, proc, popen.call_args
 
+    def test_pictures_reserve_nothing_in_the_engine(self):
+        """(the start plan - context, cache, drafter - is the same with pictures on or off: the server hands maya-ik2
+        no room figure for the encoder, and the engine's drafter check reads none; a 24 GB card at 262,144 lost its
+        drafter to that figure)"""
+        root = Path(__file__).resolve().parent.parent
+        for f in ("serve/server.py", "src/ik2/ik2_main.cu"):
+            self.assertNotIn("IK2_VISION_GIB", (root / f).read_text(encoding="utf-8"), f)
+
     def test_on_the_gpu_when_it_has_room(self):
         v, proc, call = self.start(True)
         self.assertEqual(call[0][0], ["maya-vision", "--mmproj", "mmproj-BF16.gguf", "--gpu", "--max-tokens", "1024",
@@ -3235,6 +3243,28 @@ class EngineEndTests(unittest.TestCase):
         self.assertIn("a hang it caught", self.note("maya ds4 serve: no progress for 600 s during a request - stopping "
                                                     "the engine so the server starts it again (issue #29, #539)\n"))
         self.assertIn("running out of RAM", self.note("ds4: something else\n", returncode=-9))
+
+
+class Ds4OneGpuSwitchNote(unittest.TestCase):
+    """#1120: DS4_STREAM_WIN / DS4_LAND set by hand for DeepSeek on one AMD GPU: the start says they do not apply."""
+
+    CFG = {"exe": "/x/maya-ds4", "backend": "hip", "gpu": "0", "args": ["--pack", "/m"]}
+
+    def test_set_on_one_amd_gpu(self):
+        from serve.server import ds4_one_gpu_switch_note as note
+        msg = note(self.CFG, {"DS4_STREAM_WIN": "1", "DS4_LAND": "1"})
+        self.assertIn("DS4_STREAM_WIN and DS4_LAND are set", msg)
+        self.assertIn("does not apply", msg)
+        self.assertIn("DS4_LAND is set", note(self.CFG, {"DS4_LAND": "1", "DS4_STREAM_WIN": "0"}))
+
+    def test_silent_everywhere_else(self):
+        from serve.server import ds4_one_gpu_switch_note as note
+        env = {"DS4_STREAM_WIN": "1", "DS4_LAND": "1"}
+        self.assertIsNone(note(self.CFG, {}))
+        self.assertIsNone(note(self.CFG, {"DS4_LAND": "0"}))
+        self.assertIsNone(note({**self.CFG, "backend": "cuda"}, env))                 # NVIDIA: the path they belong to
+        self.assertIsNone(note({**self.CFG, "gpu": "0,1"}, env))                      # two GPUs
+        self.assertIsNone(note({**self.CFG, "exe": "/x/maya-mm3"}, env))             # another model
 
 
 if __name__ == "__main__":

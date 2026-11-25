@@ -304,20 +304,21 @@ GGUF as it is. An **experimental preview**: `maya.py --setup --model inkling-2-m
 
 | Files | Size | Runs on |
 | --- | ---: | --- |
-| [unsloth's UD-Q4_K_XL](https://huggingface.co/unsloth/Inkling-2-Mini-GGUF) (NVFP4 experts in layers 0-19, Q8_0 elsewhere) | 17.6 GB | NVIDIA V100 / RTX 20 and newer, or AMD RDNA 3 / 3.5 / 4 (Radeon RX 7000 / 9000, Ryzen AI Max); Linux; NVIDIA with 8 GB of VRAM or more (experts that do not fit stay in RAM: about 13 GB of RAM with an 8 GB card), AMD or a Halo / APU with 24 GB (every expert in memory); Windows is not supported yet |
+| [unsloth's UD-Q4_K_XL](https://huggingface.co/unsloth/Inkling-2-Mini-GGUF) (NVFP4 experts in layers 0-19, Q8_0 elsewhere) | 17.6 GB | NVIDIA V100 / RTX 20 and newer, or AMD RDNA 3 / 3.5 / 4 (Radeon RX 7000 / 9000, Ryzen AI Max); Linux; NVIDIA with 8 GB of VRAM or more (experts that do not fit stay in RAM: about 13 GB of RAM with an 8 GB card), AMD with 12 GB or more (the same: experts that do not fit stay in RAM) or a Halo / APU with 24 GB (every expert in memory); Windows is not supported yet |
 
 - **Where it runs:** the whole model sits on one GPU. The setup says so in one line and stops on a Mac, Windows, two
-  GPUs or more, NVIDIA cards older than V100 / RTX 20, AMD GPUs older than RDNA 3 and GPUs under 24 GB.
+  GPUs or more, NVIDIA cards older than V100 / RTX 20, AMD GPUs older than RDNA 3, NVIDIA GPUs under 8 GB and AMD GPUs under 12 GB.
 - **AMD (`--backend hip`):** run by Maya's team on a Radeon 8065S (Gorgon Halo, Linux); Radeon RX 7000 / 9000 cards
   build the same engine but have not been run here yet - tell us how it goes.
 - **Context:** up to 256K (the setup offers 32K to 256K and recommends the largest that keeps every expert in VRAM on
   the card); the cache in FP8 by default (F16 on the Models page).
-- **Drafting:** not offered by the setup in this preview (the engine's `--draft` with the model's drafter is
-  by hand: docs/INKLING2.md).
+- **Drafting:** on by default where it runs (NVIDIA RTX 30 and newer with every expert in VRAM, and AMD) - the setup
+  fetches the model's own drafter from Maya's repo (`dspark-Inkling-2-Mini-Q8_0.gguf`, 0.4 GB;
+  `--drafting off` skips it). The model checks every
+  drafted token, so the answers are the same with drafting or without.
 - **Thinking and tools:** thinkingmachines' own template; its effort levels Off, Low, Medium, High (its default) and
   Max. Tool calls through Maya's OpenAI-compatible server.
-- **Pictures:** on by default - the setup fetches the model's vision tower (unsloth's `mmproj-BF16.gguf`, 0.6 GB, from the
-  same repo; `--no-vision` skips it) and builds Maya's image encoder; the encoder starts only when a picture arrives
+- **Pictures:** on by default - the setup fetches the model's vision tower (`mmproj-Inkling-2-Mini-BF16.gguf`, 0.6 GB, from Maya's repo - unsloth's file byte for byte, a copy you already have is kept; `--no-vision` skips it) and builds Maya's image encoder; the encoder starts only when a picture arrives
   (on the GPU where its free VRAM holds it, else on the CPU), so the context's fit is the same. Images on the Models
   page turns them off and on.
 - One request at a time for now.

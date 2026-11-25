@@ -2,21 +2,33 @@
 
 This profile is for our Linux workstation with three 32 GB Radeon AI PRO
 R9700s and 256 GB of system RAM. We tested DeepSeek-V4.1-Flash-1017 EXL3 3.5 bpw
-with resident Engrams and DSpark on the fork based on Maya v1.1.73
-(`b90e8f59`). Use a HIP build with RDNA4 EXL3 kernels, resident helper prefill,
-and exact peer prefill reduction.
+with resident Engrams and DSpark. Use a HIP build with RDNA4 EXL3 kernels,
+resident helper prefill, and exact peer prefill reduction. The original 8K
+profile was tested on the fork based on Maya v1.1.73 (`b90e8f59`). Later
+opt-ins and their measured configurations are described below.
 
 ## GPU roles
 
 | Visible GPU | Upstream PCIe link | Role |
 | --- | --- | --- |
 | 0 | 5.0 ×8 | TP2 rank 0 and lead |
-| 1 | 4.0 ×8 | TP2 rank 1 |
+| 1 | 5.0 ×8 with BIOS Gen5 selected | TP2 rank 1 |
 | 2 | 4.0 ×4 | Resident expert helper and DSpark |
 
 Verify the HIP-visible IDs against the startup log. The TP pair runs all 40
 target layers. GPU 2 holds a 20 GB pool of complete experts and receives
 activations for its resident experts during prefill.
+
+On this workstation GPU 1's CPU-facing link (root port `0000:00:01.3`)
+previously ran at PCIe Gen4 ×8 under load despite Gen5 capability and a
+32 GT/s target. Selecting Gen5 for that slot in BIOS and rebooting restored
+Gen5 ×8 for the measured runs. The cause of the earlier downshift is
+unconfirmed. Verify both rank links during a sustained pinned host-to-device
+copy before and between benchmark arms, especially after a reboot or BIOS
+change. Check for 32 GT/s ×8 and roughly 26–27 GB/s per rank on this host.
+The degraded link measured about 14.3 GB/s. An idle 2.5 GT/s sample by itself
+can reflect normal power management. Record the active speed with results
+and compare arms with matching active link speeds.
 
 ## Long-context profile
 
@@ -58,14 +70,31 @@ budget is a tuning input. Actual resident host memory can differ when
   "EXL3_WMMA_GFX12": "1",
   "EXL3_WMMA_ROWS": "16",
   "DS4_HIP_PEER_AR": "1",
+  "DS4_INDEX_TC_GFX12": "1",
+  "MAYA_DS4_BATCH_MARKED_TAIL": "1",
   "MAYA_DS4_WATCHDOG_S": "120"
 }
 ```
 
-For an existing config with these GPU roles, the two prefill changes are
-`--prefill-chunk 8192` and `DS4_HIP_PEER_AR=1`. Both settings already exist in
-the fork. The benchmark disabled the experimental routing trace and custom
-helper placement. It used text-only serving with `--vision off`.
+Use `--prefill-chunk 8192` and `DS4_HIP_PEER_AR=1` for the base prefill
+path. The original 4K/8K comparison below used text-only serving with
+`--vision off` and disabled routing traces and custom helper placement.
+
+`DS4_INDEX_TC_GFX12=1` enables the INT8 sparse-attention scorer for prefill
+on RDNA4. Keep `DS4_INDEX_TC` unset or set it to `1` when enabling it, and
+check for the indexer's WMMA startup message on both target GPUs. The local
+EXL3 3.5 bpw comparison used 8K chunks, vision, and 3-bit DSpark. Fresh
+32K, 64K, and 96K TTFT fell 10.8%, 8.3%, and 8.1%. Resumed decode changed
+by +5.2%, +1.7%, and −0.6%, with one matched fixture per length. All 12
+operator cases matched their top-512 selections and finite masks. The
+floating-point score reduction order can change generated tokens.
+
+`MAYA_DS4_BATCH_MARKED_TAIL=1` batches eligible fresh text tails within
+the existing scheduler pieces and retains the replay point. This is the
+local opt-in for reducing mixed-session prefill pauses. The mixed-turn
+screen reduced the longest pause from 27–30 s to about 16 s. The edited
+follow-up reloaded the same prefix and took longer to reach the first
+token in that screen.
 
 Check for `helper prefill enabled` with up to 8,192 rows and
 `exact peer prefill all-reduce enabled on GPU0/GPU1` in the startup log.
@@ -132,7 +161,10 @@ reads the restored bytes back.
 ## Preferred DSpark pack for our 2.9 bpw profile
 
 For our three-R9700 DeepSeek-V4.1-Flash-1017 EXL3 2.9 bpw profile, use 3-bit
-routed DSpark experts on GPU 2. Use the matching expert-major EXL3 mul1 donor
+routed DSpark experts on GPU 2. Keep this drafter for the 3.5 bpw and Q4 XL
+profiles too. The Q4 XL comparison at equal helper residency found nearly
+identical resumed decode with native MXFP4 and about 2 GiB more VRAM use.
+Use the matching expert-major EXL3 mul1 donor
 and build a separate pack that references both the base shards and the donor.
 See the [EXL3 pack guide](ds4-exl3-packs.md#3-bit-dspark-routed-experts) for
 the donor layout.

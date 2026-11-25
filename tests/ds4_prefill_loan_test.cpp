@@ -2,7 +2,7 @@
 
 #include <cstdlib>
 
-using namespace strata::ds4::prefill_loan;
+using namespace maya::ds4::prefill_loan;
 
 static void require(bool passed) {
     if (!passed) std::abort();
