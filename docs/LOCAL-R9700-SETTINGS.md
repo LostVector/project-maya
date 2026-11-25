@@ -204,8 +204,16 @@ packing flag for this profile and use:
 With the hybrid host layout, median fresh 32K TTFT went from 50.7 to 40.6 s.
 Resumed 32K decode went from 27.1 to 26.8 tok/s, and warm short decode went
 from 30.1 to 28.3 tok/s. Use the ordinary host layout when short decode
-throughput takes priority. The fixed 12K experiment reached 37.5 s and dropped
-below 2,048 MiB of driver-reported free VRAM on GPU 0.
+throughput takes priority.
+
+For prefill-heavy Q4 XL use the separately calibrated fixed 12K profile.
+It sets `--prefill-chunk 12288`, keeps the 2,048 MiB reserve, caps the shared
+helper at `DS4_HELPER_GB=19.5`, and restores the saved late-allocation
+calibration with at least 1,760 MiB on GPU 0. The calibrated run kept at least
+2,366 MiB driver-reported free on every GPU. Its 32K TTFT was 38.83 s versus
+40.63 s for the prior hybrid 8K run. Short decode went from 28.35 to
+26.58 tok/s, so prefer 8K for decode-heavy use. Confirm the VRAM floor under
+load before using fixed 12K with a different placement or build.
 
 ### Experimental FP8 MXFP4 prefill
 
