@@ -174,3 +174,14 @@ Resumed 32K decode went from 27.1 to 26.8 tok/s, and warm short decode went
 from 30.1 to 28.3 tok/s. Use the ordinary host layout when short decode
 throughput takes priority. The fixed 12K experiment reached 37.5 s and dropped
 below 2,048 MiB of driver-reported free VRAM on GPU 0.
+
+### Experimental FP8 MXFP4 prefill
+
+Set `"MAYA_DS4_MXFP4_WMMA_FP8": "1"` in the engine's `env` to try FP8 matrix
+instructions for the routed MXFP4 prefill tiles. The engine selects the path
+per device on HIP gfx1200 and gfx1201. It retains the usual kernels on other
+devices, for light expert groups, and when tensor cores are disabled.
+
+The model files and PCIe payloads remain MXFP4. The GPU expands the weight
+codes to FP8 and rounds activations to FP8 per 32-value block. Leave the
+setting unset for the default FP16 path while model quality is being evaluated.
