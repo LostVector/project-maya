@@ -12864,8 +12864,14 @@ struct Model::Impl {
     bool swap_in_mx(Layer& l, Swap& sw, SwapBufs& B) {
         uint8_t *sw_a = B.a, *sw_b = B.b, *sw_h = B.h;   // (this thread's)
         const std::vector<cudaStream_t>& copy_st = B.st;
+        // The copied arena stays registered and the swap owns its spare slots until publication.
+        static const bool direct_packed = env_f("DS4_MXFP4_DIRECT_SWAPS", 0) != 0;
+        const bool direct = direct_packed && cp_dma && copy_mode && l.nm == 2;
+        const bool packed_in = direct && mx_packed_expert(l, sw.in, 0) != nullptr;
+        const bool packed_out = direct && mx_packed_slot(sw.ram);
         // (a copy holds its slot till this swap's switch; an in-place one the RAM store holds: from its slot)
         const bool prepared = prepare_cache_swap(l.nm, [&] {
+            if (packed_in) return true;
             return copy_mode && !l.ram.empty() && l.ram[(size_t) sw.in] >= 0
                        ? read_mx(l, sw.in, sw_a)
                        : store_blob(l, sw.in, sw_a) || read_mx_file(l, sw.in, sw_a);
@@ -12873,8 +12879,13 @@ struct Model::Impl {
             const Layer& x = member(l, m);
             if (cudaSetDevice(devs[(size_t) x.dev].id) != cudaSuccess) return false;
             cudaStream_t cs = copy_st[(size_t) x.dev];
-            if (l.nm > 1) blob_to_half(l, sw_a, m, sw_h);
-            return cudaMemcpyAsync(sat(l, x, l.spare_vram, unit(x)), l.nm > 1 ? sw_h : sw_a, unit(x),
+            const uint8_t* src = sw_a;
+            if (packed_in) src = mx_packed_expert(l, sw.in, m);
+            else if (l.nm > 1) {
+                blob_to_half(l, sw_a, m, sw_h);
+                src = sw_h;
+            }
+            return cudaMemcpyAsync(sat(l, x, l.spare_vram, unit(x)), src, unit(x),
                                    cudaMemcpyHostToDevice, cs) == cudaSuccess &&
                    cudaStreamSynchronize(cs) == cudaSuccess;
         });
@@ -12885,13 +12896,14 @@ struct Model::Impl {
                 const Layer& x = member(l, m);
                 got = cudaSetDevice(devs[(size_t) x.dev].id) == cudaSuccess;
                 cudaStream_t cs = copy_st[(size_t) x.dev];
-                got = got && cudaMemcpyAsync(l.nm > 1 ? sw_h : sw_b, sat(l, x, l.slot[(size_t) sw.out], unit(x)),
-                                      unit(x), cudaMemcpyDeviceToHost, cs) == cudaSuccess &&
+                uint8_t* dst = packed_out ? mx_packed_part(l, sw.ram, m) : (l.nm > 1 ? sw_h : sw_b);
+                got = got && cudaMemcpyAsync(dst, sat(l, x, l.slot[(size_t) sw.out], unit(x)),
+                                             unit(x), cudaMemcpyDeviceToHost, cs) == cudaSuccess &&
                       cudaStreamSynchronize(cs) == cudaSuccess;
-                if (got && l.nm > 1) half_to_blob(l, sw_h, m, sw_b);
+                if (got && !packed_out && l.nm > 1) half_to_blob(l, sw_h, m, sw_b);
             }
-            if (got) blob_to_ram(l, sw_b, sw.ram);
-            else sw.ram = -1;   // (back to the file's pages then)
+            if (!got) sw.ram = -1;   // (back to the file's pages then)
+            else if (!packed_out) blob_to_ram(l, sw_b, sw.ram);
         }
         if (ok && sw.ram < 0 && store_put && store && store->covers(l.il) && !store->has(l.il, sw.out)) {
             // (the RAM store, DS4_STORE_PUT) `out` goes back to the CPU lane, which would read it from the SSD: its blob
@@ -12929,8 +12941,9 @@ struct Model::Impl {
                 for (int r = 0; r < 3 && ok_out; ++r)
                     ok_out = std::memcmp(dev.data() + l.lay.trellis[r], file.data() + l.lay.trellis[r], mx_part_bytes(l, r)) == 0;
             }
-            std::fprintf(stderr, "ds4 cache: layer %d expert %d in, %d out%s: %s\n", l.il, sw.in, sw.out,
-                         sw.ram >= 0 ? " (into RAM)" : "", ok && ok_out ? "matches the model file" : "MISMATCH");
+            std::fprintf(stderr, "ds4 cache: layer %d expert %d in, %d out%s: %s (direct in=%d out=%d)\n",
+                         l.il, sw.in, sw.out, sw.ram >= 0 ? " (into RAM)" : "",
+                         ok && ok_out ? "matches the model file" : "MISMATCH", packed_in, packed_out && sw.ram >= 0);
             ok = ok && ok_out;
         } else if (!ok) {
             std::fprintf(stderr, "ds4 cache: layer %d expert %d: the move into VRAM failed\n", l.il, sw.in);
